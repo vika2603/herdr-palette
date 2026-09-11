@@ -24,7 +24,7 @@ title = "\u200B"
 description = "Search and run an action"
 placement = "popup"
 width = "60%"
-height = "70%"
+height = "60%"
 command = ["./bin/palette"]
 
 # The field an entry that needs a value is collected in: two lines, in a popup

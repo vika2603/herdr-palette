@@ -88,7 +88,7 @@ func onExec(ctx context.Context, env *plugin.Env) error {
 
 	// An unreachable action list still leaves the catalog and the configured
 	// commands, and the handed-over entry may well be one of them.
-	list, _ := entries(ctx, env, keys.Commands(), settings.Load(env).Commands)
+	list, _ := entries(ctx, env, keys.Commands())
 	return palette.RunPending(ctx, env.Client(), list.All(), pending)
 }
 
@@ -113,8 +113,8 @@ func onInput(ctx context.Context, env *plugin.Env) error {
 }
 
 // entries assembles the command list both entrypoints work from.
-func entries(ctx context.Context, env *plugin.Env, cfg keys.Config, own []settings.Command) (palette.List, error) {
-	return palette.Load(ctx, env.Client(), env.PluginID, catalog.Entries(), cfg, own)
+func entries(ctx context.Context, env *plugin.Env, cfg keys.Config) (palette.List, error) {
+	return palette.Load(ctx, env.Client(), env.PluginID, catalog.Entries(), cfg)
 }
 
 // onRun runs the configured command this pane was opened for. The pane closes
@@ -143,6 +143,6 @@ func onRun(ctx context.Context, env *plugin.Env) error {
 func onPalette(ctx context.Context, env *plugin.Env) error {
 	cfg := keys.Load(env.BinPath)
 	own := settings.Load(env)
-	list, loadErr := entries(ctx, env, cfg, own.Commands)
+	list, loadErr := entries(ctx, env, cfg)
 	return ui.Run(ctx, env, list, loadErr, theme.Load(cfg.Theme, own.Theme))
 }

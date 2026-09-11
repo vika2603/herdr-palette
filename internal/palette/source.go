@@ -9,7 +9,6 @@ import (
 	"github.com/vika2603/herdr-client/herdr"
 
 	"github.com/vika2603/herdr-palette/internal/keys"
-	"github.com/vika2603/herdr-palette/internal/settings"
 )
 
 // List is the palette's rows in two halves. Commands is fixed for as long as
@@ -26,9 +25,9 @@ func (l List) All() []Entry {
 }
 
 // Load returns the entries to show: the catalog, the commands configured under
-// [[keys.command]], the ones from the palette's own configuration, every
-// action the other plugins registered, and what is open in the session. own is this plugin's id, whose own entrypoint
-// would only reopen the palette. cfg supplies the key each entry is bound to.
+// [[keys.command]], every action the other plugins registered, and what is
+// open in the session. own is this plugin's id, whose own entrypoint would only
+// reopen the palette. cfg supplies the key each entry is bound to.
 //
 // Neither call is fatal. The rest of the list is still worth showing, so the
 // caller reports what was missed next to it.
@@ -38,7 +37,6 @@ func Load(
 	own string,
 	catalog []Entry,
 	cfg keys.Config,
-	configured []settings.Command,
 ) (List, error) {
 	commands := make([]Entry, 0, len(catalog)+len(cfg.Custom))
 	for _, entry := range catalog {
@@ -46,7 +44,6 @@ func Load(
 		commands = append(commands, entry)
 	}
 	commands = append(commands, customEntries(own, cfg.Custom)...)
-	commands = append(commands, ownEntries(own, configured)...)
 
 	var failures []error
 	if actions, err := client.PluginActionList(ctx, herdr.PluginActionListParams{}); err != nil {

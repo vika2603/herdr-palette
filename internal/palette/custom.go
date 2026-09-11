@@ -11,7 +11,6 @@ import (
 	"github.com/vika2603/herdr-client/plugin/manifest"
 
 	"github.com/vika2603/herdr-palette/internal/keys"
-	"github.com/vika2603/herdr-palette/internal/settings"
 )
 
 const (
@@ -21,9 +20,9 @@ const (
 	RunEnv        = "HERDR_PALETTE_COMMAND"
 )
 
-// configured is a command from either configuration file: herdr's, where it is
-// bound to a key, and the palette's own, where it is not. An empty window runs
-// it detached, with nothing to show and nowhere for its output to go.
+// configured is a command from herdr's configuration, bound to a key. An empty
+// window runs it detached, with nothing to show and nowhere for its output to
+// go.
 type configured struct {
 	id     string
 	title  string
@@ -47,22 +46,6 @@ func customEntries(own string, commands []keys.Custom) []Entry {
 			key:    command.Key,
 			line:   command.Command,
 			window: herdrWindow(command.Type),
-			width:  command.Width,
-			height: command.Height,
-		}))
-	}
-	return entries
-}
-
-// ownEntries turns the palette's own [[command]] entries into rows.
-func ownEntries(own string, commands []settings.Command) []Entry {
-	entries := make([]Entry, 0, len(commands))
-	for _, command := range commands {
-		entries = append(entries, entryFor(own, configured{
-			id:     "command:" + command.Title,
-			title:  strings.ToLower(command.Title),
-			line:   command.Run,
-			window: window(command.Window),
 			width:  command.Width,
 			height: command.Height,
 		}))
@@ -111,20 +94,6 @@ func herdrWindow(commandType string) herdr.PluginPanePlacement {
 	return ""
 }
 
-// window maps what a [[command]] entry asked for. A tab is the one that can be
-// returned to: it is a pane of its own, which the list then offers to go to.
-func window(asked string) herdr.PluginPanePlacement {
-	switch asked {
-	case settings.WindowPopup:
-		return herdr.PluginPanePlacementPopup
-	case settings.WindowPane:
-		return herdr.PluginPanePlacementZoomed
-	case settings.WindowTab:
-		return herdr.PluginPanePlacementTab
-	}
-	return ""
-}
-
 func run(own string, command configured) func(context.Context, Exec) error {
 	return func(ctx context.Context, e Exec) error {
 		if command.window == "" {
@@ -135,7 +104,7 @@ func run(own string, command configured) func(context.Context, Exec) error {
 			PluginID:   own,
 			Entrypoint: RunEntrypoint,
 			Placement:  &command.window,
-			Focus:      new(command.window != herdr.PluginPanePlacementTab),
+			Focus:      new(true),
 			Cwd:        e.Ctx.FocusedPaneCwd,
 			Env:        map[string]string{RunEnv: command.line},
 		}
@@ -152,17 +121,8 @@ func run(own string, command configured) func(context.Context, Exec) error {
 			params.Height = &size
 		}
 
-		opened, err := e.Client.PluginPaneOpen(ctx, params)
-		if err != nil {
+		if _, err := e.Client.PluginPaneOpen(ctx, params); err != nil {
 			return fmt.Errorf("%s: %w", command.title, err)
-		}
-		// A tab is opened to be found again, and every plugin pane carries the
-		// manifest's name until it is given the name of what it runs.
-		if info, ok := opened.(*herdr.PluginPaneOpenedResponse); ok && command.window == herdr.PluginPanePlacementTab {
-			_, _ = e.Client.PaneRename(ctx, herdr.PaneRenameParams{
-				PaneID: info.PluginPane.Pane.PaneID,
-				Label:  &command.title,
-			})
 		}
 		return nil
 	}

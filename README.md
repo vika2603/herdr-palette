@@ -91,48 +91,15 @@ of its own once the palette closes. Renames start from the current label. The
 field keeps the terminal's own cursor on the insertion point, which is what
 macOS input methods anchor their candidate window to.
 
-## Your own commands
+## The palette's own window
 
 The palette has a configuration file of its own, in the directory
-`herdr plugin config-dir herdr.palette` prints. A command written there needs
-no key — the palette is how it is reached — and runs in the background unless
-it asks for a window:
-
-```toml
-[[command]]
-title = "Sync dotfiles"
-run = "zsh ~/scripts/sync.sh"   # detached: no window, and its output goes nowhere
-
-[[command]]
-title = "Watch tests"
-run = "just watch"
-window = "tab"                  # a tab of its own, unfocused; "go to watch tests" returns to it
-
-[[command]]
-title = "Open lazygit"
-run = "lazygit"
-window = "popup"                # a session-modal terminal
-width = "80%"
-height = "80%"
-```
-
-`window = "pane"` is the fourth: a temporary pane over the layout, which closes
-when the command exits. A command with no `title` is listed under what it runs,
-and one with no `run` is left out. These rows are listed as `command:`,
-alongside the `[[keys.command]]` entries from herdr's own configuration, and
-their titles are shown lowercase like every other command in the list.
-
-A command runs where the focused pane is, whether it opens a window or not.
-
-The window is what decides whether a command can be returned to. A background
-command is a detached process with no pane, which herdr cannot show later; a
-tab is a pane, so the palette lists it and `go to` reaches it.
-
-## The palette's own window
+`herdr plugin config-dir herdr.palette` prints. It holds what herdr's API does
+not publish: the size of the popup and the colours it is drawn in.
 
 herdr centres a popup in the pane area and offers no say over where it sits, so
 its height is also what decides how high up it starts: a taller one begins
-closer to the top. The same file sets it:
+closer to the top:
 
 ```toml
 [window]
@@ -191,8 +158,8 @@ Where herdr's `[theme.custom]` defines them, its tokens are used instead:
 query's letters inside a row. herdr publishes no theme over the API, so the
 tokens it did not write down are not available.
 
-To set them yourself, write them in the same `config.toml` the commands above
-go in. Each value is a hex colour or an ANSI index, and anything left out keeps
+To set them yourself, write them in the same `config.toml` the window size goes
+in. Each value is a hex colour or an ANSI index, and anything left out keeps
 what the rules above resolved:
 
 ```toml

@@ -171,17 +171,10 @@ target or a workspace alongside it.
 ## The palette's own configuration
 
 `internal/settings` reads one file in the plugin's config directory, in a
-single decode: the `[[command]]` entries and the colours. It exists because
-herdr runs a `[[keys.command]]` entry from a key and nothing else, so a command
-reached through the palette would otherwise need a binding it never uses.
-
-A command runs in the window it asks for, and detached when it asks for none —
-the same shell command herdr's own `shell` type starts. The windows are the
-plugin pane placements: `popup` for a session-modal terminal, `pane` for
-herdr's zoomed placement, and `tab` for a tab of its own, opened without focus
-and renamed to the command's title. A tab is the one a command can be returned
-to: it is a pane, so the rows that go somewhere list it, which a detached
-process has no way to be. herdr has no hidden pane or tab to put it in instead.
+single decode: the popup's size and the colours. It carries what herdr's API
+does not publish and nothing else — a command belongs in herdr's own
+`[[keys.command]]`, which the list already reads, rather than in a second place
+that would compete with it.
 
 ## Colours
 

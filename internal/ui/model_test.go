@@ -242,7 +242,7 @@ func TestTheViewShowsTheRowsAsTheyAreSearched(t *testing.T) {
 	var ran []string
 	view := testModel(t, nil, &ran).View()
 
-	for _, want := range []string{"herdr: split pane right", "command: open git jump", "enter runs"} {
+	for _, want := range []string{"herdr: split pane right", "command: open git jump", "run", "close"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("the view does not contain %q", want)
 		}
@@ -376,10 +376,15 @@ func TestTheScrollbarShowsTheWindow(t *testing.T) {
 
 func TestNoScrollbarWhenEverythingFits(t *testing.T) {
 	var ran []string
-	view := testModel(t, nil, &ran).View()
+	m := testModel(t, nil, &ran)
 
-	if strings.Contains(view, "┃") || strings.Contains(view, "│") {
-		t.Errorf("a list that fits drew a scrollbar:\n%s", view)
+	// The footer draws a rule of its own between the keys, so the rows are
+	// what is looked at.
+	rows := strings.Split(m.View(), "\n")[headerRows : headerRows+m.rows()]
+	for _, row := range rows {
+		if strings.Contains(row, "┃") || strings.Contains(row, "│") {
+			t.Errorf("a list that fits drew a scrollbar:\n%s", m.View())
+		}
 	}
 }
 

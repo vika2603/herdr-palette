@@ -98,6 +98,30 @@ Matching accepts the words of a title in any order (`pane split`) and a
 title's initials (`spr` for "Split pane right"). Recently run commands come
 first when the query is empty.
 
+## Colours
+
+The popup follows the terminal's palette for most of what it draws. Two shades
+sit just off the terminal's own background, which the ANSI palette has no index
+for: the line above and below the list, and the band behind the selected row.
+
+Where herdr's `[theme.custom]` defines them, its tokens are used instead:
+`overlay0` for the rules, `surface0` for the selected row, `overlay1` for the
+query's letters inside a title. herdr publishes no theme over the API, so the
+tokens it did not write down are not available.
+
+To set them yourself, write `config.toml` in the plugin's config directory
+(`herdr plugin config-dir herdr.palette`). Each value is a hex colour or an
+ANSI index, and anything left out keeps what the rules above resolved:
+
+```toml
+rule = "#414868"
+selected_background = "#24283b"
+match = "#7aa2f7"
+meta = "8"
+scrollbar = "7"
+failure = "1"
+```
+
 ## Development
 
 ```sh

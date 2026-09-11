@@ -9,6 +9,7 @@ import (
 	"github.com/vika2603/herdr-client/plugin"
 
 	"github.com/vika2603/herdr-palette/internal/palette"
+	"github.com/vika2603/herdr-palette/internal/theme"
 )
 
 // ranMsg carries the outcome of the command the user chose.
@@ -37,6 +38,7 @@ type model struct {
 	pending *palette.Entry
 	input   textinput.Model
 
+	styles        styles
 	failure       string
 	width, height int
 }
@@ -48,6 +50,7 @@ func newModel(
 	invocation *herdr.PluginInvocationContext,
 	entries []palette.Entry,
 	recent []string,
+	colours theme.Theme,
 ) model {
 	query := textinput.New()
 	query.Prompt = "› "
@@ -66,6 +69,7 @@ func newModel(
 		recent:     recent,
 		query:      query,
 		input:      input,
+		styles:     newStyles(colours),
 	}
 	m.rank()
 	return m

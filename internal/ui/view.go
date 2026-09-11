@@ -5,30 +5,41 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/vika2603/herdr-palette/internal/theme"
 )
 
-// Colors are ANSI indexes rather than hex, so the popup follows the terminal
-// theme herdr is rendered in.
-var (
-	dimStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	titleStyle = lipgloss.NewStyle().Bold(true)
-	matchStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("4")).Bold(true)
-	errStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
-	thumbStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
+// styles are the popup's rendered colours. The selected row's segments each
+// carry the background themselves: a style wrapped around text that already
+// contains escape sequences would be cut short by the first reset inside it.
+type styles struct {
+	title lipgloss.Style
+	meta  lipgloss.Style
+	match lipgloss.Style
+	rule  lipgloss.Style
+	thumb lipgloss.Style
+	fail  lipgloss.Style
 
-	// The selected row is a band of background rather than a marker, so the
-	// eye finds it without reading the first column. The shade matches the
-	// selected row in herdr's own agents sidebar: barely off the background,
-	// so a long list does not read as a grey block.
-	//
-	// Every segment of the row carries the background itself: a style wrapped
-	// around text that already contains escape sequences would be cut short by
-	// the first reset inside it.
-	selectedBackground = lipgloss.AdaptiveColor{Dark: "#2C2C3A", Light: "#E6E6EE"}
-	selectedText       = lipgloss.NewStyle().Background(selectedBackground).Bold(true)
-	selectedMatch      = lipgloss.NewStyle().Background(selectedBackground).Foreground(lipgloss.Color("12")).Bold(true)
-	selectedMeta       = lipgloss.NewStyle().Background(selectedBackground).Foreground(lipgloss.Color("7"))
-)
+	selected      lipgloss.Style
+	selectedMeta  lipgloss.Style
+	selectedMatch lipgloss.Style
+}
+
+func newStyles(colours theme.Theme) styles {
+	selected := lipgloss.NewStyle().Background(colours.Selected)
+	return styles{
+		title: lipgloss.NewStyle(),
+		meta:  lipgloss.NewStyle().Foreground(colours.Meta),
+		match: lipgloss.NewStyle().Foreground(colours.Match).Bold(true),
+		rule:  lipgloss.NewStyle().Foreground(colours.Rule),
+		thumb: lipgloss.NewStyle().Foreground(colours.Scrollbar),
+		fail:  lipgloss.NewStyle().Foreground(colours.Failure),
+
+		selected:      selected.Bold(true),
+		selectedMeta:  selected.Foreground(colours.Meta),
+		selectedMatch: selected.Foreground(colours.Match).Bold(true),
+	}
+}
 
 // Sizes used until the first resize message arrives.
 const (
@@ -36,13 +47,18 @@ const (
 	defaultRows = 12
 )
 
-// chrome is the row budget the list does not get: the query line, the two
-// rules, and the help line.
-const chrome = 4
-
-// headerRows is how many lines precede the first command row: the query line
-// and the rule under it. A click's row is counted from there.
-const headerRows = 2
+const (
+	// chrome is the row budget the list does not get: the query line, the two
+	// rules, and the help line.
+	chrome = 4
+	// headerRows is how many lines precede the first command row: the query
+	// line and the rule under it. A click's row is counted from there.
+	headerRows = 2
+	// margins is what a row spends outside the title: the padding on both
+	// sides, the blank that keeps the scrollbar off the text, and the
+	// scrollbar itself.
+	margins = 4
+)
 
 func (m model) cols() int {
 	if m.width <= 0 {
@@ -70,18 +86,18 @@ func (m model) View() string {
 }
 
 func (m model) listView() string {
-	rule := dimStyle.Render(strings.Repeat("─", m.cols()))
+	rule := m.rule()
 	lines := []string{m.query.View(), rule}
 
 	rows := m.rows()
 	if len(m.ranked) == 0 {
-		lines = append(lines, dimStyle.Render(" no command matches"))
+		lines = append(lines, m.styles.meta.Render(" no command matches"))
 		rows--
 	}
 	for i := m.offset; i < len(m.ranked) && i < m.offset+rows; i++ {
 		lines = append(lines, m.row(i))
 	}
-	for len(lines) < rows+2 {
+	for len(lines) < rows+headerRows {
 		lines = append(lines, "")
 	}
 
@@ -93,9 +109,9 @@ func (m model) row(index int) string {
 	ranked := m.ranked[index]
 	selected := index == m.cursor
 
-	text, meta := lipgloss.NewStyle(), dimStyle
+	text, meta := m.styles.title, m.styles.meta
 	if selected {
-		text, meta = selectedText, selectedMeta
+		text, meta = m.styles.selected, m.styles.selectedMeta
 	}
 
 	// Both columns are right-aligned, so the row ends on a straight edge
@@ -108,15 +124,10 @@ func (m model) row(index int) string {
 		keyGap = "  "
 	}
 
-	// The row is padded on both sides, and gives up two more columns to the
-	// scrollbar and the blank that keeps it off the text.
-	fixed := lipgloss.Width(entryType) + lipgloss.Width(key) + len(keyGap) + 6
-	title := highlight(truncate(ranked.Entry.Title, m.cols()-fixed), ranked.Matched, selected)
+	columns := lipgloss.Width(entryType) + lipgloss.Width(key) + len(keyGap)
+	title := m.highlight(truncate(ranked.Entry.Title, m.cols()-columns-margins-2), ranked.Matched, selected)
 
-	gap := m.cols() - 4 - lipgloss.Width(title) - lipgloss.Width(key) - len(keyGap) - lipgloss.Width(entryType)
-	if gap < 1 {
-		gap = 1
-	}
+	gap := max(m.cols()-margins-lipgloss.Width(title)-columns, 1)
 
 	row := text.Render(" ") + title + text.Render(strings.Repeat(" ", gap)) +
 		meta.Render(key) + text.Render(keyGap) + meta.Render(entryType) + text.Render(" ")
@@ -132,7 +143,7 @@ func (m model) scrollbar(row int) string {
 		return " "
 	}
 
-	size := max(1, rows*rows/total)
+	size := max(rows*rows/total, 1)
 	start := m.offset * rows / total
 	// The thumb has to reach the bottom on the last page, which integer
 	// division alone does not guarantee.
@@ -140,16 +151,16 @@ func (m model) scrollbar(row int) string {
 		start = rows - size
 	}
 	if row >= start && row < start+size {
-		return thumbStyle.Render("┃")
+		return m.styles.thumb.Render("┃")
 	}
-	return dimStyle.Render("│")
+	return m.styles.rule.Render("│")
 }
 
-// highlight bolds the runes the query matched.
-func highlight(title string, matched []int, selected bool) string {
-	base, hit := lipgloss.NewStyle(), matchStyle
+// highlight picks out the runes the query matched.
+func (m model) highlight(title string, matched []int, selected bool) string {
+	base, hit := m.styles.title, m.styles.match
 	if selected {
-		base, hit = selectedText, selectedMatch
+		base, hit = m.styles.selected, m.styles.selectedMatch
 	}
 	if len(matched) == 0 {
 		return base.Render(title)
@@ -162,27 +173,29 @@ func highlight(title string, matched []int, selected bool) string {
 
 	var out strings.Builder
 	for i, r := range []rune(title) {
+		style := base
 		if matches[i] {
-			out.WriteString(hit.Render(string(r)))
-			continue
+			style = hit
 		}
-		out.WriteString(base.Render(string(r)))
+		out.WriteString(style.Render(string(r)))
 	}
 	return out.String()
 }
 
 func (m model) inputView() string {
-	rule := dimStyle.Render(strings.Repeat("─", m.cols()))
 	lines := []string{
-		titleStyle.Render(m.pending.Title),
-		dimStyle.Render(m.pending.Input.Label),
+		m.styles.title.Bold(true).Render(m.pending.Title),
+		m.styles.meta.Render(m.pending.Input.Label),
 		m.input.View(),
 	}
-	for len(lines) < m.rows()+2 {
+	for len(lines) < m.rows()+headerRows {
 		lines = append(lines, "")
 	}
-	lines = append(lines, rule, m.hint("enter runs · esc goes back"))
-	return strings.Join(lines, "\n")
+	return strings.Join(append(lines, m.rule(), m.hint("enter runs · esc goes back")), "\n")
+}
+
+func (m model) rule() string {
+	return m.styles.rule.Render(strings.Repeat("─", m.cols()))
 }
 
 func (m model) help() string {
@@ -193,9 +206,9 @@ func (m model) help() string {
 // popup is too small to carry both.
 func (m model) hint(keys string) string {
 	if m.failure != "" {
-		return errStyle.Render(truncate(m.failure, m.cols()))
+		return m.styles.fail.Render(truncate(m.failure, m.cols()))
 	}
-	return dimStyle.Render(keys)
+	return m.styles.meta.Render(keys)
 }
 
 func truncate(text string, width int) string {

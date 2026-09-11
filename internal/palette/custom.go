@@ -69,8 +69,8 @@ func runCustom(own string, command keys.Custom) func(context.Context, Exec) erro
 		params := herdr.PluginPaneOpenParams{
 			PluginID:   own,
 			Entrypoint: RunEntrypoint,
-			Placement:  herdr.Ptr(where),
-			Focus:      herdr.Ptr(true),
+			Placement:  new(where),
+			Focus:      new(true),
 			Cwd:        e.Ctx.FocusedPaneCwd,
 			Env:        map[string]string{RunEnv: command.Command},
 		}

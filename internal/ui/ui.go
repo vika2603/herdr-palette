@@ -13,6 +13,7 @@ import (
 	"github.com/vika2603/herdr-palette/internal/catalog"
 	"github.com/vika2603/herdr-palette/internal/keys"
 	"github.com/vika2603/herdr-palette/internal/palette"
+	"github.com/vika2603/herdr-palette/internal/theme"
 )
 
 // Run loads the command list and runs the TUI until the popup closes.
@@ -23,7 +24,7 @@ func Run(ctx context.Context, env *plugin.Env) error {
 	entries, loadErr := palette.Load(ctx, client, env.PluginID, catalog.Entries(), keys.Load(env.BinPath))
 	entries = applicable(entries, invocation)
 
-	m := newModel(ctx, client, env, invocation, entries, palette.ReadRecent(env))
+	m := newModel(ctx, client, env, invocation, entries, palette.ReadRecent(env), theme.Load(env))
 	if loadErr != nil {
 		// The catalog is still usable, so the popup opens and says which half
 		// of the list is missing.

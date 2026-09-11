@@ -127,7 +127,7 @@ func TestPluginEntryInvokesTheAction(t *testing.T) {
 		t.Fatal("Load() dropped the machine manager action")
 	}
 
-	invocation := &herdr.PluginInvocationContext{WorkspaceID: herdr.Ptr("w1")}
+	invocation := &herdr.PluginInvocationContext{WorkspaceID: new("w1")}
 	if err := entry.Run(context.Background(), Exec{Client: client, Ctx: invocation}); err != nil {
 		t.Fatalf("Run() = %v", err)
 	}
@@ -191,7 +191,7 @@ func TestAPopupCommandOpensAPluginPane(t *testing.T) {
 	}
 	entry, _ := find(entries, "config:prefix+f")
 
-	invocation := &herdr.PluginInvocationContext{WorkspaceID: herdr.Ptr("w1")}
+	invocation := &herdr.PluginInvocationContext{WorkspaceID: new("w1")}
 	if err := entry.Run(context.Background(), Exec{Client: client, Ctx: invocation}); err != nil {
 		t.Fatalf("Run() = %v", err)
 	}
@@ -226,7 +226,7 @@ func TestAPaneCommandOpensASplit(t *testing.T) {
 	entries, _ := Load(context.Background(), client, own, nil, config())
 	entry, _ := find(entries, "config:prefix+alt+g")
 
-	invocation := &herdr.PluginInvocationContext{FocusedPaneID: herdr.Ptr("w1:p1")}
+	invocation := &herdr.PluginInvocationContext{FocusedPaneID: new("w1:p1")}
 	if err := entry.Run(context.Background(), Exec{Client: client, Ctx: invocation}); err != nil {
 		t.Fatalf("Run() = %v", err)
 	}

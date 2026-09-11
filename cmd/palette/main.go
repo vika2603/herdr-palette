@@ -48,7 +48,7 @@ func onOpen(ctx context.Context, env *plugin.Env) error {
 	params := herdr.PluginPaneOpenParams{
 		PluginID:   env.PluginID,
 		Entrypoint: panePalette,
-		Focus:      herdr.Ptr(true),
+		Focus:      new(true),
 	}
 	// The commands act on what was focused when the key was pressed. The
 	// popup's own entrypoint environment describes the popup pane, so the

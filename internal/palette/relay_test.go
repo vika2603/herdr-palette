@@ -15,7 +15,7 @@ func TestRelayWritesThePendingEntryAndAsksForTheExecAction(t *testing.T) {
 		Reply(herdr.MethodPluginActionInvoke, herdr.PluginActionInvokedResponse{})
 	env := server.Env(plugintest.StateDir(t.TempDir()))
 
-	invocation := &herdr.PluginInvocationContext{WorkspaceID: herdr.Ptr("w1")}
+	invocation := &herdr.PluginInvocationContext{WorkspaceID: new("w1")}
 	entry := Entry{ID: "config:prefix+f", Title: "Open git jump", OpensPopup: true}
 	if err := Relay(context.Background(), env.Client(), env, entry, "value", invocation); err != nil {
 		t.Fatalf("Relay() = %v", err)

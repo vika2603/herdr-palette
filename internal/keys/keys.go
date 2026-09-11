@@ -92,7 +92,7 @@ func defaults(herdrBin string) map[string]string {
 func parseDefaults(config string) map[string]string {
 	actions := map[string]string{}
 	inKeys := false
-	for _, line := range strings.Split(config, "\n") {
+	for line := range strings.SplitSeq(config, "\n") {
 		trimmed := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "#"))
 		switch {
 		case trimmed == "[keys]":

@@ -11,6 +11,7 @@ import (
 	"github.com/vika2603/herdr-client/plugin/plugintest"
 
 	"github.com/vika2603/herdr-palette/internal/palette"
+	"github.com/vika2603/herdr-palette/internal/theme"
 )
 
 func testEnv(t *testing.T) *plugin.Env {
@@ -47,9 +48,10 @@ func testModel(t *testing.T, recent []string, ran *[]string) model {
 		context.Background(),
 		nil,
 		testEnv(t),
-		&herdr.PluginInvocationContext{WorkspaceID: herdr.Ptr("w1")},
+		&herdr.PluginInvocationContext{WorkspaceID: new("w1")},
 		testEntries(ran),
 		recent,
+		theme.Defaults(),
 	)
 	m.width, m.height = 72, 12
 	return m
@@ -242,7 +244,7 @@ func TestSelectionActionsAreHiddenWithoutASelection(t *testing.T) {
 		t.Errorf("kept %d entries with nothing selected, want only the plain one", len(without))
 	}
 
-	with := applicable(entries, &herdr.PluginInvocationContext{SelectedText: herdr.Ptr("text")})
+	with := applicable(entries, &herdr.PluginInvocationContext{SelectedText: new("text")})
 	if len(with) != 2 {
 		t.Errorf("kept %d entries with a selection, want both", len(with))
 	}
@@ -261,7 +263,7 @@ func wheelModel(t *testing.T) model {
 			Run:   func(context.Context, palette.Exec) error { return nil },
 		})
 	}
-	m := newModel(context.Background(), nil, testEnv(t), &herdr.PluginInvocationContext{}, entries, nil)
+	m := newModel(context.Background(), nil, testEnv(t), &herdr.PluginInvocationContext{}, entries, nil, theme.Defaults())
 	m.width, m.height = 40, 8
 	return m
 }
@@ -381,7 +383,7 @@ func TestTheKeyColumnShowsWhatEachCommandIsBoundTo(t *testing.T) {
 		{ID: "a", Title: "New tab", Type: "herdr", Key: "prefix+c"},
 		{ID: "b", Title: "Split pane right", Type: "herdr"},
 	}
-	m := newModel(context.Background(), nil, testEnv(t), &herdr.PluginInvocationContext{}, entries, nil)
+	m := newModel(context.Background(), nil, testEnv(t), &herdr.PluginInvocationContext{}, entries, nil, theme.Defaults())
 	m.width, m.height = 60, 12
 
 	view := m.View()
@@ -418,7 +420,7 @@ func TestAnEntryThatOpensAPopupIsRelayed(t *testing.T) {
 		Reply(herdr.MethodPluginActionInvoke, herdr.PluginActionInvokedResponse{})
 	env := server.Env(plugintest.StateDir(t.TempDir()))
 
-	m := newModel(context.Background(), env.Client(), env, &herdr.PluginInvocationContext{}, entries, nil)
+	m := newModel(context.Background(), env.Client(), env, &herdr.PluginInvocationContext{}, entries, nil, theme.Defaults())
 	m.width, m.height = 60, 12
 
 	_, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})

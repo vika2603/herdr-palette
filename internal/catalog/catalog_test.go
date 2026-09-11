@@ -17,14 +17,14 @@ import (
 // running an agent, inside a worktree workspace.
 func fullContext() *herdr.PluginInvocationContext {
 	return &herdr.PluginInvocationContext{
-		WorkspaceID:      herdr.Ptr("w1"),
-		WorkspaceLabel:   herdr.Ptr("workspace one"),
-		WorkspaceCwd:     herdr.Ptr("/repo"),
-		TabID:            herdr.Ptr("t1"),
-		TabLabel:         herdr.Ptr("tab one"),
-		FocusedPaneID:    herdr.Ptr("p1"),
-		FocusedPaneCwd:   herdr.Ptr("/repo/sub"),
-		FocusedPaneAgent: herdr.Ptr("claude"),
+		WorkspaceID:      new("w1"),
+		WorkspaceLabel:   new("workspace one"),
+		WorkspaceCwd:     new("/repo"),
+		TabID:            new("t1"),
+		TabLabel:         new("tab one"),
+		FocusedPaneID:    new("p1"),
+		FocusedPaneCwd:   new("/repo/sub"),
+		FocusedPaneAgent: new("claude"),
 	}
 }
 

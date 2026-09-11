@@ -54,7 +54,7 @@ func Entries() []palette.Entry {
 				// source_workspace_id lets the new workspace follow the
 				// focused pane's cwd policy instead of starting at $HOME.
 				_, err := e.Client.WorkspaceCreate(ctx, herdr.WorkspaceCreateParams{
-					Focus:             herdr.Ptr(true),
+					Focus:             new(true),
 					SourceWorkspaceID: e.Ctx.WorkspaceID,
 				})
 				return err
@@ -105,7 +105,7 @@ func Entries() []palette.Entry {
 				_, err := e.Client.WorktreeCreate(ctx, herdr.WorktreeCreateParams{
 					Branch: &e.Input,
 					Cwd:    e.Ctx.WorkspaceCwd,
-					Focus:  herdr.Ptr(true),
+					Focus:  new(true),
 				})
 				return err
 			},
@@ -120,7 +120,7 @@ func Entries() []palette.Entry {
 				_, err := e.Client.WorktreeOpen(ctx, herdr.WorktreeOpenParams{
 					Branch: &e.Input,
 					Cwd:    e.Ctx.WorkspaceCwd,
-					Focus:  herdr.Ptr(true),
+					Focus:  new(true),
 				})
 				return err
 			},
@@ -135,7 +135,7 @@ func Entries() []palette.Entry {
 				_, err := e.Client.TabCreate(ctx, herdr.TabCreateParams{
 					WorkspaceID: e.Ctx.WorkspaceID,
 					Cwd:         e.Ctx.FocusedPaneCwd,
-					Focus:       herdr.Ptr(true),
+					Focus:       new(true),
 				})
 				return err
 			},
@@ -313,7 +313,7 @@ func split(direction herdr.SplitDirection) func(context.Context, palette.Exec) e
 			Direction:    direction,
 			TargetPaneID: e.Ctx.FocusedPaneID,
 			WorkspaceID:  e.Ctx.WorkspaceID,
-			Focus:        herdr.Ptr(true),
+			Focus:        new(true),
 		})
 		return err
 	}

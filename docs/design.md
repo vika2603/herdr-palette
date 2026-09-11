@@ -55,6 +55,18 @@ survives the popup closing; it waits for the popup process to exit — the pid i
 in the file — and then runs the entry. A failure there has no popup left to
 show it, so it is reported with `notification.show`.
 
+## Colours
+
+herdr does not publish its theme: the API has no method for it, and
+config.toml carries only the theme's name plus the tokens the user overrode.
+`internal/theme` therefore resolves each colour from three places, each
+overriding the one before it — built-in defaults, herdr's `[theme.custom]`
+tokens, and the plugin's own config.toml.
+
+The defaults are ANSI indexes, which follow the terminal, except the rule and
+the selected row: both need a shade just off the terminal's background, which
+the ANSI palette has no index for, so they are adaptive hex values.
+
 ## Reading herdr's configuration
 
 The key column and the configured commands both come from files rather than the

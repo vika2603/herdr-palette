@@ -16,13 +16,15 @@ command = ["./scripts/build.sh"]
 # every pane here carries a zero-width space: it passes the check and leaves
 # the border with nothing on it. What a pane is showing is inside it, where
 # there is room to say it properly.
-# Size is herdr's own popup default unless the plugin's configuration asks for
-# another under [window].
+# A popup is centred in the pane area, so its height is also what decides how
+# high up it starts. The plugin's configuration replaces both under [window].
 [[panes]]
 id = "palette"
 title = "\u200B"
 description = "Search and run an action"
 placement = "popup"
+width = "60%"
+height = "70%"
 command = ["./bin/palette"]
 
 # The field an entry that needs a value is collected in: two lines, in a popup

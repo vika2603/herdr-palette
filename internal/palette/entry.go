@@ -5,6 +5,7 @@ package palette
 
 import (
 	"context"
+	"strings"
 
 	"github.com/vika2603/herdr-client/herdr"
 )
@@ -56,6 +57,27 @@ type Entry struct {
 	Search string
 }
 
+// Namespace is where the entry comes from, drawn in front of the title and
+// ending in ": ", or empty when there is nothing to say.
+func (e Entry) Namespace() string {
+	if e.Type == "" {
+		return ""
+	}
+	return strings.ToLower(e.Type) + ": "
+}
+
+// Name is how a row reads: the namespace in front of the title, as in
+// "herdr: split pane right". It is both what the row renders and what a query
+// matches, so the letters highlighted in a row are the ones that were
+// searched.
+//
+// A command's title is lowercase, the way an editor's command list reads. The
+// rows that go somewhere keep the name the workspace, tab or pane carries,
+// which is a name rather than a command.
+func (e Entry) Name() string {
+	return e.Namespace() + e.Title
+}
+
 // Initial is the text the input field starts with, empty when the entry takes
 // no input or defines no initial value.
 func (e Entry) Initial(ctx *herdr.PluginInvocationContext) string {
@@ -65,13 +87,10 @@ func (e Entry) Initial(ctx *herdr.PluginInvocationContext) string {
 	return e.Input.Initial(ctx)
 }
 
-// Types for the entries that do not come from herdr itself. A plugin's own
-// name is not used: what matters in the column is that the row is a plugin
-// action rather than which plugin registered it.
-const (
-	TypeCustom = "Custom"
-	TypePlugin = "Plugin"
-)
+// TypeCustom is the namespace of the commands configured under
+// [[keys.command]]. A plugin action shows under the plugin's own name
+// instead, and the rows that go somewhere under what they go to.
+const TypeCustom = "Command"
 
 // ContextEnv is the environment variable the action entrypoint uses to pass
 // its invocation context to the popup pane it opens.

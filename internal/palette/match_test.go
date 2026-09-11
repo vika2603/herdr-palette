@@ -7,11 +7,11 @@ import (
 
 func entries() []Entry {
 	return []Entry{
-		{ID: "a", Title: "Split pane right", Type: "Pane"},
-		{ID: "b", Title: "Split pane down", Type: "Pane"},
-		{ID: "c", Title: "New tab", Type: "Tab"},
-		{ID: "d", Title: "Rename workspace", Type: "Workspace"},
-		{ID: "e", Title: "Manage machines", Type: "Plugin"},
+		{ID: "a", Title: "Split pane right", Type: "Herdr"},
+		{ID: "b", Title: "Split pane down", Type: "Herdr"},
+		{ID: "c", Title: "New tab", Type: "Herdr"},
+		{ID: "d", Title: "Rename workspace", Type: "Herdr"},
+		{ID: "e", Title: "Manage machines", Type: "Machine Manager", Search: "herdr.machine-manager"},
 	}
 }
 
@@ -29,7 +29,7 @@ func TestRankPrefersWordStartsAndRuns(t *testing.T) {
 		t.Fatal(`Rank(…, "spr") matched nothing`)
 	}
 	if got := ranked[0].Entry.ID; got != "a" {
-		t.Errorf(`Rank(…, "spr") ranked %q first, want "a" (Split pane right)`, got)
+		t.Errorf(`Rank(…, "spr") ranked %q first, want "a" (herdr: split pane right)`, got)
 	}
 }
 
@@ -40,8 +40,8 @@ func TestRankDropsEntriesTheQueryCannotMatch(t *testing.T) {
 	}
 }
 
-func TestRankMatchesThroughTheDetailColumn(t *testing.T) {
-	ranked := Rank(entries(), "machine manage", nil)
+func TestRankMatchesThroughTheSearchText(t *testing.T) {
+	ranked := Rank(entries(), "herdr.machine", nil)
 	if len(ranked) == 0 {
 		t.Fatal("a query naming the plugin matched nothing")
 	}
@@ -50,14 +50,14 @@ func TestRankMatchesThroughTheDetailColumn(t *testing.T) {
 	}
 }
 
-func TestRankScoresATitleMatchAboveADetailMatch(t *testing.T) {
+func TestRankScoresANameMatchAboveASearchMatch(t *testing.T) {
 	list := []Entry{
-		{ID: "detail", Title: "Unrelated", Type: "New tab group"},
-		{ID: "title", Title: "New tab", Type: "Tab"},
+		{ID: "search", Title: "Unrelated", Type: "Machine Manager", Search: "new tab"},
+		{ID: "name", Title: "New tab", Type: "Herdr"},
 	}
 	ranked := Rank(list, "new tab", nil)
-	if got := ranked[0].Entry.ID; got != "title" {
-		t.Errorf("ranked %q first, want the title match", got)
+	if got := ranked[0].Entry.ID; got != "name" {
+		t.Errorf("ranked %q first, want the row the query reads off", got)
 	}
 }
 
@@ -78,14 +78,17 @@ func TestRecentDoesNotOutrankAClearlyBetterMatch(t *testing.T) {
 	}
 }
 
-func TestMatchedPositionsAreTitleRelative(t *testing.T) {
-	ranked := Rank([]Entry{{ID: "e", Title: "Manage machines", Type: "Plugin"}}, "mm", nil)
+// The highlighted positions index the row as it is drawn, so a match found
+// through the search text must be shifted back onto the name.
+func TestMatchedPositionsAreNameRelative(t *testing.T) {
+	entry := Entry{ID: "e", Title: "Manage machines", Type: "Machine Manager", Search: "herdr.machine-manager"}
+	ranked := Rank([]Entry{entry}, "herdr.machine", nil)
 	if len(ranked) != 1 {
 		t.Fatalf("Rank() returned %d entries, want 1", len(ranked))
 	}
 	for _, at := range ranked[0].Matched {
-		if at < 0 || at >= len([]rune("Manage machines")) {
-			t.Errorf("matched index %d is outside the title", at)
+		if at < 0 || at >= len([]rune(entry.Name())) {
+			t.Errorf("matched index %d is outside the row", at)
 		}
 	}
 }
@@ -94,7 +97,7 @@ func TestRankDoesNotMatchScatteredLetters(t *testing.T) {
 	ranked := Rank(entries(), "spl", nil)
 
 	for _, r := range ranked {
-		if !strings.HasPrefix(r.Entry.Title, "Split pane") {
+		if !strings.HasPrefix(r.Entry.Title, "Split") {
 			t.Errorf(`Rank(…, "spl") included %q, want only the split commands`, r.Entry.Title)
 		}
 	}
@@ -109,7 +112,7 @@ func TestRankMatchesInitials(t *testing.T) {
 		t.Fatalf(`Rank(…, "spr") returned %d entries, want 1`, len(ranked))
 	}
 	if got := ranked[0].Entry.ID; got != "a" {
-		t.Errorf("matched %q, want the initials of Split pane right", got)
+		t.Errorf("matched %q, want the initials of herdr: split pane right", got)
 	}
 }
 
@@ -122,8 +125,8 @@ func TestRankMatchesWordsInAnyOrder(t *testing.T) {
 
 func TestRankPrefersAWordStart(t *testing.T) {
 	list := []Entry{
-		{ID: "inside", Title: "Unsplit the layout", Type: "Pane"},
-		{ID: "start", Title: "Split pane right", Type: "Pane"},
+		{ID: "inside", Title: "Unsplit the layout", Type: "Herdr"},
+		{ID: "start", Title: "Split pane right", Type: "Herdr"},
 	}
 	ranked := Rank(list, "split", nil)
 	if got := ranked[0].Entry.ID; got != "start" {

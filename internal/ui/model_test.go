@@ -27,12 +27,12 @@ func testEntries(ran *[]string) []palette.Entry {
 		}
 	}
 	return []palette.Entry{
-		{ID: "a", Title: "Split pane right", Type: "Pane", Run: record("a")},
-		{ID: "b", Title: "New tab", Type: "Tab", Run: record("b")},
+		{ID: "a", Title: "split pane right", Type: "Herdr", Run: record("a")},
+		{ID: "b", Title: "open git jump", Type: palette.TypeCustom, Run: record("b")},
 		{
 			ID:    "c",
-			Title: "Rename workspace",
-			Type:  "herdr",
+			Title: "rename workspace",
+			Type:  "Herdr",
 			Input: &palette.Input{
 				Label:   "Workspace name",
 				Initial: func(c *herdr.PluginInvocationContext) string { return "current" },
@@ -100,7 +100,7 @@ func TestTypingFiltersTheList(t *testing.T) {
 
 func TestEnterRunsTheSelectedCommand(t *testing.T) {
 	var ran []string
-	m := typeQuery(t, testModel(t, nil, &ran), "new tab")
+	m := typeQuery(t, testModel(t, nil, &ran), "git jump")
 
 	_, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd == nil {
@@ -116,7 +116,7 @@ func TestEnterRunsTheSelectedCommand(t *testing.T) {
 
 func TestARunCommandIsRecordedAsRecent(t *testing.T) {
 	var ran []string
-	m := typeQuery(t, testModel(t, nil, &ran), "new tab")
+	m := typeQuery(t, testModel(t, nil, &ran), "git jump")
 
 	_, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
 	cmd()
@@ -126,39 +126,43 @@ func TestARunCommandIsRecordedAsRecent(t *testing.T) {
 	}
 }
 
-func TestAnEntryThatNeedsInputOpensTheInputScreen(t *testing.T) {
+func TestAnEntryThatNeedsAValueIsHandedOverToTheField(t *testing.T) {
 	var ran []string
-	m := typeQuery(t, testModel(t, nil, &ran), "rename")
+	server := plugintest.NewServer(t).
+		Reply(herdr.MethodPluginActionInvoke, herdr.PluginActionInvokedResponse{})
+	env := server.Env(plugintest.StateDir(t.TempDir()))
 
-	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
-	if m.pending == nil {
-		t.Fatal("enter ran the command instead of asking for its value")
-	}
-	if len(ran) != 0 {
-		t.Errorf("ran %v before collecting the value", ran)
-	}
-	if got := m.input.Value(); got != "current" {
-		t.Errorf("input starts at %q, want the current label", got)
-	}
-}
-
-func TestTheInputScreenRunsOnEnterAndGoesBackOnEsc(t *testing.T) {
-	var ran []string
-	m := typeQuery(t, testModel(t, nil, &ran), "rename")
-	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
-
-	back, _ := send(t, m, tea.KeyMsg{Type: tea.KeyEsc})
-	if back.pending != nil {
-		t.Error("esc left the input screen open")
-	}
+	m := newModel(
+		context.Background(),
+		env,
+		&herdr.PluginInvocationContext{},
+		testEntries(&ran),
+		nil,
+		theme.Defaults(),
+	)
+	m.width, m.height = 72, 12
+	m = typeQuery(t, m, "rename")
 
 	_, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd == nil {
-		t.Fatal("enter on the input screen produced no command")
+		t.Fatal("enter produced no command")
 	}
-	cmd()
-	if len(ran) != 1 || ran[0] != "c" {
-		t.Errorf("ran %v, want the rename command", ran)
+	if msg, ok := cmd().(ranMsg); !ok || msg.err != nil {
+		t.Fatalf("handing the entry over returned %v", cmd())
+	}
+	if len(ran) != 0 {
+		t.Errorf("ran %v before its value was collected", ran)
+	}
+
+	var pending palette.Pending
+	if err := env.ReadStateJSON(palette.PendingFile, &pending); err != nil {
+		t.Fatalf("reading the pending entry: %v", err)
+	}
+	if pending.Prompt == nil || pending.Prompt.Initial != "current" {
+		t.Errorf("pending = %+v, want the field to start from the current label", pending)
+	}
+	if server.Calls()[0].Method != herdr.MethodPluginActionInvoke {
+		t.Errorf("called %q, want the entry to be handed over", server.Calls()[0].Method)
 	}
 }
 
@@ -221,11 +225,11 @@ func TestEscClosesThePopup(t *testing.T) {
 	}
 }
 
-func TestTheViewShowsTitlesAndGroups(t *testing.T) {
+func TestTheViewShowsTheRowsAsTheyAreSearched(t *testing.T) {
 	var ran []string
 	view := testModel(t, nil, &ran).View()
 
-	for _, want := range []string{"Split pane right", "Pane", "New tab", "enter runs"} {
+	for _, want := range []string{"herdr: split pane right", "command: open git jump", "enter runs"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("the view does not contain %q", want)
 		}
@@ -302,17 +306,18 @@ func TestAClickRunsTheRowItLandsOn(t *testing.T) {
 	var ran []string
 	m := testModel(t, nil, &ran)
 
-	// The second row: the query line and the rule come first.
+	// The third row: the query line and the rule come first, and the rows
+	// before it belong to commands that ask for a value.
 	_, cmd := send(t, m, tea.MouseMsg{
 		Action: tea.MouseActionPress,
 		Button: tea.MouseButtonLeft,
-		Y:      headerRows + 1,
+		Y:      headerRows + 2,
 	})
 	if cmd == nil {
 		t.Fatal("the click ran nothing")
 	}
 	cmd()
-	if want := m.ranked[1].Entry.ID; len(ran) != 1 || ran[0] != want {
+	if want := m.ranked[2].Entry.ID; len(ran) != 1 || ran[0] != want {
 		t.Errorf("ran %v, want the clicked row %q", ran, want)
 	}
 }
@@ -329,18 +334,6 @@ func TestAClickOutsideTheListDoesNothing(t *testing.T) {
 		}); cmd != nil {
 			t.Errorf("a click on row %d ran something", y)
 		}
-	}
-}
-
-func TestTheInputScreenIgnoresTheMouse(t *testing.T) {
-	var ran []string
-	m := typeQuery(t, testModel(t, nil, &ran), "rename")
-	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
-
-	before := m.cursor
-	m, cmd := send(t, m, wheel(tea.MouseButtonWheelDown))
-	if cmd != nil || m.cursor != before {
-		t.Error("the wheel moved the list behind the input screen")
 	}
 }
 
@@ -408,7 +401,7 @@ func TestAPluginActionIsRelayedWithoutRunning(t *testing.T) {
 	entries := []palette.Entry{{
 		ID:          "plugin:herdr.machine-manager/open",
 		Title:       "Manage machines",
-		Type:        palette.TypePlugin,
+		Type:        "Machine Manager",
 		AlwaysRelay: true,
 		Run: func(context.Context, palette.Exec) error {
 			ran = append(ran, "direct")

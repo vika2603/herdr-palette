@@ -78,12 +78,7 @@ func (m model) rows() int {
 	return 1
 }
 
-func (m model) View() string {
-	if m.pending != nil {
-		return m.inputView()
-	}
-	return m.listView()
-}
+func (m model) View() string { return m.listView() }
 
 func (m model) listView() string {
 	rule := m.rule()
@@ -114,23 +109,21 @@ func (m model) row(index int) string {
 		text, meta = m.styles.selected, m.styles.selectedMeta
 	}
 
-	// Both columns are right-aligned, so the row ends on a straight edge
-	// whatever the lengths are. The key column is only there when something on
-	// show is bound to a key.
-	entryType := fmt.Sprintf("%*s", m.typeWidth, ranked.Entry.Type)
-	key, keyGap := "", ""
+	// The key column is right-aligned, so the rows end on a straight edge
+	// whatever the keys are, and it is there at all only when something on
+	// show is bound to one.
+	key := ""
 	if m.keyWidth > 0 {
 		key = fmt.Sprintf("%*s", m.keyWidth, ranked.Entry.Key)
-		keyGap = "  "
 	}
 
-	columns := lipgloss.Width(entryType) + lipgloss.Width(key) + len(keyGap)
-	title := m.highlight(truncate(ranked.Entry.Title, m.cols()-columns-margins-2), ranked.Matched, selected)
+	width := lipgloss.Width(key)
+	name := truncate(ranked.Entry.Name(), m.cols()-width-margins-2)
+	namespace := min(len([]rune(ranked.Entry.Namespace())), len([]rune(name)))
+	rendered := m.highlight(name, namespace, ranked.Matched, selected)
+	gap := max(m.cols()-margins-lipgloss.Width(rendered)-width, 1)
 
-	gap := max(m.cols()-margins-lipgloss.Width(title)-columns, 1)
-
-	row := text.Render(" ") + title + text.Render(strings.Repeat(" ", gap)) +
-		meta.Render(key) + text.Render(keyGap) + meta.Render(entryType) + text.Render(" ")
+	row := text.Render(" ") + rendered + text.Render(strings.Repeat(" ", gap)) + meta.Render(key) + text.Render(" ")
 	return row + " " + m.scrollbar(index-m.offset)
 }
 
@@ -153,51 +146,58 @@ func (m model) scrollbar(row int) string {
 	return m.styles.rule.Render("│")
 }
 
-// highlight picks out the runes the query matched.
-func (m model) highlight(title string, matched []int, selected bool) string {
-	base, hit := m.styles.title, m.styles.match
-	if selected {
-		base, hit = m.styles.selected, m.styles.selectedMatch
+// span is how one rune of a row is drawn.
+type span int
+
+const (
+	spanNamespace span = iota
+	spanTitle
+	spanMatch
+)
+
+// highlight draws a row: the namespace in front of the title dimmer than the
+// title itself, with the runes the query matched picked out in both. namespace
+// is how many runes the namespace takes, and matched indexes the whole row.
+func (m model) highlight(text string, namespace int, matched []int, selected bool) string {
+	styles := map[span]lipgloss.Style{
+		spanNamespace: m.styles.meta,
+		spanTitle:     m.styles.title,
+		spanMatch:     m.styles.match,
 	}
-	if len(matched) == 0 {
-		return base.Render(title)
+	if selected {
+		styles[spanNamespace] = m.styles.selectedMeta
+		styles[spanTitle] = m.styles.selected
+		styles[spanMatch] = m.styles.selectedMatch
 	}
 
-	// Runs of matched and unmatched runes are rendered in one call each, which
-	// keeps a screenful of highlighted titles down to a handful of styled
-	// spans. Matched is in ascending order, so one cursor walks it.
-	runes := []rune(title)
+	runes := []rune(text)
+	at := 0
+	spanAt := func(index int) span {
+		for at < len(matched) && matched[at] < index {
+			at++
+		}
+		if at < len(matched) && matched[at] == index {
+			return spanMatch
+		}
+		if index < namespace {
+			return spanNamespace
+		}
+		return spanTitle
+	}
+
+	// Runs of equally drawn runes are rendered in one call each, which keeps a
+	// screenful of rows down to a handful of styled spans.
 	var out strings.Builder
-	for start, at := 0, 0; start < len(runes); {
-		inMatch := at < len(matched) && matched[at] == start
-		end := start
-		for end < len(runes) && (at < len(matched) && matched[at] == end) == inMatch {
-			if inMatch {
-				at++
-			}
+	for start := 0; start < len(runes); {
+		current := spanAt(start)
+		end := start + 1
+		for end < len(runes) && spanAt(end) == current {
 			end++
 		}
-
-		style := base
-		if inMatch {
-			style = hit
-		}
-		out.WriteString(style.Render(string(runes[start:end])))
+		out.WriteString(styles[current].Render(string(runes[start:end])))
 		start = end
 	}
 	return out.String()
-}
-
-func (m model) inputView() string {
-	lines := []string{
-		m.styles.title.Bold(true).Render(m.pending.Title),
-		m.styles.meta.Render(m.pending.Input.Label),
-		m.input.View(),
-	}
-	for len(lines) < m.rows()+headerRows {
-		lines = append(lines, "")
-	}
-	return strings.Join(append(lines, m.rule(), m.hint("enter runs · esc goes back")), "\n")
 }
 
 func (m model) rule() string {

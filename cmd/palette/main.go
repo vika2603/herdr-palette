@@ -15,6 +15,7 @@ import (
 	"github.com/vika2603/herdr-palette/internal/catalog"
 	"github.com/vika2603/herdr-palette/internal/keys"
 	"github.com/vika2603/herdr-palette/internal/palette"
+	"github.com/vika2603/herdr-palette/internal/prompt"
 	"github.com/vika2603/herdr-palette/internal/theme"
 	"github.com/vika2603/herdr-palette/internal/ui"
 )
@@ -23,6 +24,7 @@ import (
 const (
 	panePalette = "palette"
 	paneRun     = palette.RunEntrypoint
+	paneInput   = palette.InputEntrypoint
 	actionOpen  = "open"
 	actionExec  = palette.ExecAction
 )
@@ -40,6 +42,7 @@ func newPlugin() *plugin.Plugin {
 	p.Action(actionExec, onExec)
 	p.Pane(panePalette, onPalette)
 	p.Pane(paneRun, onRun)
+	p.Pane(paneInput, onInput)
 	return p
 }
 
@@ -71,10 +74,34 @@ func onExec(ctx context.Context, env *plugin.Env) error {
 	if !ok {
 		return nil
 	}
+	if pending.Prompt != nil {
+		return palette.OpenPrompt(ctx, env.Client(), env, pending)
+	}
+
 	// An unreachable action list still leaves the catalog and the configured
 	// commands, and the handed-over entry may well be one of them.
 	entries, _ := entries(ctx, env, keys.Commands())
 	return palette.RunPending(ctx, env.Client(), entries, pending)
+}
+
+// onInput collects the value an entry is missing and hands the entry back to
+// the exec entrypoint, which runs it once this popup is gone.
+func onInput(ctx context.Context, env *plugin.Env) error {
+	pending, ok := palette.ReadPrompt()
+	if !ok {
+		return nil
+	}
+
+	cfg := keys.Commands()
+	value, ok, err := prompt.Ask(os.Stdin, os.Stdout, prompt.Field{
+		Title:   pending.Prompt.Title,
+		Label:   pending.Prompt.Label,
+		Initial: pending.Prompt.Initial,
+	}, theme.Load(env, cfg.Theme))
+	if err != nil || !ok {
+		return err
+	}
+	return palette.RelayValue(ctx, env.Client(), env, pending, value)
 }
 
 // entries assembles the command list both entrypoints work from.

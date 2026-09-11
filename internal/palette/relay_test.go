@@ -17,7 +17,7 @@ func TestRelayWritesThePendingEntryAndAsksForTheExecAction(t *testing.T) {
 
 	invocation := &herdr.PluginInvocationContext{WorkspaceID: new("w1")}
 	entry := Entry{ID: "config:prefix+f", Title: "Open git jump"}
-	if err := Relay(context.Background(), env.Client(), env, entry, "value", invocation); err != nil {
+	if err := Relay(context.Background(), env.Client(), env, entry, invocation); err != nil {
 		t.Fatalf("Relay() = %v", err)
 	}
 
@@ -25,8 +25,8 @@ func TestRelayWritesThePendingEntryAndAsksForTheExecAction(t *testing.T) {
 	if err := env.ReadStateJSON(PendingFile, &pending); err != nil {
 		t.Fatalf("reading the pending entry: %v", err)
 	}
-	if pending.EntryID != entry.ID || pending.Input != "value" {
-		t.Errorf("pending = %+v, want the chosen entry and its input", pending)
+	if pending.EntryID != entry.ID {
+		t.Errorf("pending = %+v, want the chosen entry", pending)
 	}
 	if pending.PID != os.Getpid() {
 		t.Errorf("pending pid = %d, want this process so the wait knows what to watch", pending.PID)
@@ -116,7 +116,9 @@ func TestRunPendingReportsAFailure(t *testing.T) {
 // only when herdr answers ui_busy.
 func TestOnlyPluginActionsAreRelayedWithoutTrying(t *testing.T) {
 	server := plugintest.NewServer(t).
-		Reply(herdr.MethodPluginActionList, actionList())
+		Reply(herdr.MethodPluginActionList, actionList()).
+		Reply(herdr.MethodPluginList, plugins()).
+		Reply(herdr.MethodSessionSnapshot, snapshot())
 	entries := load(t, server)
 
 	action, _ := find(entries, "plugin:herdr.machine-manager/open")
@@ -127,5 +129,113 @@ func TestOnlyPluginActionsAreRelayedWithoutTrying(t *testing.T) {
 		if entry, ok := find(entries, id); ok && entry.AlwaysRelay {
 			t.Errorf("%s is handed over without trying, which costs a round trip for nothing", id)
 		}
+	}
+}
+
+func TestRelayPromptHandsOverWhatTheFieldShows(t *testing.T) {
+	server := plugintest.NewServer(t).
+		Reply(herdr.MethodPluginActionInvoke, herdr.PluginActionInvokedResponse{})
+	env := server.Env(plugintest.StateDir(t.TempDir()))
+
+	invocation := &herdr.PluginInvocationContext{TabLabel: new("shell")}
+	entry := Entry{
+		ID:    "herdr:tab.rename",
+		Title: "rename tab",
+		Type:  "Herdr",
+		Input: &Input{
+			Label:   "Tab name",
+			Initial: func(c *herdr.PluginInvocationContext) string { return herdr.Value(c.TabLabel) },
+		},
+	}
+	if err := RelayPrompt(context.Background(), env.Client(), env, entry, invocation); err != nil {
+		t.Fatalf("RelayPrompt() = %v", err)
+	}
+
+	var pending Pending
+	if err := env.ReadStateJSON(PendingFile, &pending); err != nil {
+		t.Fatalf("reading the pending entry: %v", err)
+	}
+	if pending.Prompt == nil {
+		t.Fatal("the entry was handed over to run, not to ask for its value")
+	}
+	if pending.Prompt.Title != "herdr: rename tab" || pending.Prompt.Label != "Tab name" {
+		t.Errorf("prompt = %+v, want the entry's title and label", pending.Prompt)
+	}
+	if pending.Prompt.Initial != "shell" {
+		t.Errorf("initial = %q, want the current label to edit", pending.Prompt.Initial)
+	}
+}
+
+func TestOpenPromptOpensTheFieldWithWhatItCollects(t *testing.T) {
+	server := plugintest.NewServer(t).
+		Reply(herdr.MethodPluginPaneOpen, herdr.OKResponse{})
+	env := server.Env(plugintest.StateDir(t.TempDir()))
+
+	pending := Pending{
+		EntryID: "herdr:tab.rename",
+		Context: &herdr.PluginInvocationContext{TabID: new("w1:t1")},
+		Prompt:  &Prompt{Title: "Rename tab", Initial: "shell"},
+	}
+	if err := OpenPrompt(context.Background(), env.Client(), env, pending); err != nil {
+		t.Fatalf("OpenPrompt() = %v", err)
+	}
+
+	call := server.Calls()[0]
+	if call.Method != herdr.MethodPluginPaneOpen {
+		t.Fatalf("called %q, want the field pane to be opened", call.Method)
+	}
+	var params herdr.PluginPaneOpenParams
+	decode(t, call.Params, &params)
+	if params.Entrypoint != InputEntrypoint {
+		t.Errorf("opened %q, want the input entrypoint", params.Entrypoint)
+	}
+
+	t.Setenv(PromptEnv, params.Env[PromptEnv])
+	opened, ok := ReadPrompt()
+	if !ok {
+		t.Fatal("the field pane cannot tell what it was opened for")
+	}
+	if opened.EntryID != pending.EntryID || opened.Prompt.Initial != "shell" {
+		t.Errorf("the field was opened for %+v, want the handed-over entry", opened)
+	}
+	if opened.Context == nil || opened.Context.TabID == nil {
+		t.Error("the invocation context was not handed over, so the rename loses its tab")
+	}
+}
+
+func TestRelayValueHandsTheEntryBackToRun(t *testing.T) {
+	server := plugintest.NewServer(t).
+		Reply(herdr.MethodPluginActionInvoke, herdr.PluginActionInvokedResponse{})
+	env := server.Env(plugintest.StateDir(t.TempDir()))
+
+	pending := Pending{
+		EntryID: "herdr:tab.rename",
+		Context: &herdr.PluginInvocationContext{},
+		Prompt:  &Prompt{Title: "Rename tab"},
+		PID:     1,
+	}
+	if err := RelayValue(context.Background(), env.Client(), env, pending, "docs"); err != nil {
+		t.Fatalf("RelayValue() = %v", err)
+	}
+
+	var handed Pending
+	if err := env.ReadStateJSON(PendingFile, &handed); err != nil {
+		t.Fatalf("reading the pending entry: %v", err)
+	}
+	if handed.Input != "docs" {
+		t.Errorf("input = %q, want the collected value", handed.Input)
+	}
+	if handed.Prompt != nil {
+		t.Error("the entry was handed back with a prompt, so the field would open again")
+	}
+	if handed.PID != os.Getpid() {
+		t.Errorf("pid = %d, want the field's own process, which holds the popup now", handed.PID)
+	}
+}
+
+func TestReadPromptWithNothingToCollect(t *testing.T) {
+	t.Setenv(PromptEnv, "")
+	if _, ok := ReadPrompt(); ok {
+		t.Error("ReadPrompt() reported a field although the pane was opened by hand")
 	}
 }

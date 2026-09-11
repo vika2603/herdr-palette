@@ -31,7 +31,7 @@ const (
 	recentBonus = 12
 )
 
-// Ranked is one entry with the query's match positions in its title, for
+// Ranked is one entry with the query's match positions in its name, for
 // highlighting, and the score that ordered it.
 type Ranked struct {
 	Entry   Entry
@@ -88,16 +88,17 @@ func rankOne(entry Entry, q query) (Ranked, bool) {
 	if q.empty() {
 		return Ranked{Entry: entry}, true
 	}
-	if score, matched, ok := match(entry.Title, q); ok {
+	name := entry.Name()
+	if score, matched, ok := match(name, q); ok {
 		return Ranked{Entry: entry, Matched: matched, Score: score}, true
 	}
-	// The type and the entry's source are not part of the title, but typing
-	// either is a natural way to narrow the list.
-	prefix := entry.Type + " "
-	if entry.Search != "" {
-		prefix += entry.Search + " "
+	if entry.Search == "" {
+		return Ranked{}, false
 	}
-	if score, matched, ok := match(prefix+entry.Title, q); ok {
+	// Where an entry came from is not part of the row, but typing it is a
+	// natural way to narrow the list.
+	prefix := entry.Search + " "
+	if score, matched, ok := match(prefix+name, q); ok {
 		return Ranked{
 			Entry:   entry,
 			Matched: shift(matched, len([]rune(prefix))),

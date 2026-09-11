@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/vika2603/herdr-client/herdr"
 	"github.com/vika2603/herdr-client/plugin/manifest"
@@ -50,7 +51,7 @@ func customID(command keys.Custom) string {
 
 func customTitle(command keys.Custom) string {
 	if command.Description != "" {
-		return command.Description
+		return strings.ToLower(command.Description)
 	}
 	return command.Command
 }

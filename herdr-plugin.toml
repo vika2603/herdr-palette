@@ -1,6 +1,6 @@
 # A command palette for herdr: one popup that searches every action and runs it.
-# One binary serves both manifest entrypoints, the action bound to a key and the
-# popup pane that runs the TUI. See docs/design.md.
+# One binary serves every entrypoint declared here; plugin.Env tells the process
+# which one started it. See docs/design.md.
 
 id = "herdr.palette"
 name = "Command Palette"
@@ -19,6 +19,17 @@ description = "Search and run an action"
 placement = "popup"
 width = "60%"
 height = "50%"
+command = ["./bin/palette"]
+
+# The field an entry that needs a value is collected in: two lines, in a popup
+# of its own rather than in the palette's window.
+[[panes]]
+id = "input"
+title = "Value"
+description = "Collect the value a command needs"
+placement = "popup"
+width = "40%"
+height = 3
 command = ["./bin/palette"]
 
 [[panes]]

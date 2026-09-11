@@ -28,14 +28,8 @@ type model struct {
 	cursor int
 	offset int
 	// keyWidth is the width of the key column, zero when nothing on show is
-	// bound to a key, and typeWidth the width of the type column.
-	keyWidth  int
-	typeWidth int
-
-	// pending is the entry waiting for its input. The input screen is open
-	// while it is set.
-	pending *palette.Entry
-	input   textinput.Model
+	// bound to a key.
+	keyWidth int
 
 	styles        styles
 	failure       string
@@ -55,9 +49,6 @@ func newModel(
 	query.Placeholder = "Search commands"
 	query.Focus()
 
-	input := textinput.New()
-	input.Prompt = "› "
-
 	m := model{
 		ctx:        ctx,
 		env:        env,
@@ -65,7 +56,6 @@ func newModel(
 		entries:    entries,
 		recent:     recent,
 		query:      query,
-		input:      input,
 		styles:     newStyles(colours),
 	}
 	m.rank()
@@ -88,7 +78,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// A command that failed leaves the popup open with the reason, so the
 		// keystroke is not lost silently.
 		m.failure = msg.err.Error()
-		m.pending = nil
 		return m, nil
 
 	case tea.KeyMsg:
@@ -104,9 +93,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 const wheelStep = 3
 
 // mouse moves the selection with the wheel and runs the row a click lands on.
-// The input screen takes no mouse input: there is nothing to point at.
 func (m model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	if m.pending != nil || msg.Action != tea.MouseActionPress {
+	if msg.Action != tea.MouseActionPress {
 		return m, nil
 	}
 	switch msg.Button {
@@ -130,9 +118,6 @@ func (m model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 func (m model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if msg.Type == tea.KeyCtrlC {
 		return m, tea.Quit
-	}
-	if m.pending != nil {
-		return m.keyInput(msg)
 	}
 	return m.keyList(msg)
 }
@@ -167,49 +152,17 @@ func (m model) keyList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m model) keyInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc":
-		m.pending = nil
-		m.input.Blur()
-		m.query.Focus()
-		return m, textinput.Blink
-	case "enter":
-		value := m.input.Value()
-		if value == "" {
-			return m, nil
-		}
-		return m, m.run(*m.pending, value)
-	}
-
-	var cmd tea.Cmd
-	m.input, cmd = m.input.Update(msg)
-	return m, cmd
-}
-
-// choose runs the selected entry, or opens the input screen first when the
-// entry needs a value.
+// choose runs the selected entry.
 func (m model) choose() (tea.Model, tea.Cmd) {
 	if len(m.ranked) == 0 {
 		return m, nil
 	}
-	entry := m.ranked[m.cursor].Entry
-	if entry.Input == nil {
-		return m, m.run(entry, "")
-	}
-
-	m.pending = &entry
-	m.failure = ""
-	m.input.SetValue(entry.Initial(m.invocation))
-	m.input.CursorEnd()
-	m.query.Blur()
-	m.input.Focus()
-	return m, textinput.Blink
+	return m, m.run(m.ranked[m.cursor].Entry)
 }
 
-func (m model) run(entry palette.Entry, value string) tea.Cmd {
+func (m model) run(entry palette.Entry) tea.Cmd {
 	return func() tea.Msg {
-		err := m.execute(entry, value)
+		err := m.execute(entry)
 		if err == nil {
 			// A failed write only costs the recent order, so it does not turn
 			// a command that ran into a command that reports failure.
@@ -224,20 +177,20 @@ func (m model) run(entry palette.Entry, value string) tea.Cmd {
 // herdr allows one popup at a time and answers the second with ui_busy, which
 // is the signal to hand over: a command that wants a popup cannot run while
 // the palette's own is up.
-func (m model) execute(entry palette.Entry, value string) error {
+func (m model) execute(entry palette.Entry) error {
 	client := m.env.Client()
+	if entry.Input != nil {
+		return palette.RelayPrompt(m.ctx, client, m.env, entry, m.invocation)
+	}
+
 	relay := func() error {
-		return palette.Relay(m.ctx, client, m.env, entry, value, m.invocation)
+		return palette.Relay(m.ctx, client, m.env, entry, m.invocation)
 	}
 	if entry.AlwaysRelay {
 		return relay()
 	}
 
-	err := entry.Run(m.ctx, palette.Exec{
-		Client: client,
-		Ctx:    m.invocation,
-		Input:  value,
-	})
+	err := entry.Run(m.ctx, palette.Exec{Client: client, Ctx: m.invocation})
 	if herdr.IsCode(err, herdr.ErrCodeUIBusy) {
 		return relay()
 	}
@@ -248,10 +201,9 @@ func (m *model) rank() {
 	m.ranked = palette.Rank(m.entries, m.query.Value(), m.recent)
 	m.cursor, m.offset = 0, 0
 
-	m.keyWidth, m.typeWidth = 0, 0
+	m.keyWidth = 0
 	for _, ranked := range m.ranked {
 		m.keyWidth = max(m.keyWidth, len([]rune(ranked.Entry.Key)))
-		m.typeWidth = max(m.typeWidth, len([]rune(ranked.Entry.Type)))
 	}
 }
 

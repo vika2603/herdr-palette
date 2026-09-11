@@ -2,7 +2,9 @@ package palette
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/vika2603/herdr-client/herdr"
 
@@ -10,12 +12,12 @@ import (
 )
 
 // Load returns the entries to show: the catalog, the commands configured under
-// [[keys.command]], and every action the other plugins registered. own is this
-// plugin's id, whose own entrypoint would only reopen the palette. cfg
-// supplies the key each entry is bound to.
+// [[keys.command]], every action the other plugins registered, and what is
+// open in the session to go to. own is this plugin's id, whose own entrypoint
+// would only reopen the palette. cfg supplies the key each entry is bound to.
 //
-// A failure to reach plugin.action.list is not fatal. The rest of the list is
-// still worth showing, so the caller reports the error next to it.
+// Neither call is fatal. The rest of the list is still worth showing, so the
+// caller reports what was missed next to it.
 func Load(ctx context.Context, client *herdr.Client, own string, catalog []Entry, cfg keys.Config) ([]Entry, error) {
 	entries := make([]Entry, 0, len(catalog)+len(cfg.Custom))
 	for _, entry := range catalog {
@@ -24,36 +26,71 @@ func Load(ctx context.Context, client *herdr.Client, own string, catalog []Entry
 	}
 	entries = append(entries, customEntries(own, cfg.Custom)...)
 
-	actions, err := client.PluginActionList(ctx, herdr.PluginActionListParams{})
-	if err != nil {
-		return entries, err
+	var failures []error
+	if actions, err := client.PluginActionList(ctx, herdr.PluginActionListParams{}); err != nil {
+		failures = append(failures, fmt.Errorf("plugin actions unavailable: %w", err))
+	} else {
+		names := pluginNames(ctx, client)
+		for _, action := range actions.Actions {
+			if action.PluginID == own {
+				continue
+			}
+			entry := pluginEntry(action, names[action.PluginID])
+			entry.Key = cfg.Plugin[keys.PluginBinding(action.PluginID, action.ActionID)]
+			entries = append(entries, entry)
+		}
 	}
 
-	for _, action := range actions.Actions {
-		if action.PluginID == own {
-			continue
-		}
-		entry := pluginEntry(action)
-		entry.Key = cfg.Plugin[keys.PluginBinding(action.PluginID, action.ActionID)]
-		entries = append(entries, entry)
+	if snapshot, err := client.SessionSnapshot(ctx); err != nil {
+		failures = append(failures, fmt.Errorf("open panes unavailable: %w", err))
+	} else {
+		entries = append(entries, sessionEntries(snapshot.Snapshot)...)
 	}
-	return entries, nil
+	return entries, errors.Join(failures...)
 }
 
-func pluginEntry(action herdr.PluginActionInfo) Entry {
+// pluginNames maps each installed plugin to the name it gave itself, which is
+// the namespace its actions show under. An unreachable list is not worth
+// reporting: the id carries a usable name of its own.
+func pluginNames(ctx context.Context, client *herdr.Client) map[string]string {
+	plugins, err := client.PluginList(ctx, herdr.PluginListParams{})
+	if err != nil {
+		return nil
+	}
+	names := make(map[string]string, len(plugins.Plugins))
+	for _, plugin := range plugins.Plugins {
+		names[plugin.PluginID] = plugin.Name
+	}
+	return names
+}
+
+// pluginNamespace is the plugin's own name, or the distinctive half of its id
+// when the name is unavailable: "herdr.machine-manager" reads as
+// "machine-manager".
+func pluginNamespace(pluginID, name string) string {
+	if name != "" {
+		return name
+	}
+	if _, after, found := strings.Cut(pluginID, "."); found {
+		return after
+	}
+	return pluginID
+}
+
+func pluginEntry(action herdr.PluginActionInfo, name string) Entry {
 	pluginID := action.PluginID
 	actionID := action.ActionID
 	return Entry{
 		ID:             "plugin:" + pluginID + "/" + actionID,
-		Title:          action.Title,
-		Type:           TypePlugin,
+		Title:          strings.ToLower(action.Title),
+		Type:           pluginNamespace(pluginID, name),
 		NeedsSelection: onlySelection(action.Contexts),
 		// A plugin action runs in the plugin's own process, so a popup it
 		// cannot open is refused there and never reported back here. There is
 		// nothing to try, so it is handed over unconditionally.
 		AlwaysRelay: true,
-		// The plugin's id is not shown, but typing part of it is a natural way
-		// to find its actions.
+		// The row shows the plugin's name, but typing its id is a natural way
+		// to find its actions too.
 		Search: pluginID,
 		Run: func(ctx context.Context, e Exec) error {
 			_, err := e.Client.PluginActionInvoke(ctx, herdr.PluginActionInvokeParams{

@@ -1,14 +1,15 @@
 # Design
 
-## Four entrypoints, one binary
+## Five entrypoints, one binary
 
-The manifest declares two actions, `open` and `exec`, and two panes, `palette`
-and `run`. All four run `bin/palette`; `plugin.Env` tells the process which
-entrypoint started it.
+The manifest declares two actions, `open` and `exec`, and three panes,
+`palette`, `input` and `run`. All five run `bin/palette`; `plugin.Env` tells
+the process which entrypoint started it.
 
 `open` does one thing: it calls `plugin.pane.open` for the `palette`
 entrypoint, which runs the TUI. `exec` runs a command the popup handed over,
-and `run` is the pane a configured command runs in. Both are described below.
+`input` is the field that collects a value a command needs, and `run` is the
+pane a configured command runs in. All three are described below.
 
 `cmd/palette` assembles the command list for the two entrypoints that need one,
 so the popup and the handover work from the same list; `RunPending` resolves
@@ -26,6 +27,32 @@ So the action hands the context over explicitly, in the `env` map of
 `plugin.pane.open`, as `HERDR_PALETTE_CONTEXT`. The popup reads it from there
 and falls back to its own entrypoint context, which is what happens when the
 pane is opened directly (`herdr plugin pane open`).
+
+## What a row says
+
+A row reads `namespace: title`, the way an editor's command list does, with
+the key it is bound to at the right edge. The namespace is where the row comes
+from — `herdr` for the built-in commands, `command` for the ones configured
+under `[[keys.command]]`, the plugin's own name for a plugin action, and the
+kind of thing for the rows that go somewhere. It is drawn in the same colour as
+the key column, a shade below the title, because it repeats down the list while
+the title is what distinguishes the row.
+
+A command's title is lowercase, authored that way rather than lowercased when
+drawn. The rows that go to a workspace, tab or pane keep the name that thing
+carries: it is a name, not a command.
+
+## Going to what is open
+
+`session.snapshot` is the whole session in one call, so every workspace, tab
+and pane becomes a row that focuses it — `workspace.focus`, `tab.focus`,
+`pane.focus`. What is already focused is left out, the palette having been
+opened from there. A plugin popup is not part of the session's panes, so the
+palette's own window never appears in its list.
+
+A pane's row shows the name it was given, or what the program in it reports,
+and carries the workspace, the tab and the working directory as search text, so
+a project name finds the panes inside it.
 
 ## Why herdr's commands are a hand-written list
 
@@ -69,6 +96,23 @@ an action entrypoint outside the popup, so the `exec` process survives the
 popup closing; it waits for the popup process to exit — the pid is in the file
 — and then runs the entry. A failure there has no popup left to show it, so it
 is reported with `notification.show`.
+
+## Collecting a value
+
+A command that needs a value — a rename, a branch name, a prompt — gets a
+popup of its own, two lines tall, rather than the palette's window. It is the
+same handover, one hop longer: the palette writes the entry down with a
+`prompt` and quits, `exec` opens the `input` pane for it, and the field writes
+the entry back with the value and asks for `exec` again, which runs it once the
+field's popup is gone in turn.
+
+The field is not a Bubble Tea screen, and that is the point. Bubble Tea hides
+the terminal cursor for the lifetime of the program and paints its caret as
+cell content. herdr forwards a pane's cursor to the outer terminal only while
+the pane shows one, and macOS input methods place their candidate window at
+that cursor, so a Bubble Tea field cannot be typed into with an input method.
+`internal/prompt` therefore edits the line itself, keeping the terminal's own
+cursor on the insertion point.
 
 ## Running a configured command
 
@@ -117,17 +161,21 @@ set of action names, which is what keeps that harmless.
 
 `internal/palette.Rank` accepts two shapes, in this order:
 
-1. every word of the query appearing as a substring of the title, in any
+1. every word of the query appearing as a substring of the row, in any
    order, scored higher when a word sits at the start of a word;
-2. the query read as the initials of the title's words, skipping allowed.
+2. the query read as the initials of the row's words, skipping allowed.
 
-Letters that only appear scattered through a title do not match. A plain
-subsequence match makes a query like `spl` reach "Close workspace", which
+Letters that only appear scattered through a row do not match. A plain
+subsequence match makes a query like `spl` reach "close workspace", which
 makes the list unpredictable at the size the palette actually has.
 
-A query that matches no title is retried with the entry's type and its `Search`
-text prepended, scored lower. `Search` is not rendered; for a plugin action it
-is the plugin's id, so typing `machine` finds the Machine Manager's actions.
+Both shapes run against the row as it is drawn, namespace included, so `spr`
+reaches "herdr: split pane right" through its initials and the highlighted
+letters are the ones that were searched.
+
+A query that matches no row is retried with the entry's `Search` text
+prepended, scored lower. `Search` is not rendered; for a plugin action it is
+the plugin's id, and for a pane the workspace, tab and directory it sits in.
 
 ## Mouse
 
@@ -136,8 +184,7 @@ wheel. herdr captures the mouse for its own UI but forwards events to a pane
 app that asks for them, so the popup receives them.
 
 A click's row is `offset + Y - headerRows`, where `headerRows` is the query
-line and the rule under it. A click outside the rendered rows does nothing,
-and the value screen takes no mouse input.
+line and the rule under it. A click outside the rendered rows does nothing.
 
 ## State
 

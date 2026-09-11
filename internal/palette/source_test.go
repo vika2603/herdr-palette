@@ -2,6 +2,7 @@ package palette
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/vika2603/herdr-client/herdr"
@@ -22,6 +23,39 @@ func actionList() herdr.PluginActionListResponse {
 			ActionID: "clip",
 			Title:    "Clip the selection",
 			Contexts: []herdr.PluginActionContext{herdr.PluginActionContextSelection},
+		},
+	}}
+}
+
+// plugins is what herdr reports about what is installed, which is where the
+// name in front of a plugin action comes from.
+func plugins() herdr.PluginListResponse {
+	return herdr.PluginListResponse{Plugins: []herdr.InstalledPluginInfo{
+		{PluginID: "herdr.machine-manager", Name: "Machine Manager"},
+		{PluginID: own, Name: "Command Palette"},
+	}}
+}
+
+// snapshot is a session with one other workspace to go to, and a pane in it.
+func snapshot() herdr.SessionSnapshotResponse {
+	return herdr.SessionSnapshotResponse{Snapshot: herdr.SessionSnapshot{
+		Workspaces: []herdr.WorkspaceInfo{
+			{WorkspaceID: "w1", Label: "helix", Focused: true},
+			{WorkspaceID: "w2", Label: "palette"},
+		},
+		Tabs: []herdr.TabInfo{
+			{TabID: "w1:t1", WorkspaceID: "w1", Label: "1 · helix", Focused: true},
+			{TabID: "w2:t1", WorkspaceID: "w2", Label: "2 · palette › claude"},
+		},
+		Panes: []herdr.PaneInfo{
+			{PaneID: "w1:p1", WorkspaceID: "w1", TabID: "w1:t1", Focused: true},
+			{
+				PaneID:                "w2:p1",
+				WorkspaceID:           "w2",
+				TabID:                 "w2:t1",
+				TerminalTitleStripped: new("Zoxide jump"),
+				Cwd:                   new("/Users/vika/Workspace"),
+			},
 		},
 	}}
 }
@@ -59,7 +93,9 @@ func find(entries []Entry, id string) (Entry, bool) {
 
 func TestLoadMergesTheCatalogWithPluginActions(t *testing.T) {
 	server := plugintest.NewServer(t).
-		Reply(herdr.MethodPluginActionList, actionList())
+		Reply(herdr.MethodPluginActionList, actionList()).
+		Reply(herdr.MethodPluginList, plugins()).
+		Reply(herdr.MethodSessionSnapshot, snapshot())
 
 	entries := load(t, server)
 
@@ -70,17 +106,19 @@ func TestLoadMergesTheCatalogWithPluginActions(t *testing.T) {
 	if !ok {
 		t.Fatal("Load() dropped the machine manager action")
 	}
-	if entry.Title != "Manage machines" {
+	if entry.Title != "manage machines" {
 		t.Errorf("title = %q, want the action's own title", entry.Title)
 	}
-	if entry.Type != TypePlugin {
-		t.Errorf("type = %q, want a plugin action to be marked as one", entry.Type)
+	if entry.Type != "Machine Manager" {
+		t.Errorf("namespace = %q, want the plugin's own name", entry.Type)
 	}
 }
 
 func TestLoadLeavesOutItsOwnEntrypoint(t *testing.T) {
 	server := plugintest.NewServer(t).
-		Reply(herdr.MethodPluginActionList, actionList())
+		Reply(herdr.MethodPluginActionList, actionList()).
+		Reply(herdr.MethodPluginList, plugins()).
+		Reply(herdr.MethodSessionSnapshot, snapshot())
 
 	if _, ok := find(load(t, server), "plugin:"+own+"/open"); ok {
 		t.Error("Load() offered the palette's own action, which would only reopen it")
@@ -89,7 +127,9 @@ func TestLoadLeavesOutItsOwnEntrypoint(t *testing.T) {
 
 func TestLoadMarksSelectionOnlyActions(t *testing.T) {
 	server := plugintest.NewServer(t).
-		Reply(herdr.MethodPluginActionList, actionList())
+		Reply(herdr.MethodPluginActionList, actionList()).
+		Reply(herdr.MethodPluginList, plugins()).
+		Reply(herdr.MethodSessionSnapshot, snapshot())
 
 	entry, ok := find(load(t, server), "plugin:herdr.notes/clip")
 	if !ok {
@@ -100,7 +140,7 @@ func TestLoadMarksSelectionOnlyActions(t *testing.T) {
 	}
 }
 
-func TestLoadKeepsTheCatalogWhenTheActionListFails(t *testing.T) {
+func TestLoadKeepsTheCatalogWhenTheSessionIsUnreachable(t *testing.T) {
 	server := plugintest.NewServer(t)
 
 	catalog := []Entry{{ID: "herdr:tab.new", Title: "New tab", Type: "herdr"}}
@@ -116,6 +156,8 @@ func TestLoadKeepsTheCatalogWhenTheActionListFails(t *testing.T) {
 func TestPluginEntryInvokesTheAction(t *testing.T) {
 	server := plugintest.NewServer(t).
 		Reply(herdr.MethodPluginActionList, actionList()).
+		Reply(herdr.MethodPluginList, plugins()).
+		Reply(herdr.MethodSessionSnapshot, snapshot()).
 		Reply(herdr.MethodPluginActionInvoke, herdr.PluginActionInvokedResponse{})
 
 	client := server.Env().Client()
@@ -150,7 +192,9 @@ func TestPluginEntryInvokesTheAction(t *testing.T) {
 
 func TestEntriesCarryTheKeyTheyAreBoundTo(t *testing.T) {
 	server := plugintest.NewServer(t).
-		Reply(herdr.MethodPluginActionList, actionList())
+		Reply(herdr.MethodPluginActionList, actionList()).
+		Reply(herdr.MethodPluginList, plugins()).
+		Reply(herdr.MethodSessionSnapshot, snapshot())
 	entries := load(t, server)
 
 	catalogEntry, _ := find(entries, "herdr:tab.new")
@@ -165,14 +209,16 @@ func TestEntriesCarryTheKeyTheyAreBoundTo(t *testing.T) {
 
 func TestConfiguredCommandsAreListed(t *testing.T) {
 	server := plugintest.NewServer(t).
-		Reply(herdr.MethodPluginActionList, actionList())
+		Reply(herdr.MethodPluginActionList, actionList()).
+		Reply(herdr.MethodPluginList, plugins()).
+		Reply(herdr.MethodSessionSnapshot, snapshot())
 	entries := load(t, server)
 
 	entry, ok := find(entries, "config:prefix+f")
 	if !ok {
 		t.Fatal("the configured popup command is not in the list")
 	}
-	if entry.Title != "Open git jump" || entry.Type != TypeCustom || entry.Key != "prefix+f" {
+	if entry.Title != "open git jump" || entry.Type != TypeCustom || entry.Key != "prefix+f" {
 		t.Errorf("entry = %+v, want the configured description, group and key", entry)
 	}
 	if _, ok := find(entries, "config:prefix+alt+g"); !ok {
@@ -183,6 +229,8 @@ func TestConfiguredCommandsAreListed(t *testing.T) {
 func TestAPopupCommandOpensAPluginPane(t *testing.T) {
 	server := plugintest.NewServer(t).
 		Reply(herdr.MethodPluginActionList, actionList()).
+		Reply(herdr.MethodPluginList, plugins()).
+		Reply(herdr.MethodSessionSnapshot, snapshot()).
 		Reply(herdr.MethodPluginPaneOpen, herdr.OKResponse{})
 
 	client := server.Env().Client()
@@ -221,6 +269,8 @@ func TestAPopupCommandOpensAPluginPane(t *testing.T) {
 func TestAPaneCommandOpensAZoomedPane(t *testing.T) {
 	server := plugintest.NewServer(t).
 		Reply(herdr.MethodPluginActionList, actionList()).
+		Reply(herdr.MethodPluginList, plugins()).
+		Reply(herdr.MethodSessionSnapshot, snapshot()).
 		Reply(herdr.MethodPluginPaneOpen, herdr.OKResponse{})
 
 	client := server.Env().Client()
@@ -250,7 +300,9 @@ func TestAPaneCommandOpensAZoomedPane(t *testing.T) {
 
 func TestAShellCommandRunsWithoutTheAPI(t *testing.T) {
 	server := plugintest.NewServer(t).
-		Reply(herdr.MethodPluginActionList, actionList())
+		Reply(herdr.MethodPluginActionList, actionList()).
+		Reply(herdr.MethodPluginList, plugins()).
+		Reply(herdr.MethodSessionSnapshot, snapshot())
 
 	client := server.Env().Client()
 	cfg := config()
@@ -280,5 +332,89 @@ func TestPopupSizeIsOnlySentWhenConfigured(t *testing.T) {
 	}
 	if size, ok := popupSize(manifest.PopupSize{Cells: 80}); !ok || size.Cells != 80 {
 		t.Errorf("popupSize() = %v, %v, want the configured cell count", size, ok)
+	}
+}
+
+func TestOpenPanesAndWorkspacesAreListedToGoTo(t *testing.T) {
+	server := plugintest.NewServer(t).
+		Reply(herdr.MethodPluginActionList, actionList()).
+		Reply(herdr.MethodPluginList, plugins()).
+		Reply(herdr.MethodSessionSnapshot, snapshot())
+	entries := load(t, server)
+
+	workspace, ok := find(entries, "workspace:w2")
+	if !ok {
+		t.Fatal("the other workspace is not in the list")
+	}
+	if workspace.Type != TypeWorkspace || !strings.Contains(workspace.Title, "palette") {
+		t.Errorf("entry = %+v, want the workspace's own label", workspace)
+	}
+	pane, ok := find(entries, "pane:w2:p1")
+	if !ok {
+		t.Fatal("the open pane is not in the list")
+	}
+	if !strings.Contains(pane.Title, "Zoxide jump") {
+		t.Errorf("pane title = %q, want what the program in it reports", pane.Title)
+	}
+	if !strings.Contains(pane.Search, "palette") || !strings.Contains(pane.Search, "/Users/vika/Workspace") {
+		t.Errorf("pane search text = %q, want the workspace it sits in and its directory", pane.Search)
+	}
+	if _, ok := find(entries, "tab:w2:t1"); !ok {
+		t.Error("the open tab is not in the list")
+	}
+}
+
+func TestWhereThePaletteWasOpenedFromIsNotListed(t *testing.T) {
+	server := plugintest.NewServer(t).
+		Reply(herdr.MethodPluginActionList, actionList()).
+		Reply(herdr.MethodPluginList, plugins()).
+		Reply(herdr.MethodSessionSnapshot, snapshot())
+	entries := load(t, server)
+
+	for _, id := range []string{"workspace:w1", "tab:w1:t1", "pane:w1:p1"} {
+		if _, ok := find(entries, id); ok {
+			t.Errorf("%s is offered, which goes where the palette already is", id)
+		}
+	}
+}
+
+func TestGoingToAPaneFocusesIt(t *testing.T) {
+	server := plugintest.NewServer(t).
+		Reply(herdr.MethodPluginActionList, actionList()).
+		Reply(herdr.MethodPluginList, plugins()).
+		Reply(herdr.MethodSessionSnapshot, snapshot()).
+		Reply(herdr.MethodPaneFocus, herdr.PaneInfoResponse{})
+	entries := load(t, server)
+	pane, _ := find(entries, "pane:w2:p1")
+
+	client := server.Env().Client()
+	if err := pane.Run(context.Background(), Exec{Client: client, Ctx: &herdr.PluginInvocationContext{}}); err != nil {
+		t.Fatalf("Run() = %v", err)
+	}
+
+	calls := server.Calls()
+	last := calls[len(calls)-1]
+	if last.Method != herdr.MethodPaneFocus {
+		t.Fatalf("called %q, want the pane to be focused", last.Method)
+	}
+	var params herdr.PaneTarget
+	decode(t, last.Params, &params)
+	if params.PaneID != "w2:p1" {
+		t.Errorf("focused %q, want the pane the row stands for", params.PaneID)
+	}
+}
+
+func TestAPluginActionFallsBackToItsID(t *testing.T) {
+	server := plugintest.NewServer(t).
+		Reply(herdr.MethodPluginActionList, actionList()).
+		Reply(herdr.MethodSessionSnapshot, snapshot())
+
+	entries, _ := Load(context.Background(), server.Env().Client(), own, nil, keys.Config{})
+	entry, ok := find(entries, "plugin:herdr.machine-manager/open")
+	if !ok {
+		t.Fatal("Load() dropped the machine manager action when the plugin list was unavailable")
+	}
+	if entry.Type != "machine-manager" {
+		t.Errorf("namespace = %q, want the distinctive half of the plugin id", entry.Type)
 	}
 }

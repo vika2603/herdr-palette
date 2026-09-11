@@ -18,15 +18,12 @@ func write(t *testing.T, dir, name, content string) string {
 	return path
 }
 
-const herdrTheme = `
-[theme]
-name = "tokyo-night"
-
-[theme.custom]
-overlay0 = "#414868"
-overlay1 = "#7aa2f7"
-surface0 = "#24283b"
-`
+// tokens are what herdr's [theme.custom] would supply.
+var tokens = map[string]string{
+	"overlay0": "#414868",
+	"overlay1": "#7aa2f7",
+	"surface0": "#24283b",
+}
 
 func TestDefaultsAreComplete(t *testing.T) {
 	colours := Defaults()
@@ -42,9 +39,7 @@ func TestDefaultsAreComplete(t *testing.T) {
 }
 
 func TestHerdrThemeTokensAreUsed(t *testing.T) {
-	t.Setenv("HERDR_CONFIG_PATH", write(t, t.TempDir(), "config.toml", herdrTheme))
-
-	colours := Load(nil)
+	colours := Load(nil, tokens)
 	if colours.Rule != lipgloss.Color("#414868") {
 		t.Errorf("rule = %v, want herdr's overlay0", colours.Rule)
 	}
@@ -60,13 +55,11 @@ func TestHerdrThemeTokensAreUsed(t *testing.T) {
 }
 
 func TestThePluginConfigurationWins(t *testing.T) {
-	t.Setenv("HERDR_CONFIG_PATH", write(t, t.TempDir(), "config.toml", herdrTheme))
-
 	dir := t.TempDir()
 	write(t, dir, ConfigFile, "rule = \"#111111\"\nmeta = \"8\"\n")
 	env := plugintest.Env(plugintest.ConfigDir(dir))
 
-	colours := Load(env)
+	colours := Load(env, tokens)
 	if colours.Rule != lipgloss.Color("#111111") {
 		t.Errorf("rule = %v, want the plugin's own configuration", colours.Rule)
 	}
@@ -79,10 +72,9 @@ func TestThePluginConfigurationWins(t *testing.T) {
 }
 
 func TestNoConfigurationAtAll(t *testing.T) {
-	t.Setenv("HERDR_CONFIG_PATH", filepath.Join(t.TempDir(), "missing.toml"))
 	env := plugintest.Env(plugintest.ConfigDir(t.TempDir()))
 
-	if Load(env) != Defaults() {
+	if Load(env, nil) != Defaults() {
 		t.Error("Load() changed a colour although nothing configures one")
 	}
 }

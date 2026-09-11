@@ -15,6 +15,7 @@ import (
 	"github.com/vika2603/herdr-palette/internal/catalog"
 	"github.com/vika2603/herdr-palette/internal/keys"
 	"github.com/vika2603/herdr-palette/internal/palette"
+	"github.com/vika2603/herdr-palette/internal/theme"
 	"github.com/vika2603/herdr-palette/internal/ui"
 )
 
@@ -62,15 +63,23 @@ func onOpen(ctx context.Context, env *plugin.Env) error {
 
 // onExec runs what the popup handed over on its way out. It runs outside the
 // popup, so a command that opens one of its own is no longer refused.
+//
+// Only the configured commands are read from herdr's configuration: the key
+// column is the one thing this path never renders.
 func onExec(ctx context.Context, env *plugin.Env) error {
-	client := env.Client()
-	entries, err := palette.Load(ctx, client, env.PluginID, catalog.Entries(), keys.Load(env.BinPath))
-	if err != nil {
-		// The catalog and the configured commands survive an unreachable
-		// action list, and the handed-over entry may well be one of them.
-		_ = err
+	pending, ok := palette.ReadPending(env)
+	if !ok {
+		return nil
 	}
-	return palette.RunPending(ctx, client, env, entries)
+	// An unreachable action list still leaves the catalog and the configured
+	// commands, and the handed-over entry may well be one of them.
+	entries, _ := entries(ctx, env, keys.Commands())
+	return palette.RunPending(ctx, env.Client(), entries, pending)
+}
+
+// entries assembles the command list both entrypoints work from.
+func entries(ctx context.Context, env *plugin.Env, cfg keys.Config) ([]palette.Entry, error) {
+	return palette.Load(ctx, env.Client(), env.PluginID, catalog.Entries(), cfg)
 }
 
 // onRun runs the configured command this pane was opened for. The pane closes
@@ -94,12 +103,10 @@ func onRun(ctx context.Context, env *plugin.Env) error {
 	return err
 }
 
-// onPalette runs the TUI until the popup closes. A closed popup is a normal
-// exit, not a failed plugin command.
+// onPalette runs the TUI until the popup closes. ui.Run already answers a
+// closed popup with nil: it is a normal exit, not a failed plugin command.
 func onPalette(ctx context.Context, env *plugin.Env) error {
-	err := ui.Run(ctx, env)
-	if errors.Is(err, context.Canceled) {
-		return nil
-	}
-	return err
+	cfg := keys.Load(env.BinPath)
+	list, loadErr := entries(ctx, env, cfg)
+	return ui.Run(ctx, env, list, loadErr, theme.Load(env, cfg.Theme))
 }

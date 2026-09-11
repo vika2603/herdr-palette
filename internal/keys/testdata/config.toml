@@ -1,3 +1,9 @@
+[theme]
+name = "tokyo-night"
+
+[theme.custom]
+overlay0 = "#414868"
+
 [keys]
 prefix = "ctrl+b"
 new_workspace = "prefix+alt+n"
@@ -16,6 +22,14 @@ key = "prefix+alt+g"
 description = "Open Lazygit"
 type = "pane"
 command = "lazygit"
+
+[[keys.command]]
+key = "prefix+alt+t"
+description = "Cells instead of a percentage"
+type = "popup"
+command = "htop"
+width = 80
+height = 24
 
 [[keys.command]]
 key = "prefix+shift+s"

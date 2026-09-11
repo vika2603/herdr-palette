@@ -34,7 +34,7 @@ func Load(ctx context.Context, client *herdr.Client, own string, catalog []Entry
 			continue
 		}
 		entry := pluginEntry(action)
-		entry.Key = cfg.Plugin[action.PluginID+"."+action.ActionID]
+		entry.Key = cfg.Plugin[keys.PluginBinding(action.PluginID, action.ActionID)]
 		entries = append(entries, entry)
 	}
 	return entries, nil
@@ -48,9 +48,13 @@ func pluginEntry(action herdr.PluginActionInfo) Entry {
 		Title:          action.Title,
 		Type:           TypePlugin,
 		NeedsSelection: onlySelection(action.Contexts),
-		// What another plugin's action does is its own business, and opening
-		// a popup is the common case, so every one of them is relayed.
-		OpensPopup: true,
+		// A plugin action runs in the plugin's own process, so a popup it
+		// cannot open is refused there and never reported back here. There is
+		// nothing to try, so it is handed over unconditionally.
+		AlwaysRelay: true,
+		// The plugin's id is not shown, but typing part of it is a natural way
+		// to find its actions.
+		Search: pluginID,
 		Run: func(ctx context.Context, e Exec) error {
 			_, err := e.Client.PluginActionInvoke(ctx, herdr.PluginActionInvokeParams{
 				PluginID: &pluginID,

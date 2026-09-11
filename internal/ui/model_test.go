@@ -46,7 +46,6 @@ func testModel(t *testing.T, recent []string, ran *[]string) model {
 	t.Helper()
 	m := newModel(
 		context.Background(),
-		nil,
 		testEnv(t),
 		&herdr.PluginInvocationContext{WorkspaceID: new("w1")},
 		testEntries(ran),
@@ -263,7 +262,7 @@ func wheelModel(t *testing.T) model {
 			Run:   func(context.Context, palette.Exec) error { return nil },
 		})
 	}
-	m := newModel(context.Background(), nil, testEnv(t), &herdr.PluginInvocationContext{}, entries, nil, theme.Defaults())
+	m := newModel(context.Background(), testEnv(t), &herdr.PluginInvocationContext{}, entries, nil, theme.Defaults())
 	m.width, m.height = 40, 8
 	return m
 }
@@ -383,7 +382,7 @@ func TestTheKeyColumnShowsWhatEachCommandIsBoundTo(t *testing.T) {
 		{ID: "a", Title: "New tab", Type: "herdr", Key: "prefix+c"},
 		{ID: "b", Title: "Split pane right", Type: "herdr"},
 	}
-	m := newModel(context.Background(), nil, testEnv(t), &herdr.PluginInvocationContext{}, entries, nil, theme.Defaults())
+	m := newModel(context.Background(), testEnv(t), &herdr.PluginInvocationContext{}, entries, nil, theme.Defaults())
 	m.width, m.height = 60, 12
 
 	view := m.View()
@@ -404,13 +403,13 @@ func TestThereIsNoKeyColumnWithoutBindings(t *testing.T) {
 	}
 }
 
-func TestAnEntryThatOpensAPopupIsRelayed(t *testing.T) {
+func TestAPluginActionIsRelayedWithoutRunning(t *testing.T) {
 	var ran []string
 	entries := []palette.Entry{{
-		ID:         "plugin:herdr.machine-manager/open",
-		Title:      "Manage machines",
-		Type:       palette.TypePlugin,
-		OpensPopup: true,
+		ID:          "plugin:herdr.machine-manager/open",
+		Title:       "Manage machines",
+		Type:        palette.TypePlugin,
+		AlwaysRelay: true,
 		Run: func(context.Context, palette.Exec) error {
 			ran = append(ran, "direct")
 			return nil
@@ -420,7 +419,7 @@ func TestAnEntryThatOpensAPopupIsRelayed(t *testing.T) {
 		Reply(herdr.MethodPluginActionInvoke, herdr.PluginActionInvokedResponse{})
 	env := server.Env(plugintest.StateDir(t.TempDir()))
 
-	m := newModel(context.Background(), env.Client(), env, &herdr.PluginInvocationContext{}, entries, nil, theme.Defaults())
+	m := newModel(context.Background(), env, &herdr.PluginInvocationContext{}, entries, nil, theme.Defaults())
 	m.width, m.height = 60, 12
 
 	_, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
@@ -435,5 +434,32 @@ func TestAnEntryThatOpensAPopupIsRelayed(t *testing.T) {
 	}
 	if server.Calls()[0].Method != herdr.MethodPluginActionInvoke {
 		t.Errorf("called %q, want the entry to be handed over", server.Calls()[0].Method)
+	}
+}
+
+// herdr refuses a second popup with ui_busy, which is what tells the palette
+// to hand the command over instead of reporting a failure.
+func TestAUIBusyRefusalIsRelayed(t *testing.T) {
+	entries := []palette.Entry{{
+		ID:    "config:prefix+f",
+		Title: "Open git jump",
+		Type:  palette.TypeCustom,
+		Run: func(context.Context, palette.Exec) error {
+			return &herdr.Error{Code: herdr.ErrCodeUIBusy, Message: "a popup pane is already open"}
+		},
+	}}
+	server := plugintest.NewServer(t).
+		Reply(herdr.MethodPluginActionInvoke, herdr.PluginActionInvokedResponse{})
+	env := server.Env(plugintest.StateDir(t.TempDir()))
+
+	m := newModel(context.Background(), env, &herdr.PluginInvocationContext{}, entries, nil, theme.Defaults())
+	m.width, m.height = 60, 12
+
+	_, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	if msg, ok := cmd().(ranMsg); !ok || msg.err != nil {
+		t.Fatalf("a refused command reported %v instead of being handed over", cmd())
+	}
+	if server.Calls()[0].Method != herdr.MethodPluginActionInvoke {
+		t.Errorf("called %q, want the command to be handed over", server.Calls()[0].Method)
 	}
 }

@@ -10,24 +10,19 @@ import (
 	"github.com/vika2603/herdr-client/herdr"
 	"github.com/vika2603/herdr-client/plugin"
 
-	"github.com/vika2603/herdr-palette/internal/catalog"
-	"github.com/vika2603/herdr-palette/internal/keys"
 	"github.com/vika2603/herdr-palette/internal/palette"
 	"github.com/vika2603/herdr-palette/internal/theme"
 )
 
-// Run loads the command list and runs the TUI until the popup closes.
-func Run(ctx context.Context, env *plugin.Env) error {
-	client := env.Client()
-
+// Run shows the command list and runs the TUI until the popup closes. loadErr
+// is what assembling the list ran into, which is worth showing next to the
+// half that survived.
+func Run(ctx context.Context, env *plugin.Env, entries []palette.Entry, loadErr error, colours theme.Theme) error {
 	invocation := invocationContext(env)
-	entries, loadErr := palette.Load(ctx, client, env.PluginID, catalog.Entries(), keys.Load(env.BinPath))
 	entries = applicable(entries, invocation)
 
-	m := newModel(ctx, client, env, invocation, entries, palette.ReadRecent(env), theme.Load(env))
+	m := newModel(ctx, env, invocation, entries, palette.ReadRecent(env), colours)
 	if loadErr != nil {
-		// The catalog is still usable, so the popup opens and says which half
-		// of the list is missing.
 		m.failure = "plugin actions unavailable: " + loadErr.Error()
 	}
 

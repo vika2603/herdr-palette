@@ -14,26 +14,38 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+	"github.com/vika2603/herdr-client/plugin/manifest"
 )
 
-// Config is what the configuration says about commands and their keys.
+// Config is what herdr's configuration says about commands, their keys, and
+// the theme tokens the user overrode.
 type Config struct {
 	// Action maps a built-in action name, such as new_workspace, to its key.
 	Action map[string]string
-	// Plugin maps "<plugin id>.<action id>" to its key.
+	// Plugin maps a plugin action, as PluginBinding spells it, to its key.
 	Plugin map[string]string
 	// Custom are the shell, pane and popup commands from [[keys.command]].
 	Custom []Custom
+	// Theme is the [theme.custom] table, token name to colour.
+	Theme map[string]string
 }
 
-// Custom is one [[keys.command]] entry other than a plugin action.
+// Custom is one [[keys.command]] entry other than a plugin action. The sizes
+// are decoded by the manifest package, which accepts both spellings herdr
+// does: a cell count and a percentage string.
 type Custom struct {
-	Key         string
-	Description string
-	Type        string
-	Command     string
-	Width       string
-	Height      string
+	Key         string             `toml:"key"`
+	Description string             `toml:"description"`
+	Type        string             `toml:"type"`
+	Command     string             `toml:"command"`
+	Width       manifest.PopupSize `toml:"width"`
+	Height      manifest.PopupSize `toml:"height"`
+}
+
+// PluginBinding is how a plugin action is named in [[keys.command]], and the
+// key under which its binding is stored.
+func PluginBinding(pluginID, actionID string) string {
+	return pluginID + "." + actionID
 }
 
 // Command types herdr accepts in [[keys.command]].
@@ -48,12 +60,24 @@ const (
 // them. Anything unreadable only costs the key column, so failures are
 // answered with what could be read.
 func Load(herdrBin string) Config {
-	cfg := Config{Action: defaults(herdrBin), Plugin: map[string]string{}}
-	if cfg.Action == nil {
-		cfg.Action = map[string]string{}
-	}
+	cfg := newConfig(defaults(herdrBin))
 	apply(&cfg, ConfigPath())
 	return cfg
+}
+
+// Commands reads only what the user configured, skipping the defaults that
+// only the key column needs. It saves the exec entrypoint a subprocess.
+func Commands() Config {
+	cfg := newConfig(nil)
+	apply(&cfg, ConfigPath())
+	return cfg
+}
+
+func newConfig(actions map[string]string) Config {
+	if actions == nil {
+		actions = map[string]string{}
+	}
+	return Config{Action: actions, Plugin: map[string]string{}, Theme: map[string]string{}}
 }
 
 // ConfigPath is the file herdr reads, honouring the override it documents.
@@ -100,9 +124,9 @@ func parseDefaults(config string) map[string]string {
 			continue
 		case !inKeys:
 			continue
-		case strings.HasPrefix(trimmed, "[[keys.command]]"), strings.HasPrefix(trimmed, "[keys.indexed]"):
-			return actions
 		case strings.HasPrefix(trimmed, "["):
+			// Any other section ends [keys], including the [[keys.command]]
+			// example and [keys.indexed].
 			return actions
 		}
 		if m := binding.FindStringSubmatch(trimmed); m != nil && m[2] != "" {
@@ -112,10 +136,14 @@ func parseDefaults(config string) map[string]string {
 	return actions
 }
 
-// userConfig is the part of config.toml this package reads. Action bindings
-// are plain string values under [keys]; commands are its one array of tables.
+// userConfig is the part of config.toml this package reads. Under [keys],
+// action bindings are plain strings and commands are one array of tables, so
+// the values stay undecoded until their shape is known.
 type userConfig struct {
-	Keys map[string]any `toml:"keys"`
+	Keys  map[string]toml.Primitive `toml:"keys"`
+	Theme struct {
+		Custom map[string]string `toml:"custom"`
+	} `toml:"theme"`
 }
 
 func apply(cfg *Config, path string) {
@@ -123,9 +151,11 @@ func apply(cfg *Config, path string) {
 		return
 	}
 	var parsed userConfig
-	if _, err := toml.DecodeFile(path, &parsed); err != nil {
+	meta, err := toml.DecodeFile(path, &parsed)
+	if err != nil {
 		return
 	}
+	cfg.Theme = parsed.Theme.Custom
 
 	// Keys the configuration assigns explicitly, and the actions that were
 	// assigned one. A default binding whose key is taken elsewhere is dropped
@@ -134,8 +164,13 @@ func apply(cfg *Config, path string) {
 	configured := map[string]bool{}
 
 	for name, value := range parsed.Keys {
-		text, ok := value.(string)
-		if !ok || name == "prefix" {
+		if name == commandsKey || name == "prefix" {
+			continue
+		}
+		var text string
+		// A value that is not a key assignment, such as [keys.indexed], is not
+		// an action binding.
+		if err := meta.PrimitiveDecode(value, &text); err != nil {
 			continue
 		}
 		if text == "" {
@@ -149,16 +184,11 @@ func apply(cfg *Config, path string) {
 		taken[text] = true
 	}
 
-	commands, _ := parsed.Keys["command"].([]map[string]any)
-	for _, entry := range commands {
-		custom := Custom{
-			Key:         text(entry, "key"),
-			Description: text(entry, "description"),
-			Type:        text(entry, "type"),
-			Command:     text(entry, "command"),
-			Width:       text(entry, "width"),
-			Height:      text(entry, "height"),
-		}
+	var commands []Custom
+	if primitive, ok := parsed.Keys[commandsKey]; ok {
+		_ = meta.PrimitiveDecode(primitive, &commands)
+	}
+	for _, custom := range commands {
 		if custom.Key != "" {
 			taken[custom.Key] = true
 		}
@@ -180,7 +210,6 @@ func apply(cfg *Config, path string) {
 	}
 }
 
-func text(entry map[string]any, field string) string {
-	value, _ := entry[field].(string)
-	return value
-}
+// commandsKey is the [[keys.command]] array of tables, which shares the [keys]
+// table with the action bindings.
+const commandsKey = "command"

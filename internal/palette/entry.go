@@ -47,9 +47,13 @@ type Entry struct {
 	// selected, the way a plugin action declaring the selection context is
 	// only meaningful with one.
 	NeedsSelection bool
-	// OpensPopup marks an entry that herdr would refuse while the palette's
-	// own popup is up, so it is relayed to an entrypoint outside it.
-	OpensPopup bool
+	// AlwaysRelay marks an entry whose refusal never reaches the palette, so
+	// it is handed to an entrypoint outside the popup without trying first.
+	// Everything else is tried, and relayed only if herdr answers ui_busy.
+	AlwaysRelay bool
+	// Search is text the query may match that the row does not show, such as
+	// the plugin an action came from.
+	Search string
 }
 
 // Initial is the text the input field starts with, empty when the entry takes

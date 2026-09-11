@@ -60,9 +60,10 @@ are not in the list. Navigation is also left out: herdr's own `goto` and
 
 **Your own commands**, the `[[keys.command]]` entries in `config.toml`, are
 listed as `Custom`. herdr offers no way to run one by name, so each type is
-reproduced over the API: `shell` is started detached, `pane` opens a split, and
-`popup` opens a session-modal terminal, both running the configured command
-line.
+reproduced over the API: `shell` is started detached, `pane` opens a temporary
+pane over the layout, and `popup` a session-modal terminal, both running the
+configured command line. Sizes are accepted in either spelling herdr takes, a
+percentage such as `"70%"` or a cell count such as `80`.
 
 **Plugin actions** come from `plugin.action.list` at open time, listed as
 `Plugin`, with the title and description each plugin declared. Installing a

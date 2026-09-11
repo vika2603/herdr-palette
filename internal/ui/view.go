@@ -143,13 +143,10 @@ func (m model) scrollbar(row int) string {
 		return " "
 	}
 
+	// Scaled by how far the window can travel rather than by the list length,
+	// so the thumb reaches the bottom exactly on the last page.
 	size := max(rows*rows/total, 1)
-	start := m.offset * rows / total
-	// The thumb has to reach the bottom on the last page, which integer
-	// division alone does not guarantee.
-	if m.offset+rows >= total {
-		start = rows - size
-	}
+	start := m.offset * (rows - size) / (total - rows)
 	if row >= start && row < start+size {
 		return m.styles.thumb.Render("┃")
 	}
@@ -166,18 +163,27 @@ func (m model) highlight(title string, matched []int, selected bool) string {
 		return base.Render(title)
 	}
 
-	matches := make(map[int]bool, len(matched))
-	for _, at := range matched {
-		matches[at] = true
-	}
-
+	// Runs of matched and unmatched runes are rendered in one call each, which
+	// keeps a screenful of highlighted titles down to a handful of styled
+	// spans. Matched is in ascending order, so one cursor walks it.
+	runes := []rune(title)
 	var out strings.Builder
-	for i, r := range []rune(title) {
+	for start, at := 0, 0; start < len(runes); {
+		inMatch := at < len(matched) && matched[at] == start
+		end := start
+		for end < len(runes) && (at < len(matched) && matched[at] == end) == inMatch {
+			if inMatch {
+				at++
+			}
+			end++
+		}
+
 		style := base
-		if matches[i] {
+		if inMatch {
 			style = hit
 		}
-		out.WriteString(style.Render(string(r)))
+		out.WriteString(style.Render(string(runes[start:end])))
+		start = end
 	}
 	return out.String()
 }

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/vika2603/herdr-client/herdr"
+	"github.com/vika2603/herdr-client/plugin/manifest"
 	"github.com/vika2603/herdr-client/plugin/plugintest"
 
 	"github.com/vika2603/herdr-palette/internal/keys"
@@ -31,7 +32,7 @@ func config() keys.Config {
 		Action: map[string]string{"new_tab": "prefix+c"},
 		Plugin: map[string]string{"herdr.machine-manager.open": "prefix+shift+s"},
 		Custom: []keys.Custom{
-			{Key: "prefix+f", Description: "Open git jump", Type: keys.TypePopup, Command: "jump.sh", Width: "70%", Height: "60%"},
+			{Key: "prefix+f", Description: "Open git jump", Type: keys.TypePopup, Command: "jump.sh", Width: manifest.PopupSize{Percent: 70}, Height: manifest.PopupSize{Percent: 60}},
 			{Key: "prefix+alt+g", Description: "Open Lazygit", Type: keys.TypePane, Command: "lazygit"},
 		},
 	}
@@ -269,23 +270,15 @@ func TestAShellCommandRunsWithoutTheAPI(t *testing.T) {
 	}
 }
 
-func TestParseSize(t *testing.T) {
-	for _, c := range []struct {
-		in      string
-		percent uint8
-		cells   uint16
-		ok      bool
-	}{
-		{in: "70%", percent: 70, ok: true},
-		{in: "80", cells: 80, ok: true},
-		{in: "", ok: false},
-		{in: "0%", ok: false},
-		{in: "120%", ok: false},
-		{in: "wide", ok: false},
-	} {
-		size, ok := parseSize(c.in)
-		if ok != c.ok || size.Percent != c.percent || size.Cells != c.cells {
-			t.Errorf("parseSize(%q) = %+v, %v", c.in, size, ok)
-		}
+func TestPopupSizeIsOnlySentWhenConfigured(t *testing.T) {
+	if _, ok := popupSize(manifest.PopupSize{}); ok {
+		t.Error("an unset size was sent as a size")
+	}
+	size, ok := popupSize(manifest.PopupSize{Percent: 70})
+	if !ok || size.Percent != 70 {
+		t.Errorf("popupSize() = %v, %v, want the configured percentage", size, ok)
+	}
+	if size, ok := popupSize(manifest.PopupSize{Cells: 80}); !ok || size.Cells != 80 {
+		t.Errorf("popupSize() = %v, %v, want the configured cell count", size, ok)
 	}
 }

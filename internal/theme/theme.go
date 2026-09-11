@@ -3,16 +3,14 @@
 // herdr does not publish its theme: the socket API has no method for it, and
 // config.toml carries only the theme's name plus whatever tokens the user
 // overrode. So the colours come from three places, each overriding the one
-// before it: built-in defaults, the tokens in herdr's [theme.custom], and the
-// plugin's own configuration.
+// before it: built-in defaults, the tokens the caller read from herdr's
+// [theme.custom], and the plugin's own configuration.
 package theme
 
 import (
 	"github.com/BurntSushi/toml"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/vika2603/herdr-client/plugin"
-
-	"github.com/vika2603/herdr-palette/internal/keys"
 )
 
 // ConfigFile is the plugin's own configuration, in its config directory.
@@ -47,38 +45,26 @@ func Defaults() Theme {
 	}
 }
 
-// Load resolves the theme. Anything unreadable leaves the defaults in place.
-func Load(env *plugin.Env) Theme {
+// Load resolves the theme. tokens are herdr's [theme.custom] overrides, read
+// with the rest of its configuration. Anything unreadable leaves the defaults
+// in place.
+func Load(env *plugin.Env, tokens map[string]string) Theme {
 	theme := Defaults()
-	applyHerdr(&theme, keys.ConfigPath())
+	applyHerdr(&theme, tokens)
 	if env != nil {
 		applyPlugin(&theme, env.ConfigPath(ConfigFile))
 	}
 	return theme
 }
 
-// herdrConfig is the part of herdr's config.toml this package reads.
-type herdrConfig struct {
-	Theme struct {
-		Custom map[string]string `toml:"custom"`
-	} `toml:"theme"`
-}
-
 // applyHerdr takes the tokens herdr's theme names, where the user overrode
 // them. The names are herdr's own: overlay0 is its faintest line colour,
 // surface0 the shade it lays behind a selected row, and overlay1 a colour that
 // still reads against both.
-func applyHerdr(theme *Theme, path string) {
-	if path == "" {
-		return
-	}
-	var parsed herdrConfig
-	if _, err := toml.DecodeFile(path, &parsed); err != nil {
-		return
-	}
-	set(&theme.Rule, parsed.Theme.Custom["overlay0"])
-	set(&theme.Selected, parsed.Theme.Custom["surface0"])
-	set(&theme.Match, parsed.Theme.Custom["overlay1"])
+func applyHerdr(theme *Theme, tokens map[string]string) {
+	set(&theme.Rule, tokens["overlay0"])
+	set(&theme.Selected, tokens["surface0"])
+	set(&theme.Match, tokens["overlay1"])
 }
 
 // pluginConfig is the plugin's own configuration file.

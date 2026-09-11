@@ -16,7 +16,7 @@ func TestRelayWritesThePendingEntryAndAsksForTheExecAction(t *testing.T) {
 	env := server.Env(plugintest.StateDir(t.TempDir()))
 
 	invocation := &herdr.PluginInvocationContext{WorkspaceID: new("w1")}
-	entry := Entry{ID: "config:prefix+f", Title: "Open git jump", OpensPopup: true}
+	entry := Entry{ID: "config:prefix+f", Title: "Open git jump"}
 	if err := Relay(context.Background(), env.Client(), env, entry, "value", invocation); err != nil {
 		t.Fatalf("Relay() = %v", err)
 	}
@@ -65,23 +65,27 @@ func TestRunPendingRunsTheEntryAndClearsTheFile(t *testing.T) {
 			return nil
 		},
 	}}
-	if err := RunPending(context.Background(), env.Client(), env, entries); err != nil {
+	pending, ok := ReadPending(env)
+	if !ok {
+		t.Fatal("ReadPending() found nothing to run")
+	}
+	if _, err := os.Stat(env.StatePath(PendingFile)); !errors.Is(err, os.ErrNotExist) {
+		t.Error("the pending file is still there, so the command would run again")
+	}
+	if err := RunPending(context.Background(), env.Client(), entries, pending); err != nil {
 		t.Fatalf("RunPending() = %v", err)
 	}
 	if got != "value" {
 		t.Errorf("the entry ran with %q, want the handed-over input", got)
 	}
-	if _, err := os.Stat(env.StatePath(PendingFile)); !errors.Is(err, os.ErrNotExist) {
-		t.Error("the pending file is still there, so the command would run again")
-	}
 }
 
-func TestRunPendingWithNothingPending(t *testing.T) {
+func TestReadPendingWithNothingPending(t *testing.T) {
 	server := plugintest.NewServer(t)
 	env := server.Env(plugintest.StateDir(t.TempDir()))
 
-	if err := RunPending(context.Background(), env.Client(), env, nil); err != nil {
-		t.Errorf("RunPending() = %v, want an action invoked by hand to be a no-op", err)
+	if _, ok := ReadPending(env); ok {
+		t.Error("ReadPending() reported work although the action was invoked by hand")
 	}
 }
 
@@ -98,7 +102,8 @@ func TestRunPendingReportsAFailure(t *testing.T) {
 		Title: "Open git jump",
 		Run:   func(context.Context, Exec) error { return errors.New("ui_busy") },
 	}}
-	if err := RunPending(context.Background(), env.Client(), env, entries); err == nil {
+	pending, _ := ReadPending(env)
+	if err := RunPending(context.Background(), env.Client(), entries, pending); err == nil {
 		t.Fatal("RunPending() reported no error although the entry failed")
 	}
 	if len(server.Calls()) == 0 || server.Calls()[0].Method != herdr.MethodNotificationShow {
@@ -106,21 +111,21 @@ func TestRunPendingReportsAFailure(t *testing.T) {
 	}
 }
 
-func TestPluginActionsAndPopupCommandsAreRelayed(t *testing.T) {
+// A plugin action's refusal happens in the plugin's own process, so there is
+// nothing for the palette to try; everything else is tried first and relayed
+// only when herdr answers ui_busy.
+func TestOnlyPluginActionsAreRelayedWithoutTrying(t *testing.T) {
 	server := plugintest.NewServer(t).
 		Reply(herdr.MethodPluginActionList, actionList())
 	entries := load(t, server)
 
 	action, _ := find(entries, "plugin:herdr.machine-manager/open")
-	if !action.OpensPopup {
-		t.Error("a plugin action is not relayed, so one that opens a popup would be refused")
+	if !action.AlwaysRelay {
+		t.Error("a plugin action is not handed over, so one that opens a popup would be refused")
 	}
-	popup, _ := find(entries, "config:prefix+f")
-	if !popup.OpensPopup {
-		t.Error("a configured popup command is not relayed")
-	}
-	pane, _ := find(entries, "config:prefix+alt+g")
-	if pane.OpensPopup {
-		t.Error("a configured pane command is relayed, which costs a round trip for nothing")
+	for _, id := range []string{"config:prefix+f", "config:prefix+alt+g", "herdr:tab.new"} {
+		if entry, ok := find(entries, id); ok && entry.AlwaysRelay {
+			t.Errorf("%s is handed over without trying, which costs a round trip for nothing", id)
+		}
 	}
 }

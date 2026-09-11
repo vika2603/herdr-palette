@@ -2,7 +2,6 @@ package palette
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -59,17 +58,21 @@ func Relay(ctx context.Context, client *herdr.Client, env *plugin.Env, entry Ent
 	return err
 }
 
-// RunPending runs what Relay wrote down, after waiting for the popup to close.
-// Nothing pending is the normal outcome of an action invoked by hand.
-func RunPending(ctx context.Context, client *herdr.Client, env *plugin.Env, entries []Entry) error {
+// ReadPending returns what Relay wrote down and clears it. Nothing pending is
+// the normal outcome of the exec action being invoked by hand, and the caller
+// can skip assembling the command list for it.
+func ReadPending(env *plugin.Env) (Pending, bool) {
 	var pending Pending
-	// A missing file reads as an empty entry: the action was invoked by hand
-	// rather than handed over.
+	// A missing file reads as an empty entry.
 	if err := env.ReadStateJSON(PendingFile, &pending); err != nil || pending.EntryID == "" {
-		return nil
+		return Pending{}, false
 	}
 	_ = os.Remove(env.StatePath(PendingFile))
+	return pending, true
+}
 
+// RunPending runs the handed-over entry, after waiting for the popup to close.
+func RunPending(ctx context.Context, client *herdr.Client, entries []Entry, pending Pending) error {
 	waitForExit(ctx, pending.PID, waitForPopup)
 
 	for _, entry := range entries {
@@ -111,5 +114,4 @@ func report(ctx context.Context, client *herdr.Client, title string, failure err
 		Title: title + " failed",
 		Body:  &body,
 	})
-	_ = errors.Unwrap(failure)
 }

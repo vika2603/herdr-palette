@@ -17,7 +17,6 @@ type ranMsg struct{ err error }
 
 type model struct {
 	ctx        context.Context
-	client     *herdr.Client
 	env        *plugin.Env
 	invocation *herdr.PluginInvocationContext
 
@@ -45,7 +44,6 @@ type model struct {
 
 func newModel(
 	ctx context.Context,
-	client *herdr.Client,
 	env *plugin.Env,
 	invocation *herdr.PluginInvocationContext,
 	entries []palette.Entry,
@@ -62,7 +60,6 @@ func newModel(
 
 	m := model{
 		ctx:        ctx,
-		client:     client,
 		env:        env,
 		invocation: invocation,
 		entries:    entries,
@@ -222,17 +219,29 @@ func (m model) run(entry palette.Entry, value string) tea.Cmd {
 	}
 }
 
-// execute runs the entry, or hands it over when herdr would refuse it while
-// the popup is up.
+// execute runs the entry, or hands it over to run outside the popup.
+//
+// herdr allows one popup at a time and answers the second with ui_busy, which
+// is the signal to hand over: a command that wants a popup cannot run while
+// the palette's own is up.
 func (m model) execute(entry palette.Entry, value string) error {
-	if entry.OpensPopup {
-		return palette.Relay(m.ctx, m.client, m.env, entry, value, m.invocation)
+	client := m.env.Client()
+	relay := func() error {
+		return palette.Relay(m.ctx, client, m.env, entry, value, m.invocation)
 	}
-	return entry.Run(m.ctx, palette.Exec{
-		Client: m.client,
+	if entry.AlwaysRelay {
+		return relay()
+	}
+
+	err := entry.Run(m.ctx, palette.Exec{
+		Client: client,
 		Ctx:    m.invocation,
 		Input:  value,
 	})
+	if herdr.IsCode(err, herdr.ErrCodeUIBusy) {
+		return relay()
+	}
+	return err
 }
 
 func (m *model) rank() {

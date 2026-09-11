@@ -1,6 +1,7 @@
 package palette
 
 import (
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -38,16 +39,30 @@ type Ranked struct {
 	Score   int
 }
 
+// query is what the user typed, prepared once for a whole pass: the words to
+// find, and the same letters read as initials.
+type query struct {
+	words    []string
+	initials []rune
+}
+
+func newQuery(text string) query {
+	words := strings.Fields(strings.ToLower(text))
+	return query{words: words, initials: []rune(strings.Join(words, ""))}
+}
+
+func (q query) empty() bool { return len(q.words) == 0 }
+
 // Rank filters entries against the query and orders them, most relevant
 // first. recent holds entry ids, most recently run first. An empty query
 // keeps every entry and orders it by recency.
-func Rank(entries []Entry, query string, recent []string) []Ranked {
+func Rank(entries []Entry, text string, recent []string) []Ranked {
 	order := recentOrder(recent)
-	query = strings.TrimSpace(query)
+	q := newQuery(text)
 
 	ranked := make([]Ranked, 0, len(entries))
 	for _, entry := range entries {
-		r, ok := rankOne(entry, query)
+		r, ok := rankOne(entry, q)
 		if !ok {
 			continue
 		}
@@ -69,17 +84,20 @@ func Rank(entries []Entry, query string, recent []string) []Ranked {
 	return ranked
 }
 
-func rankOne(entry Entry, query string) (Ranked, bool) {
-	if query == "" {
+func rankOne(entry Entry, q query) (Ranked, bool) {
+	if q.empty() {
 		return Ranked{Entry: entry}, true
 	}
-	if score, matched, ok := match(entry.Title, query); ok {
+	if score, matched, ok := match(entry.Title, q); ok {
 		return Ranked{Entry: entry, Matched: matched, Score: score}, true
 	}
-	// The type is not part of the title, but typing it is a natural way to
-	// narrow the list to one kind of command.
+	// The type and the entry's source are not part of the title, but typing
+	// either is a natural way to narrow the list.
 	prefix := entry.Type + " "
-	if score, matched, ok := match(prefix+entry.Title, query); ok {
+	if entry.Search != "" {
+		prefix += entry.Search + " "
+	}
+	if score, matched, ok := match(prefix+entry.Title, q); ok {
 		return Ranked{
 			Entry:   entry,
 			Matched: shift(matched, len([]rune(prefix))),
@@ -89,19 +107,17 @@ func rankOne(entry Entry, query string) (Ranked, bool) {
 	return Ranked{}, false
 }
 
-// match scores query against hay, case-insensitively, and returns the matched
-// rune indexes. Two shapes count, in this order: every query word appearing as
-// a substring, in any order, and the query read as the initials of hay's
-// words. Letters merely scattered through hay are not a match, so "spl" does
-// not reach "Close workspace".
-func match(hay, query string) (int, []int, bool) {
+// match scores the query against hay, case-insensitively, and returns the
+// matched rune indexes. Two shapes count, in this order: every query word
+// appearing as a substring, in any order, and the query read as the initials
+// of hay's words. Letters merely scattered through hay are not a match, so
+// "spl" does not reach "Close workspace".
+func match(hay string, q query) (int, []int, bool) {
 	runes := []rune(strings.ToLower(hay))
-	if words := strings.Fields(strings.ToLower(query)); len(words) > 0 {
-		if score, matched, ok := matchWords(runes, words); ok {
-			return score, matched, true
-		}
+	if score, matched, ok := matchWords(runes, q.words); ok {
+		return score, matched, true
 	}
-	return matchInitials(runes, []rune(strings.ToLower(strings.Join(strings.Fields(query), ""))))
+	return matchInitials(runes, q.initials)
 }
 
 // matchWords requires every word to appear in hay. A word is looked up at a
@@ -109,10 +125,11 @@ func match(hay, query string) (int, []int, bool) {
 // word.
 func matchWords(runes []rune, words []string) (int, []int, bool) {
 	score, first := 0, len(runes)
-	matched := make([]int, 0, len(runes))
+	var matched []int
 
 	for _, word := range words {
-		at, atWordStart := findWord(runes, []rune(word))
+		wanted := []rune(word)
+		at, atWordStart := findWord(runes, wanted)
 		if at < 0 {
 			return 0, nil, false
 		}
@@ -121,7 +138,7 @@ func matchWords(runes []rune, words []string) (int, []int, bool) {
 		} else {
 			score += scoreWord
 		}
-		for i := range []rune(word) {
+		for i := range wanted {
 			matched = append(matched, at+i)
 		}
 		first = min(first, at)
@@ -136,7 +153,7 @@ func matchWords(runes []rune, words []string) (int, []int, bool) {
 func findWord(runes, word []rune) (int, bool) {
 	fallback := -1
 	for at := 0; at+len(word) <= len(runes); at++ {
-		if !equalAt(runes, word, at) {
+		if !slices.Equal(runes[at:at+len(word)], word) {
 			continue
 		}
 		if isWordStart(runes, at) {
@@ -149,22 +166,9 @@ func findWord(runes, word []rune) (int, bool) {
 	return fallback, false
 }
 
-func equalAt(runes, word []rune, at int) bool {
-	for i, r := range word {
-		if runes[at+i] != r {
-			return false
-		}
-	}
-	return true
-}
-
 // matchInitials reads the query as the first letters of hay's words, allowing
 // words to be skipped: "sr" still reaches "Split pane right".
 func matchInitials(runes, wanted []rune) (int, []int, bool) {
-	if len(wanted) == 0 {
-		return 0, nil, false
-	}
-
 	starts := wordStarts(runes)
 	matched := make([]int, 0, len(wanted))
 	at := 0

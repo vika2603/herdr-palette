@@ -44,7 +44,7 @@ var (
 
 // Entries returns the catalog. The ids are stable: they key the recent order.
 func Entries() []palette.Entry {
-	entries := []palette.Entry{
+	return []palette.Entry{
 		{
 			ID:      "herdr:workspace.new",
 			Binding: "new_workspace",
@@ -67,7 +67,7 @@ func Entries() []palette.Entry {
 			Type:    groupWorkspace,
 			Input: &palette.Input{
 				Label:   "Workspace name",
-				Initial: func(c *herdr.PluginInvocationContext) string { return deref(c.WorkspaceLabel) },
+				Initial: func(c *herdr.PluginInvocationContext) string { return herdr.Value(c.WorkspaceLabel) },
 			},
 			Run: func(ctx context.Context, e palette.Exec) error {
 				id, err := need(e.Ctx.WorkspaceID, errNoWorkspace)
@@ -147,7 +147,7 @@ func Entries() []palette.Entry {
 			Type:    groupTab,
 			Input: &palette.Input{
 				Label:   "Tab name",
-				Initial: func(c *herdr.PluginInvocationContext) string { return deref(c.TabLabel) },
+				Initial: func(c *herdr.PluginInvocationContext) string { return herdr.Value(c.TabLabel) },
 			},
 			Run: func(ctx context.Context, e palette.Exec) error {
 				id, err := need(e.Ctx.TabID, errNoTab)
@@ -316,7 +316,6 @@ func Entries() []palette.Entry {
 			},
 		},
 	}
-	return entries
 }
 
 // split opens a pane next to the focused one. herdr splits right and down
@@ -357,11 +356,4 @@ func need(value *string, absent error) (string, error) {
 		return "", absent
 	}
 	return *value, nil
-}
-
-func deref(value *string) string {
-	if value == nil {
-		return ""
-	}
-	return *value
 }

@@ -5,10 +5,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strconv"
-	"strings"
 
 	"github.com/vika2603/herdr-client/herdr"
+	"github.com/vika2603/herdr-client/plugin/manifest"
 
 	"github.com/vika2603/herdr-palette/internal/keys"
 )
@@ -34,10 +33,7 @@ func customEntries(own string, commands []keys.Custom) []Entry {
 			Title: customTitle(command),
 			Type:  TypeCustom,
 			Key:   command.Key,
-			// herdr refuses a second popup while the palette is up, so a
-			// popup command is handed over instead of run here.
-			OpensPopup: command.Type == keys.TypePopup,
-			Run:        runCustom(own, command),
+			Run:   runCustom(own, command),
 		})
 	}
 	return entries
@@ -80,10 +76,10 @@ func runCustom(own string, command keys.Custom) func(context.Context, Exec) erro
 		if where != herdr.PluginPanePlacementPopup {
 			params.TargetPaneID = e.Ctx.FocusedPaneID
 		}
-		if size, ok := parseSize(command.Width); ok {
+		if size, ok := popupSize(command.Width); ok {
 			params.Width = &size
 		}
-		if size, ok := parseSize(command.Height); ok {
+		if size, ok := popupSize(command.Height); ok {
 			params.Height = &size
 		}
 
@@ -105,26 +101,6 @@ func placement(commandType string) herdr.PluginPanePlacement {
 	return herdr.PluginPanePlacementZoomed
 }
 
-// parseSize reads the cell count or percentage herdr accepts for a popup.
-func parseSize(size string) (herdr.PopupSize, bool) {
-	size = strings.TrimSpace(size)
-	if size == "" {
-		return herdr.PopupSize{}, false
-	}
-	if percent, ok := strings.CutSuffix(size, "%"); ok {
-		n, err := strconv.Atoi(percent)
-		if err != nil || n < 1 || n > 100 {
-			return herdr.PopupSize{}, false
-		}
-		return herdr.PopupSize{Percent: uint8(n)}, true
-	}
-	n, err := strconv.Atoi(size)
-	if err != nil || n < 1 || n > 65535 {
-		return herdr.PopupSize{}, false
-	}
-	return herdr.PopupSize{Cells: uint16(n)}, true
-}
-
 // Shell is what a configured command line runs under, matching herdr, which
 // hands the string to a shell rather than splitting it itself.
 func Shell() string {
@@ -132,6 +108,16 @@ func Shell() string {
 		return shell
 	}
 	return "/bin/sh"
+}
+
+// popupSize carries a configured size over to the API, reporting whether one
+// was configured at all. The two types hold the same two fields; the manifest
+// package is what decoded the cell count or percentage herdr accepts.
+func popupSize(size manifest.PopupSize) (herdr.PopupSize, bool) {
+	if size == (manifest.PopupSize{}) {
+		return herdr.PopupSize{}, false
+	}
+	return herdr.PopupSize(size), true
 }
 
 // startDetached runs a shell command in its own session, so it outlives the

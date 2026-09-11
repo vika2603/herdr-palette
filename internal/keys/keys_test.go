@@ -54,15 +54,15 @@ func TestUserConfigOverridesAndUnbinds(t *testing.T) {
 func TestCustomCommandsAreCollected(t *testing.T) {
 	cfg := loadTestdata(t)
 
-	if len(cfg.Custom) != 2 {
-		t.Fatalf("collected %d custom commands, want the two that are not plugin actions", len(cfg.Custom))
+	if len(cfg.Custom) != 3 {
+		t.Fatalf("collected %d custom commands, want the three that are not plugin actions", len(cfg.Custom))
 	}
 	first := cfg.Custom[0]
 	if first.Key != "prefix+f" || first.Type != TypePopup || first.Command != "zsh jump.sh" {
 		t.Errorf("first custom command = %+v", first)
 	}
-	if first.Width != "70%" || first.Height != "60%" {
-		t.Errorf("popup size = %q x %q, want the configured size", first.Width, first.Height)
+	if first.Width.Percent != 70 || first.Height.Percent != 60 {
+		t.Errorf("popup size = %v x %v, want the configured percentages", first.Width, first.Height)
 	}
 }
 
@@ -76,5 +76,31 @@ func TestPluginActionBindingsAreKeptApart(t *testing.T) {
 		if custom.Type == TypePluginAction {
 			t.Error("a plugin action was also listed as a custom command, which would show it twice")
 		}
+	}
+}
+
+// herdr accepts a popup size as a cell count as well as a percentage.
+func TestPopupSizeInCells(t *testing.T) {
+	cfg := loadTestdata(t)
+
+	var cells Custom
+	for _, custom := range cfg.Custom {
+		if custom.Key == "prefix+alt+t" {
+			cells = custom
+		}
+	}
+	if cells.Width.Percent != 0 || cells.Width.Cells != 80 {
+		t.Errorf("width = %v, want 80 cells", cells.Width)
+	}
+	if cells.Height.Cells != 24 {
+		t.Errorf("height = %v, want 24 cells", cells.Height)
+	}
+}
+
+func TestThemeTokensAreRead(t *testing.T) {
+	cfg := loadTestdata(t)
+
+	if got := cfg.Theme["overlay0"]; got != "#414868" {
+		t.Errorf("overlay0 = %q, want the token from [theme.custom]", got)
 	}
 }

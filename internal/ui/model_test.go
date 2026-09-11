@@ -347,13 +347,13 @@ func TestTheScrollbarShowsTheWindow(t *testing.T) {
 	m := wheelModel(t)
 
 	view := m.View()
-	if !strings.Contains(view, "█") || !strings.Contains(view, "│") {
+	if !strings.Contains(view, "┃") || !strings.Contains(view, "│") {
 		t.Fatalf("the scrollbar is missing from a list longer than the window:\n%s", view)
 	}
 
 	lines := strings.Split(view, "\n")
 	first := lines[headerRows]
-	if !strings.HasSuffix(first, "█") {
+	if !strings.HasSuffix(first, "┃") {
 		t.Error("the thumb is not at the top while the window is")
 	}
 
@@ -362,7 +362,7 @@ func TestTheScrollbarShowsTheWindow(t *testing.T) {
 	}
 	lines = strings.Split(m.View(), "\n")
 	last := lines[headerRows+m.rows()-1]
-	if !strings.HasSuffix(last, "█") {
+	if !strings.HasSuffix(last, "┃") {
 		t.Errorf("the thumb does not reach the bottom on the last page:\n%s", m.View())
 	}
 }
@@ -371,7 +371,7 @@ func TestNoScrollbarWhenEverythingFits(t *testing.T) {
 	var ran []string
 	view := testModel(t, nil, &ran).View()
 
-	if strings.Contains(view, "█") || strings.Contains(view, "│") {
+	if strings.Contains(view, "┃") || strings.Contains(view, "│") {
 		t.Errorf("a list that fits drew a scrollbar:\n%s", view)
 	}
 }

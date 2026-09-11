@@ -88,15 +88,16 @@ func (m model) row(index int) string {
 
 	detail := ranked.Entry.Detail
 	// The title gets whatever the marker, the detail column, a gap and the
-	// scrollbar leave.
-	width := m.cols() - lipgloss.Width(detail) - 5
+	// scrollbar with its margin leave.
+	width := m.cols() - lipgloss.Width(detail) - 6
 	title := highlight(truncate(ranked.Entry.Title, width), ranked.Matched, selected)
 
-	gap := m.cols() - 3 - lipgloss.Width(title) - lipgloss.Width(detail)
+	gap := m.cols() - 4 - lipgloss.Width(title) - lipgloss.Width(detail)
 	if gap < 1 {
 		gap = 1
 	}
-	return marker + title + strings.Repeat(" ", gap) + dimStyle.Render(detail) + m.scrollbar(index-m.offset)
+	// A blank column keeps the scrollbar off the text.
+	return marker + title + strings.Repeat(" ", gap) + dimStyle.Render(detail) + " " + m.scrollbar(index-m.offset)
 }
 
 // scrollbar draws where the visible window sits in the whole list, one column
@@ -116,7 +117,7 @@ func (m model) scrollbar(row int) string {
 		start = rows - size
 	}
 	if row >= start && row < start+size {
-		return thumbStyle.Render("█")
+		return thumbStyle.Render("┃")
 	}
 	return dimStyle.Render("│")
 }

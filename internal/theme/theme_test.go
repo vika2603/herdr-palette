@@ -3,6 +3,7 @@ package theme
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
@@ -74,7 +75,22 @@ func TestThePluginConfigurationWins(t *testing.T) {
 func TestNoConfigurationAtAll(t *testing.T) {
 	env := plugintest.Env(plugintest.ConfigDir(t.TempDir()))
 
-	if Load(env, nil) != Defaults() {
+	if !reflect.DeepEqual(Load(env, nil), Defaults()) {
 		t.Error("Load() changed a colour although nothing configures one")
+	}
+}
+
+func TestAStatusColourCanBeReplaced(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, ConfigFile, "[status]\nworking = \"#fab387\"\n")
+	env := plugintest.Env(plugintest.ConfigDir(dir))
+
+	colours := Load(env, nil)
+
+	if colours.Status["working"] != lipgloss.Color("#fab387") {
+		t.Errorf("working = %v, want the configured colour", colours.Status["working"])
+	}
+	if colours.Status["blocked"] != Defaults().Status["blocked"] {
+		t.Error("a status nothing configures lost its colour")
 	}
 }

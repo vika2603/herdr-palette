@@ -69,8 +69,11 @@ adds its actions to the palette with no configuration, and the palette forwards
 the invocation context so an action sees the same focused pane it would have
 seen from a key. Typing the plugin's id finds them as well.
 
-**`workspace:`, `tab:` and `pane:`** are what is open in the session, and
-running one goes there. They all read "go to …", so typing `go to` or `goto`
+**`workspace:`, `tab:`, `pane:` and `agent:`** are what is open in the session,
+and running one goes there. A pane running an agent shows what it is doing —
+`claude · working`, `codex · blocked` — in a colour per status, kept current
+while the popup is open, so the palette doubles as a way to reach the agent
+that needs you. They all read "go to …", so typing `go to` or `goto`
 narrows the list to them. Panes also carry the workspace they sit in and their
 working directory, so typing a project name finds the panes inside it. Where
 the palette was opened from is left out.
@@ -136,6 +139,12 @@ match = "#7aa2f7"               # the query's letters inside a title
 meta = "8"                      # the key column and the namespace
 scrollbar = "8"                 # the scrollbar's thumb, on a track drawn in rule
 failure = "1"                   # the error line
+
+[status]                        # what an agent is doing, by herdr's names
+working = "3"
+blocked = "1"
+done = "2"
+idle = "8"
 ```
 
 ## Development

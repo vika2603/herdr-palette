@@ -75,11 +75,11 @@ func config() keys.Config {
 func load(t *testing.T, server *plugintest.Server) []Entry {
 	t.Helper()
 	catalog := []Entry{{ID: "herdr:tab.new", Title: "New tab", Type: "herdr", Binding: "new_tab"}}
-	entries, err := Load(context.Background(), server.Env().Client(), own, catalog, config())
+	list, err := Load(context.Background(), server.Env().Client(), own, catalog, config())
 	if err != nil {
 		t.Fatalf("Load() = %v", err)
 	}
-	return entries
+	return list.All()
 }
 
 func find(entries []Entry, id string) (Entry, bool) {
@@ -144,12 +144,12 @@ func TestLoadKeepsTheCatalogWhenTheSessionIsUnreachable(t *testing.T) {
 	server := plugintest.NewServer(t)
 
 	catalog := []Entry{{ID: "herdr:tab.new", Title: "New tab", Type: "herdr"}}
-	entries, err := Load(context.Background(), server.Env().Client(), own, catalog, keys.Config{})
+	list, err := Load(context.Background(), server.Env().Client(), own, catalog, keys.Config{})
 	if err == nil {
 		t.Fatal("Load() reported no error although the action list was unavailable")
 	}
-	if len(entries) != 1 {
-		t.Errorf("Load() returned %d entries, want the catalog to survive", len(entries))
+	if len(list.All()) != 1 {
+		t.Errorf("Load() returned %d entries, want the catalog to survive", len(list.All()))
 	}
 }
 
@@ -161,11 +161,11 @@ func TestPluginEntryInvokesTheAction(t *testing.T) {
 		Reply(herdr.MethodPluginActionInvoke, herdr.PluginActionInvokedResponse{})
 
 	client := server.Env().Client()
-	entries, err := Load(context.Background(), client, own, nil, config())
+	list, err := Load(context.Background(), client, own, nil, config())
 	if err != nil {
 		t.Fatalf("Load() = %v", err)
 	}
-	entry, ok := find(entries, "plugin:herdr.machine-manager/open")
+	entry, ok := find(list.All(), "plugin:herdr.machine-manager/open")
 	if !ok {
 		t.Fatal("Load() dropped the machine manager action")
 	}
@@ -234,11 +234,11 @@ func TestAPopupCommandOpensAPluginPane(t *testing.T) {
 		Reply(herdr.MethodPluginPaneOpen, herdr.OKResponse{})
 
 	client := server.Env().Client()
-	entries, err := Load(context.Background(), client, own, nil, config())
+	list, err := Load(context.Background(), client, own, nil, config())
 	if err != nil {
 		t.Fatalf("Load() = %v", err)
 	}
-	entry, _ := find(entries, "config:prefix+f")
+	entry, _ := find(list.All(), "config:prefix+f")
 
 	invocation := &herdr.PluginInvocationContext{WorkspaceID: new("w1")}
 	if err := entry.Run(context.Background(), Exec{Client: client, Ctx: invocation}); err != nil {
@@ -274,8 +274,8 @@ func TestAPaneCommandOpensAZoomedPane(t *testing.T) {
 		Reply(herdr.MethodPluginPaneOpen, herdr.OKResponse{})
 
 	client := server.Env().Client()
-	entries, _ := Load(context.Background(), client, own, nil, config())
-	entry, _ := find(entries, "config:prefix+alt+g")
+	list, _ := Load(context.Background(), client, own, nil, config())
+	entry, _ := find(list.All(), "config:prefix+alt+g")
 
 	invocation := &herdr.PluginInvocationContext{FocusedPaneID: new("w1:p1")}
 	if err := entry.Run(context.Background(), Exec{Client: client, Ctx: invocation}); err != nil {
@@ -307,8 +307,8 @@ func TestAShellCommandRunsWithoutTheAPI(t *testing.T) {
 	client := server.Env().Client()
 	cfg := config()
 	cfg.Custom = []keys.Custom{{Key: "prefix+t", Description: "Touch a file", Type: keys.TypeShell, Command: "true"}}
-	entries, _ := Load(context.Background(), client, own, nil, cfg)
-	entry, ok := find(entries, "config:prefix+t")
+	list, _ := Load(context.Background(), client, own, nil, cfg)
+	entry, ok := find(list.All(), "config:prefix+t")
 	if !ok {
 		t.Fatal("the shell command is not in the list")
 	}
@@ -356,8 +356,11 @@ func TestOpenPanesAndWorkspacesAreListedToGoTo(t *testing.T) {
 	if !strings.Contains(pane.Title, "Zoxide jump") {
 		t.Errorf("pane title = %q, want what the program in it reports", pane.Title)
 	}
-	if !strings.Contains(pane.Search, "palette") || !strings.Contains(pane.Search, "/Users/vika/Workspace") {
-		t.Errorf("pane search text = %q, want the workspace it sits in and its directory", pane.Search)
+	if pane.Search != "/Users/vika/Workspace" {
+		t.Errorf("pane search text = %q, want the directory it sits in", pane.Search)
+	}
+	if pane.Detail != "palette" {
+		t.Errorf("pane detail = %q, want the workspace it sits in", pane.Detail)
 	}
 	if _, ok := find(entries, "tab:w2:t1"); !ok {
 		t.Error("the open tab is not in the list")
@@ -409,8 +412,8 @@ func TestAPluginActionFallsBackToItsID(t *testing.T) {
 		Reply(herdr.MethodPluginActionList, actionList()).
 		Reply(herdr.MethodSessionSnapshot, snapshot())
 
-	entries, _ := Load(context.Background(), server.Env().Client(), own, nil, keys.Config{})
-	entry, ok := find(entries, "plugin:herdr.machine-manager/open")
+	list, _ := Load(context.Background(), server.Env().Client(), own, nil, keys.Config{})
+	entry, ok := find(list.All(), "plugin:herdr.machine-manager/open")
 	if !ok {
 		t.Fatal("Load() dropped the machine manager action when the plugin list was unavailable")
 	}

@@ -48,7 +48,7 @@ func testModel(t *testing.T, recent []string, ran *[]string) model {
 		context.Background(),
 		testEnv(t),
 		&herdr.PluginInvocationContext{WorkspaceID: new("w1")},
-		testEntries(ran),
+		palette.List{Commands: testEntries(ran)},
 		recent,
 		theme.Defaults(),
 	)
@@ -64,6 +64,19 @@ func send(t *testing.T, m model, msg tea.Msg) (model, tea.Cmd) {
 		t.Fatalf("Update() returned %T, want model", next)
 	}
 	return updated, cmd
+}
+
+// saw reports whether the server was asked for this method. The popup also
+// opens a subscription to follow the session, so the call under test is not
+// the only one.
+func saw(t *testing.T, server *plugintest.Server, method string) bool {
+	t.Helper()
+	for _, call := range server.Calls() {
+		if call.Method == method {
+			return true
+		}
+	}
+	return false
 }
 
 func typeQuery(t *testing.T, m model, text string) model {
@@ -136,7 +149,7 @@ func TestAnEntryThatNeedsAValueIsHandedOverToTheField(t *testing.T) {
 		context.Background(),
 		env,
 		&herdr.PluginInvocationContext{},
-		testEntries(&ran),
+		palette.List{Commands: testEntries(&ran)},
 		nil,
 		theme.Defaults(),
 	)
@@ -161,8 +174,8 @@ func TestAnEntryThatNeedsAValueIsHandedOverToTheField(t *testing.T) {
 	if pending.Prompt == nil || pending.Prompt.Initial != "current" {
 		t.Errorf("pending = %+v, want the field to start from the current label", pending)
 	}
-	if server.Calls()[0].Method != herdr.MethodPluginActionInvoke {
-		t.Errorf("called %q, want the entry to be handed over", server.Calls()[0].Method)
+	if !saw(t, server, herdr.MethodPluginActionInvoke) {
+		t.Error("the entry was not handed over")
 	}
 }
 
@@ -266,7 +279,7 @@ func wheelModel(t *testing.T) model {
 			Run:   func(context.Context, palette.Exec) error { return nil },
 		})
 	}
-	m := newModel(context.Background(), testEnv(t), &herdr.PluginInvocationContext{}, entries, nil, theme.Defaults())
+	m := newModel(context.Background(), testEnv(t), &herdr.PluginInvocationContext{}, palette.List{Commands: entries}, nil, theme.Defaults())
 	m.width, m.height = 40, 8
 	return m
 }
@@ -375,7 +388,7 @@ func TestTheKeyColumnShowsWhatEachCommandIsBoundTo(t *testing.T) {
 		{ID: "a", Title: "New tab", Type: "herdr", Key: "prefix+c"},
 		{ID: "b", Title: "Split pane right", Type: "herdr"},
 	}
-	m := newModel(context.Background(), testEnv(t), &herdr.PluginInvocationContext{}, entries, nil, theme.Defaults())
+	m := newModel(context.Background(), testEnv(t), &herdr.PluginInvocationContext{}, palette.List{Commands: entries}, nil, theme.Defaults())
 	m.width, m.height = 60, 12
 
 	view := m.View()
@@ -412,7 +425,7 @@ func TestAPluginActionIsRelayedWithoutRunning(t *testing.T) {
 		Reply(herdr.MethodPluginActionInvoke, herdr.PluginActionInvokedResponse{})
 	env := server.Env(plugintest.StateDir(t.TempDir()))
 
-	m := newModel(context.Background(), env, &herdr.PluginInvocationContext{}, entries, nil, theme.Defaults())
+	m := newModel(context.Background(), env, &herdr.PluginInvocationContext{}, palette.List{Commands: entries}, nil, theme.Defaults())
 	m.width, m.height = 60, 12
 
 	_, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
@@ -425,8 +438,8 @@ func TestAPluginActionIsRelayedWithoutRunning(t *testing.T) {
 	if len(ran) != 0 {
 		t.Error("the entry ran inside the popup, where herdr would refuse its own popup")
 	}
-	if server.Calls()[0].Method != herdr.MethodPluginActionInvoke {
-		t.Errorf("called %q, want the entry to be handed over", server.Calls()[0].Method)
+	if !saw(t, server, herdr.MethodPluginActionInvoke) {
+		t.Error("the entry was not handed over")
 	}
 }
 
@@ -445,15 +458,15 @@ func TestAUIBusyRefusalIsRelayed(t *testing.T) {
 		Reply(herdr.MethodPluginActionInvoke, herdr.PluginActionInvokedResponse{})
 	env := server.Env(plugintest.StateDir(t.TempDir()))
 
-	m := newModel(context.Background(), env, &herdr.PluginInvocationContext{}, entries, nil, theme.Defaults())
+	m := newModel(context.Background(), env, &herdr.PluginInvocationContext{}, palette.List{Commands: entries}, nil, theme.Defaults())
 	m.width, m.height = 60, 12
 
 	_, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
 	if msg, ok := cmd().(ranMsg); !ok || msg.err != nil {
 		t.Fatalf("a refused command reported %v instead of being handed over", cmd())
 	}
-	if server.Calls()[0].Method != herdr.MethodPluginActionInvoke {
-		t.Errorf("called %q, want the command to be handed over", server.Calls()[0].Method)
+	if !saw(t, server, herdr.MethodPluginActionInvoke) {
+		t.Error("the command was not handed over")
 	}
 }
 
@@ -470,7 +483,7 @@ func TestARowMatchedOnTextItDoesNotShowShowsThatText(t *testing.T) {
 		context.Background(),
 		testEnv(t),
 		&herdr.PluginInvocationContext{},
-		entries,
+		palette.List{Commands: entries},
 		nil,
 		theme.Defaults(),
 	)
@@ -480,5 +493,44 @@ func TestARowMatchedOnTextItDoesNotShowShowsThatText(t *testing.T) {
 
 	if !strings.Contains(view, "herdr.machine") {
 		t.Errorf("the row does not say what the query matched:\n%s", view)
+	}
+}
+
+// An agent's status changes under the popup, so the rows that show it are
+// rebuilt. The selection belongs to the user and stays where it was.
+func TestRebuildingWhatIsOpenKeepsTheSelection(t *testing.T) {
+	var ran []string
+	m := newModel(
+		context.Background(),
+		testEnv(t),
+		&herdr.PluginInvocationContext{},
+		palette.List{
+			Commands: testEntries(&ran),
+			Open: []palette.Entry{
+				{ID: "pane:w1:p1", Title: "go to shell", Type: "Agent", Detail: "claude · idle"},
+			},
+		},
+		nil,
+		theme.Defaults(),
+	)
+	m.width, m.height = 72, 12
+
+	m = typeQuery(t, m, "go to")
+	if len(m.ranked) != 1 {
+		t.Fatalf("the query matched %d rows, want the agent", len(m.ranked))
+	}
+	m.setOpen([]palette.Entry{
+		{ID: "pane:w1:p2", Title: "go to nvim", Type: "Pane", Detail: "palette"},
+		{ID: "pane:w1:p1", Title: "go to shell", Type: "Agent", Detail: "claude · working"},
+	})
+
+	if len(m.ranked) != 2 {
+		t.Fatalf("the rebuilt list has %d rows, want both panes", len(m.ranked))
+	}
+	if got := m.ranked[m.cursor].Entry.ID; got != "pane:w1:p1" {
+		t.Errorf("the selection moved to %q, want the row it was on", got)
+	}
+	if got := m.ranked[m.cursor].Detail; got != "claude · working" {
+		t.Errorf("detail = %q, want the status the agent has now", got)
 	}
 }

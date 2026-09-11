@@ -24,6 +24,11 @@ type styles struct {
 	selected      lipgloss.Style
 	selectedMeta  lipgloss.Style
 	selectedMatch lipgloss.Style
+
+	// status is what an agent is doing, by herdr's name for it, and selected
+	// the same over the band behind the selected row.
+	status         map[string]lipgloss.Style
+	selectedStatus map[string]lipgloss.Style
 }
 
 func newStyles(colours theme.Theme) styles {
@@ -39,7 +44,31 @@ func newStyles(colours theme.Theme) styles {
 		selected:      selected.Bold(true),
 		selectedMeta:  selected.Foreground(colours.Meta),
 		selectedMatch: selected.Foreground(colours.Match).Bold(true),
+
+		status:         statusStyles(colours, lipgloss.NewStyle()),
+		selectedStatus: statusStyles(colours, selected),
 	}
+}
+
+func statusStyles(colours theme.Theme, base lipgloss.Style) map[string]lipgloss.Style {
+	styles := make(map[string]lipgloss.Style, len(colours.Status))
+	for status, colour := range colours.Status {
+		styles[status] = base.Foreground(colour)
+	}
+	return styles
+}
+
+// detailStyle is the colour of the text beside a row: what an agent is doing
+// has one of its own, anything else is as dim as the key column.
+func (s styles) detailStyle(status string, selected bool) lipgloss.Style {
+	styles, fallback := s.status, s.meta
+	if selected {
+		styles, fallback = s.selectedStatus, s.selectedMeta
+	}
+	if style, ok := styles[status]; ok {
+		return style
+	}
+	return fallback
 }
 
 // Sizes used until the first resize message arrives.
@@ -139,17 +168,22 @@ func (m model) row(index int) string {
 	return row + " " + m.scrollbar(index-m.offset)
 }
 
-// detail draws the text a row matched on when the row itself does not show it,
-// such as the plugin an action came from or the workspace a pane sits in. It
-// is what keeps a match visible: the row it is next to has nothing highlighted.
+// detail draws what a row carries beside its title: what an agent is doing,
+// the workspace a pane sits in, or the text the query matched when the row
+// itself does not show it, which is what keeps that match visible.
 func (m model) detail(ranked palette.Ranked, room int, selected bool) (string, int) {
 	room = min(room, m.cols()/detailShare)
-	if len(ranked.DetailMatched) == 0 || room < minDetail {
+	if ranked.Detail == "" || room < minDetail {
 		return "", 0
 	}
 
 	text := truncate(ranked.Detail, room)
-	rendered := m.highlight(text, len([]rune(text)), ranked.DetailMatched, selected)
+	base := m.styles.detailStyle(ranked.Status, selected)
+	hit := m.styles.match
+	if selected {
+		hit = m.styles.selectedMatch
+	}
+	rendered := paint(text, ranked.DetailMatched, base, hit)
 
 	gap := m.styles.title
 	if selected {
@@ -177,58 +211,65 @@ func (m model) scrollbar(row int) string {
 	return m.styles.rule.Render("│")
 }
 
-// span is how one rune of a row is drawn.
-type span int
-
-const (
-	spanNamespace span = iota
-	spanTitle
-	spanMatch
-)
-
 // highlight draws a row: the namespace in front of the title dimmer than the
 // title itself, with the runes the query matched picked out in both. namespace
 // is how many runes the namespace takes, and matched indexes the whole row.
 func (m model) highlight(text string, namespace int, matched []int, selected bool) string {
-	styles := map[span]lipgloss.Style{
-		spanNamespace: m.styles.meta,
-		spanTitle:     m.styles.title,
-		spanMatch:     m.styles.match,
-	}
+	base, hit := m.styles.title, m.styles.match
+	dim := m.styles.meta
 	if selected {
-		styles[spanNamespace] = m.styles.selectedMeta
-		styles[spanTitle] = m.styles.selected
-		styles[spanMatch] = m.styles.selectedMatch
+		base, hit, dim = m.styles.selected, m.styles.selectedMatch, m.styles.selectedMeta
 	}
 
 	runes := []rune(text)
+	at := min(namespace, len(runes))
+	return paint(string(runes[:at]), matched, dim, hit) +
+		paint(string(runes[at:]), shift(matched, at), base, hit)
+}
+
+// paint draws text with the runes at the matched positions picked out, in runs
+// of one style each, which keeps a screenful of rows down to a handful of
+// styled spans.
+func paint(text string, matched []int, base, hit lipgloss.Style) string {
+	runes := []rune(text)
+	if len(runes) == 0 {
+		return ""
+	}
+
 	at := 0
-	spanAt := func(index int) span {
+	isMatch := func(index int) bool {
 		for at < len(matched) && matched[at] < index {
 			at++
 		}
-		if at < len(matched) && matched[at] == index {
-			return spanMatch
-		}
-		if index < namespace {
-			return spanNamespace
-		}
-		return spanTitle
+		return at < len(matched) && matched[at] == index
 	}
 
-	// Runs of equally drawn runes are rendered in one call each, which keeps a
-	// screenful of rows down to a handful of styled spans.
 	var out strings.Builder
 	for start := 0; start < len(runes); {
-		current := spanAt(start)
+		current := isMatch(start)
 		end := start + 1
-		for end < len(runes) && spanAt(end) == current {
+		for end < len(runes) && isMatch(end) == current {
 			end++
 		}
-		out.WriteString(styles[current].Render(string(runes[start:end])))
+		style := base
+		if current {
+			style = hit
+		}
+		out.WriteString(style.Render(string(runes[start:end])))
 		start = end
 	}
 	return out.String()
+}
+
+// shift moves the positions onto a slice of the row that starts at by.
+func shift(matched []int, by int) []int {
+	out := make([]int, 0, len(matched))
+	for _, at := range matched {
+		if at -= by; at >= 0 {
+			out = append(out, at)
+		}
+	}
+	return out
 }
 
 func (m model) rule() string {

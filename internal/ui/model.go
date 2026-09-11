@@ -15,12 +15,27 @@ import (
 // ranMsg carries the outcome of the command the user chose.
 type ranMsg struct{ err error }
 
+// changedMsg says herdr reported a change to what is open, and openMsg carries
+// the rebuilt rows. A failed rebuild keeps the rows the popup already has: a
+// stale row goes to a pane that is gone, which herdr answers with an error the
+// popup shows.
+type (
+	changedMsg struct{}
+	openMsg    struct{ open []palette.Entry }
+)
+
 type model struct {
 	ctx        context.Context
 	env        *plugin.Env
 	invocation *herdr.PluginInvocationContext
 
-	entries []palette.Entry
+	// commands is fixed while the popup is up, open is what the session holds,
+	// and entries is the two of them as the list is ranked.
+	commands []palette.Entry
+	open     []palette.Entry
+	entries  []palette.Entry
+	// changes carries a signal per batch of herdr events, at most one waiting.
+	changes <-chan struct{}
 	recent  []string
 
 	query  textinput.Model
@@ -40,7 +55,7 @@ func newModel(
 	ctx context.Context,
 	env *plugin.Env,
 	invocation *herdr.PluginInvocationContext,
-	entries []palette.Entry,
+	list palette.List,
 	recent []string,
 	colours theme.Theme,
 ) model {
@@ -53,16 +68,19 @@ func newModel(
 		ctx:        ctx,
 		env:        env,
 		invocation: invocation,
-		entries:    entries,
+		commands:   list.Commands,
+		open:       list.Open,
 		recent:     recent,
 		query:      query,
 		styles:     newStyles(colours),
 	}
+	m.changes = watch(ctx, env)
+	m.collect()
 	m.rank()
 	return m
 }
 
-func (m model) Init() tea.Cmd { return textinput.Blink }
+func (m model) Init() tea.Cmd { return tea.Batch(textinput.Blink, listen(m.changes)) }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -78,6 +96,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// A command that failed leaves the popup open with the reason, so the
 		// keystroke is not lost silently.
 		m.failure = msg.err.Error()
+		return m, nil
+
+	case changedMsg:
+		return m, tea.Batch(m.reload(), listen(m.changes))
+
+	case openMsg:
+		m.setOpen(msg.open)
 		return m, nil
 
 	case tea.KeyMsg:
@@ -195,6 +220,43 @@ func (m model) execute(entry palette.Entry) error {
 		return relay()
 	}
 	return err
+}
+
+// reload rebuilds the rows that go to what is open. It runs off the update
+// loop, so a slow socket does not hold up a keystroke.
+func (m model) reload() tea.Cmd {
+	return func() tea.Msg {
+		open, err := palette.OpenEntries(m.ctx, m.env.Client())
+		if err != nil {
+			return nil
+		}
+		return openMsg{open: open}
+	}
+}
+
+// setOpen takes the rebuilt rows without moving the selection off the entry it
+// is on, which would otherwise jump under the user as an agent changes state.
+func (m *model) setOpen(open []palette.Entry) {
+	var selected string
+	if m.cursor < len(m.ranked) {
+		selected = m.ranked[m.cursor].Entry.ID
+	}
+
+	m.open = open
+	m.collect()
+	m.rank()
+
+	for i, ranked := range m.ranked {
+		if ranked.Entry.ID == selected {
+			m.cursor = i
+			break
+		}
+	}
+	m.offset = scroll(m.offset, m.cursor, m.rows())
+}
+
+func (m *model) collect() {
+	m.entries = append(append(make([]palette.Entry, 0, len(m.commands)+len(m.open)), m.commands...), m.open...)
 }
 
 func (m *model) rank() {

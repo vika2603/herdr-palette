@@ -20,14 +20,17 @@ const ConfigFile = "config.toml"
 type Theme struct {
 	// Rule is the lines above and below the list and the scrollbar's track,
 	// Selected the band behind the selected row, Match the query's letters
-	// inside a title, Meta the key and type columns, Scrollbar the thumb, and
-	// Failure the error line.
+	// inside a title, Meta the key column and the namespace, Scrollbar the
+	// thumb, and Failure the error line.
 	Rule      lipgloss.TerminalColor
 	Selected  lipgloss.TerminalColor
 	Match     lipgloss.TerminalColor
 	Meta      lipgloss.TerminalColor
 	Scrollbar lipgloss.TerminalColor
 	Failure   lipgloss.TerminalColor
+	// Status is the colour of what an agent is doing, keyed by the status
+	// herdr reports. A status with no colour of its own is drawn in Meta.
+	Status map[string]lipgloss.TerminalColor
 }
 
 // Defaults are used for every colour nothing else supplies. The two shades are
@@ -42,6 +45,12 @@ func Defaults() Theme {
 		Meta:      lipgloss.Color("8"),
 		Scrollbar: lipgloss.Color("8"),
 		Failure:   lipgloss.Color("1"),
+		Status: map[string]lipgloss.TerminalColor{
+			"working": lipgloss.Color("3"),
+			"blocked": lipgloss.Color("1"),
+			"done":    lipgloss.Color("2"),
+			"idle":    lipgloss.Color("8"),
+		},
 	}
 }
 
@@ -75,6 +84,8 @@ type pluginConfig struct {
 	Meta               string `toml:"meta"`
 	Scrollbar          string `toml:"scrollbar"`
 	Failure            string `toml:"failure"`
+	// Status is what an agent is doing, keyed by herdr's status names.
+	Status map[string]string `toml:"status"`
 }
 
 func applyPlugin(theme *Theme, path string) {
@@ -91,6 +102,12 @@ func applyPlugin(theme *Theme, path string) {
 	set(&theme.Meta, parsed.Meta)
 	set(&theme.Scrollbar, parsed.Scrollbar)
 	set(&theme.Failure, parsed.Failure)
+	for status, colour := range parsed.Status {
+		if colour == "" {
+			continue
+		}
+		theme.Status[status] = lipgloss.Color(colour)
+	}
 }
 
 // set takes a colour if one was given. A value is either a hex colour or an

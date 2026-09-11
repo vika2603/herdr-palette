@@ -11,6 +11,19 @@ import (
 	"github.com/vika2603/herdr-palette/internal/keys"
 )
 
+// List is the palette's rows in two halves. Commands is fixed for as long as
+// the popup is up; Open is what the session holds, which the popup rebuilds as
+// herdr reports changes.
+type List struct {
+	Commands []Entry
+	Open     []Entry
+}
+
+// All is both halves in the order they are shown.
+func (l List) All() []Entry {
+	return append(append(make([]Entry, 0, len(l.Commands)+len(l.Open)), l.Commands...), l.Open...)
+}
+
 // Load returns the entries to show: the catalog, the commands configured under
 // [[keys.command]], every action the other plugins registered, and what is
 // open in the session to go to. own is this plugin's id, whose own entrypoint
@@ -18,13 +31,13 @@ import (
 //
 // Neither call is fatal. The rest of the list is still worth showing, so the
 // caller reports what was missed next to it.
-func Load(ctx context.Context, client *herdr.Client, own string, catalog []Entry, cfg keys.Config) ([]Entry, error) {
-	entries := make([]Entry, 0, len(catalog)+len(cfg.Custom))
+func Load(ctx context.Context, client *herdr.Client, own string, catalog []Entry, cfg keys.Config) (List, error) {
+	commands := make([]Entry, 0, len(catalog)+len(cfg.Custom))
 	for _, entry := range catalog {
 		entry.Key = cfg.Action[entry.Binding]
-		entries = append(entries, entry)
+		commands = append(commands, entry)
 	}
-	entries = append(entries, customEntries(own, cfg.Custom)...)
+	commands = append(commands, customEntries(own, cfg.Custom)...)
 
 	var failures []error
 	if actions, err := client.PluginActionList(ctx, herdr.PluginActionListParams{}); err != nil {
@@ -37,16 +50,15 @@ func Load(ctx context.Context, client *herdr.Client, own string, catalog []Entry
 			}
 			entry := pluginEntry(action, names[action.PluginID])
 			entry.Key = cfg.Plugin[keys.PluginBinding(action.PluginID, action.ActionID)]
-			entries = append(entries, entry)
+			commands = append(commands, entry)
 		}
 	}
 
-	if snapshot, err := client.SessionSnapshot(ctx); err != nil {
-		failures = append(failures, fmt.Errorf("open panes unavailable: %w", err))
-	} else {
-		entries = append(entries, sessionEntries(snapshot.Snapshot)...)
+	open, err := OpenEntries(ctx, client)
+	if err != nil {
+		failures = append(failures, err)
 	}
-	return entries, errors.Join(failures...)
+	return List{Commands: commands, Open: open}, errors.Join(failures...)
 }
 
 // pluginNames maps each installed plugin to the name it gave itself, which is

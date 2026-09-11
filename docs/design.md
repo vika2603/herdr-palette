@@ -50,6 +50,27 @@ and pane becomes a row that focuses it — `workspace.focus`, `tab.focus`,
 opened from there. A plugin popup is not part of the session's panes, so the
 palette's own window never appears in its list.
 
+A pane running an agent shows under `agent:` instead of `pane:`, with the agent
+and its status next to the row, coloured by the status. A pane is addressed by
+its id rather than through `agent.focus`, which takes a name the snapshot does
+not carry.
+
+## Following the session
+
+These rows are rebuilt while the popup is open, so a status is the one the
+agent has at that moment. `events.subscribe` carries the changes: an event sets
+a single signal, which the model answers with one `session.snapshot`, so a
+burst costs one round trip.
+
+`pane.agent_status_changed` is subscribed per pane — the subscription takes a
+`pane_id`, and one without is refused with `pane_not_found` — so the panes
+running an agent are named when the subscription opens, and the subscription is
+opened again whenever a pane appears, exits or closes. The rest are
+session-wide: the pane, tab and workspace events that add or rename a row.
+`pane.updated` is among them but does not carry a status change, which is why
+the per-pane subscription is there at all. Pane output is left out: it changes
+constantly and no row shows it.
+
 Every one of these rows starts with "go to", so typing that — or `goto`, which
 a subsequence match reaches as well — narrows the list to them. A pane's row
 shows the name it was given, or what the program in it reports, and carries the

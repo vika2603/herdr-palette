@@ -53,8 +53,15 @@ type Entry struct {
 	// Everything else is tried, and relayed only if herdr answers ui_busy.
 	AlwaysRelay bool
 	// Search is text the query may match that the row does not show, such as
-	// the plugin an action came from.
+	// the plugin an action came from. A row matched through it shows it, so
+	// the match is visible.
 	Search string
+	// Detail is shown after the title, dimmed, and is searched with the row:
+	// what an agent is doing, or the workspace a pane sits in.
+	Detail string
+	// Status is what herdr calls the state the detail describes, which gives
+	// it a colour of its own. Empty for a detail that is not a state.
+	Status string
 }
 
 // Namespace is where the entry comes from, drawn in front of the title and

@@ -30,10 +30,12 @@ const (
 type Ranked struct {
 	Entry   Entry
 	Matched []int
-	// Detail is the entry's search text when that is where the query matched,
-	// with DetailMatched indexing it. A row whose match is in text it does not
-	// show has nothing to highlight, so the text is shown next to it.
+	// Detail is what the row shows next to the title — the entry's own, or its
+	// search text when that is where the query matched, which a row would
+	// otherwise be listed for with nothing highlighted. DetailMatched indexes
+	// it, and Status colours it.
 	Detail        string
+	Status        string
 	DetailMatched []int
 	Score         int
 }
@@ -94,17 +96,29 @@ func Rank(entries []Entry, text string, recent []string) []Ranked {
 
 func rankOne(entry Entry, q query) (Ranked, bool) {
 	if q.empty() {
-		return Ranked{Entry: entry}, true
+		return Ranked{Entry: entry, Detail: entry.Detail, Status: entry.Status}, true
 	}
+
+	// The row and the detail beside it are both on show, so both are searched
+	// and the positions are split back over the two.
 	name := entry.Name()
-	if score, matched, ok := match(fold(name), q); ok {
-		return Ranked{Entry: entry, Matched: matched, Score: score}, true
+	cut := len([]rune(name)) + 1
+	if score, matched, ok := match(fold(join(name, entry.Detail)), q); ok {
+		return Ranked{
+			Entry:         entry,
+			Matched:       before(matched, len([]rune(name))),
+			Detail:        entry.Detail,
+			Status:        entry.Status,
+			DetailMatched: shift(matched, cut),
+			Score:         score,
+		}, true
 	}
+
 	if entry.Search == "" {
 		return Ranked{}, false
 	}
-	// Where an entry came from is not part of the row, but typing it is a
-	// natural way to narrow the list.
+	// What an entry came from is not on the row, but typing it is a natural
+	// way to narrow the list, and the row then shows what it matched.
 	prefix := entry.Search + " "
 	if score, matched, ok := match(fold(prefix+name), q); ok {
 		cut := len([]rune(prefix))
@@ -117,6 +131,15 @@ func rankOne(entry Entry, q query) (Ranked, bool) {
 		}, true
 	}
 	return Ranked{}, false
+}
+
+// join puts the detail behind the row with a space between them, which is a
+// word boundary to the matcher, and leaves the row alone when there is none.
+func join(name, detail string) string {
+	if detail == "" {
+		return name
+	}
+	return name + " " + detail
 }
 
 // match scores every word of the query against hay with fzf's own matcher and

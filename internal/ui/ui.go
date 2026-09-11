@@ -17,13 +17,13 @@ import (
 // Run shows the command list and runs the TUI until the popup closes. loadErr
 // is what assembling the list ran into, which is worth showing next to the
 // half that survived.
-func Run(ctx context.Context, env *plugin.Env, entries []palette.Entry, loadErr error, colours theme.Theme) error {
+func Run(ctx context.Context, env *plugin.Env, list palette.List, loadErr error, colours theme.Theme) error {
 	invocation := invocationContext(env)
-	entries = applicable(entries, invocation)
+	list.Commands = applicable(list.Commands, invocation)
 
-	m := newModel(ctx, env, invocation, entries, palette.ReadRecent(env), colours)
+	m := newModel(ctx, env, invocation, list, palette.ReadRecent(env), colours)
 	if loadErr != nil {
-		m.failure = "plugin actions unavailable: " + loadErr.Error()
+		m.failure = loadErr.Error()
 	}
 
 	// No alternate screen: the popup is a pane herdr destroys when it closes,

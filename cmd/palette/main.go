@@ -80,8 +80,8 @@ func onExec(ctx context.Context, env *plugin.Env) error {
 
 	// An unreachable action list still leaves the catalog and the configured
 	// commands, and the handed-over entry may well be one of them.
-	entries, _ := entries(ctx, env, keys.Commands())
-	return palette.RunPending(ctx, env.Client(), entries, pending)
+	list, _ := entries(ctx, env, keys.Commands())
+	return palette.RunPending(ctx, env.Client(), list.All(), pending)
 }
 
 // onInput collects the value an entry is missing and hands the entry back to
@@ -105,7 +105,7 @@ func onInput(ctx context.Context, env *plugin.Env) error {
 }
 
 // entries assembles the command list both entrypoints work from.
-func entries(ctx context.Context, env *plugin.Env, cfg keys.Config) ([]palette.Entry, error) {
+func entries(ctx context.Context, env *plugin.Env, cfg keys.Config) (palette.List, error) {
 	return palette.Load(ctx, env.Client(), env.PluginID, catalog.Entries(), cfg)
 }
 

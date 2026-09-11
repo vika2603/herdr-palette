@@ -50,8 +50,8 @@ and pane becomes a row that focuses it — `workspace.focus`, `tab.focus`,
 opened from there. A plugin popup is not part of the session's panes, so the
 palette's own window never appears in its list.
 
-Every one of these rows starts with "go to", so typing that narrows the list to
-them; the spelling without the space is search text on each of them. A pane's
+Every one of these rows starts with "go to", so typing that — or `goto`, which
+a subsequence match reaches as well — narrows the list to them. A pane's
 row shows the name it was given, or what the program in it reports, and carries
 the workspace, the tab and the working directory as search text as well, so a
 project name finds the panes inside it.
@@ -161,19 +161,21 @@ set of action names, which is what keeps that harmless.
 
 ## Matching
 
-`internal/palette.Rank` accepts two shapes, in this order:
+`internal/palette.Rank` scores each row with fzf's own matcher,
+`github.com/junegunn/fzf/src/algo`. A query is split on spaces and every word
+has to match, the way fzf reads a query with spaces in it, so the words of a
+row can be typed in any order; the scores are added and the matched positions
+merged for highlighting.
 
-1. every word of the query appearing as a substring of the row, in any
-   order, scored higher when a word sits at the start of a word;
-2. the query read as the initials of the row's words, skipping allowed.
+The row it matches is the row as it is drawn, namespace included, so `spr`
+reaches "herdr: split pane right" and the highlighted letters are the ones that
+were searched. fzf's scoring is what separates a run at the start of a word
+from letters scattered through a row, which is the difference the palette
+depends on at the size it has.
 
-Letters that only appear scattered through a row do not match. A plain
-subsequence match makes a query like `spl` reach "close workspace", which
-makes the list unpredictable at the size the palette actually has.
-
-Both shapes run against the row as it is drawn, namespace included, so `spr`
-reaches "herdr: split pane right" through its initials and the highlighted
-letters are the ones that were searched.
+The matcher folds no case of its own, so the row is lowercased rune by rune
+before it is scored, which keeps the positions it returns lined up with what is
+drawn.
 
 A query that matches no row is retried with the entry's `Search` text
 prepended, scored lower. `Search` is not rendered; for a plugin action it is

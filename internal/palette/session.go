@@ -16,12 +16,9 @@ const (
 )
 
 // goTo is in front of every row that focuses something rather than running a
-// command, so the query narrows the list to them. gotoAlias makes the spelling
-// without the space find them too.
-const (
-	goTo      = "go to "
-	gotoAlias = "goto"
-)
+// command, so the query narrows the list to them. The spelling without the
+// space finds them too: the matcher reads a query as a subsequence.
+const goTo = "go to "
 
 // sessionEntries turns what is open into rows that focus it. What is already
 // focused is left out: the palette was opened from there.
@@ -45,10 +42,9 @@ func sessionEntries(snapshot herdr.SessionSnapshot) []Entry {
 		}
 		id := workspace.WorkspaceID
 		entries = append(entries, Entry{
-			ID:     "workspace:" + id,
-			Title:  goTo + label(workspace.Label, "workspace", workspace.Number),
-			Search: gotoAlias,
-			Type:   TypeWorkspace,
+			ID:    "workspace:" + id,
+			Title: goTo + label(workspace.Label, "workspace", workspace.Number),
+			Type:  TypeWorkspace,
 			Run: func(ctx context.Context, e Exec) error {
 				_, err := e.Client.WorkspaceFocus(ctx, herdr.WorkspaceTarget{WorkspaceID: id})
 				return err
@@ -65,7 +61,7 @@ func sessionEntries(snapshot herdr.SessionSnapshot) []Entry {
 			ID:     "tab:" + id,
 			Title:  goTo + label(tab.Label, "tab", tab.Number),
 			Type:   TypeTab,
-			Search: gotoAlias + " " + workspaces[tab.WorkspaceID],
+			Search: workspaces[tab.WorkspaceID],
 			Run: func(ctx context.Context, e Exec) error {
 				_, err := e.Client.TabFocus(ctx, herdr.TabTarget{TabID: id})
 				return err
@@ -84,7 +80,7 @@ func sessionEntries(snapshot herdr.SessionSnapshot) []Entry {
 			Type:  TypePane,
 			// The pane's own title says little about where it is, so the
 			// workspace and tab it sits in are searchable as well.
-			Search: gotoAlias + " " + workspaces[pane.WorkspaceID] + " " + tabs[pane.TabID] + " " + herdr.Value(pane.Cwd),
+			Search: workspaces[pane.WorkspaceID] + " " + tabs[pane.TabID] + " " + herdr.Value(pane.Cwd),
 			Run: func(ctx context.Context, e Exec) error {
 				_, err := e.Client.PaneFocus(ctx, herdr.PaneTarget{PaneID: id})
 				return err

@@ -70,8 +70,8 @@ the invocation context so an action sees the same focused pane it would have
 seen from a key. Typing the plugin's id finds them as well.
 
 **`workspace:`, `tab:` and `pane:`** are what is open in the session, and
-running one goes there. They all read "go to …", so typing `go to` — or `goto`
-— narrows the list to them. Panes also carry the workspace, the tab and the
+running one goes there. They all read "go to …", so typing `go to` or `goto`
+narrows the list to them. Panes also carry the workspace, the tab and the
 working directory as search text, so typing a project name finds the panes
 inside it. Where the palette was opened from is left out.
 
@@ -107,9 +107,10 @@ to cancel, along with the usual line editing: arrows and `ctrl+a` / `ctrl+e`,
 A scrollbar at the right edge shows where the visible rows sit in the whole
 list, and stays blank while everything fits.
 
-Matching accepts the words of a row in any order (`pane split`) and its
-initials (`spr` for "herdr: split pane right"). Recently run commands come
-first when the query is empty.
+Matching is fzf's own: every word of the query has to appear in the row, in
+any order (`pane split`), each as a run of letters that need not be adjacent,
+so initials work too (`spr` for "herdr: split pane right"). Recently run
+commands come first when the query is empty.
 
 ## Colours
 

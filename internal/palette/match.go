@@ -1,34 +1,28 @@
 package palette
 
 import (
-	"slices"
 	"sort"
 	"strings"
 	"unicode"
+
+	"github.com/junegunn/fzf/src/algo"
+	"github.com/junegunn/fzf/src/util"
 )
 
-// Scores for the two shapes a query can match in.
 const (
-	// scoreWord is what a query word earns inside a title, and scoreWordAtStart
-	// what it earns at the start of a word there: "split" reaching "Split pane"
-	// is a stronger signal than "pan" reaching it.
-	scoreWord        = 2
-	scoreWordAtStart = 8
-	// scoreInitial is what one letter of an initials match earns, and
-	// scoreInitialsExact the bonus for a query that uses every word's initial
-	// with none skipped, such as "spr" for "Split pane right".
-	scoreInitial       = 6
-	scoreInitialsExact = 4
-	// startPenalty caps how much a late first match costs, so a long title is
-	// not ranked out entirely.
-	startPenalty = 10
-	// detailPenalty applies when the query only matches with the group or
-	// plugin name prepended: a title match is the stronger signal.
-	detailPenalty = 20
+	// searchPenalty applies when the query only matches with the entry's
+	// search text prepended: what the row shows is the stronger signal. It is
+	// set against the scores fzf returns, where one matched word of a title
+	// is worth roughly fifty.
+	searchPenalty = 40
 	// recentBonus is what the most recently run entry gains. Each older entry
-	// gains one less, down to zero, which keeps the bonus below a clearly
-	// better title match.
-	recentBonus = 12
+	// gains one less, down to zero. It orders the list while the query is
+	// empty and every score is zero, and stays small enough next to a match
+	// that it does not reorder one.
+	recentBonus = 8
+	// Slab sizes for fzf's scoring matrices. A row of this palette is a short
+	// line, so the defaults fzf uses for file lists are far more than needed.
+	slab16, slab32 = 2048, 512
 )
 
 // Ranked is one entry with the query's match positions in its name, for
@@ -39,19 +33,28 @@ type Ranked struct {
 	Score   int
 }
 
-// query is what the user typed, prepared once for a whole pass: the words to
-// find, and the same letters read as initials.
+// query is what the user typed, prepared once for a whole pass. Every word has
+// to match, which is how fzf reads a query with spaces in it, and lets the
+// words of a title be typed in any order.
 type query struct {
-	words    []string
-	initials []rune
+	words [][]rune
+	slab  *util.Slab
 }
 
 func newQuery(text string) query {
-	words := strings.Fields(strings.ToLower(text))
-	return query{words: words, initials: []rune(strings.Join(words, ""))}
+	fields := strings.Fields(text)
+	words := make([][]rune, 0, len(fields))
+	for _, field := range fields {
+		words = append(words, []rune(fold(field)))
+	}
+	return query{words: words, slab: util.MakeSlab(slab16, slab32)}
 }
 
 func (q query) empty() bool { return len(q.words) == 0 }
+
+// fold lowercases rune by rune, which keeps the positions fzf returns lined up
+// with the row as it is drawn.
+func fold(text string) string { return strings.Map(unicode.ToLower, text) }
 
 // Rank filters entries against the query and orders them, most relevant
 // first. recent holds entry ids, most recently run first. An empty query
@@ -89,7 +92,7 @@ func rankOne(entry Entry, q query) (Ranked, bool) {
 		return Ranked{Entry: entry}, true
 	}
 	name := entry.Name()
-	if score, matched, ok := match(name, q); ok {
+	if score, matched, ok := match(fold(name), q); ok {
 		return Ranked{Entry: entry, Matched: matched, Score: score}, true
 	}
 	if entry.Search == "" {
@@ -98,115 +101,35 @@ func rankOne(entry Entry, q query) (Ranked, bool) {
 	// Where an entry came from is not part of the row, but typing it is a
 	// natural way to narrow the list.
 	prefix := entry.Search + " "
-	if score, matched, ok := match(prefix+name, q); ok {
+	if score, matched, ok := match(fold(prefix+name), q); ok {
 		return Ranked{
 			Entry:   entry,
 			Matched: shift(matched, len([]rune(prefix))),
-			Score:   score - detailPenalty,
+			Score:   score - searchPenalty,
 		}, true
 	}
 	return Ranked{}, false
 }
 
-// match scores the query against hay, case-insensitively, and returns the
-// matched rune indexes. Two shapes count, in this order: every query word
-// appearing as a substring, in any order, and the query read as the initials
-// of hay's words. Letters merely scattered through hay are not a match, so
-// "spl" does not reach "Close workspace".
+// match scores every word of the query against hay with fzf's own matcher and
+// returns the matched rune positions. hay is already folded; the words are
+// folded when the query is prepared.
 func match(hay string, q query) (int, []int, bool) {
-	runes := []rune(strings.ToLower(hay))
-	if score, matched, ok := matchWords(runes, q.words); ok {
-		return score, matched, true
-	}
-	return matchInitials(runes, q.initials)
-}
+	chars := util.ToChars([]byte(hay))
 
-// matchWords requires every word to appear in hay. A word is looked up at a
-// word start first, so "pane" prefers "pane right" over "pane" inside another
-// word.
-func matchWords(runes []rune, words []string) (int, []int, bool) {
-	score, first := 0, len(runes)
+	score := 0
 	var matched []int
-
-	for _, word := range words {
-		wanted := []rune(word)
-		at, atWordStart := findWord(runes, wanted)
-		if at < 0 {
+	for _, word := range q.words {
+		result, positions := algo.FuzzyMatchV2(true, true, true, &chars, word, true, q.slab)
+		if positions == nil {
 			return 0, nil, false
 		}
-		if atWordStart {
-			score += scoreWordAtStart
-		} else {
-			score += scoreWord
-		}
-		for i := range wanted {
-			matched = append(matched, at+i)
-		}
-		first = min(first, at)
+		score += result.Score
+		matched = append(matched, *positions...)
 	}
 
 	sort.Ints(matched)
-	return score - min(first, startPenalty), matched, true
-}
-
-// findWord returns where word occurs in runes, preferring an occurrence at the
-// start of a word, and whether the returned position is one.
-func findWord(runes, word []rune) (int, bool) {
-	fallback := -1
-	for at := 0; at+len(word) <= len(runes); at++ {
-		if !slices.Equal(runes[at:at+len(word)], word) {
-			continue
-		}
-		if isWordStart(runes, at) {
-			return at, true
-		}
-		if fallback < 0 {
-			fallback = at
-		}
-	}
-	return fallback, false
-}
-
-// matchInitials reads the query as the first letters of hay's words, allowing
-// words to be skipped: "sr" still reaches "Split pane right".
-func matchInitials(runes, wanted []rune) (int, []int, bool) {
-	starts := wordStarts(runes)
-	matched := make([]int, 0, len(wanted))
-	at := 0
-	for _, want := range wanted {
-		for at < len(starts) && runes[starts[at]] != want {
-			at++
-		}
-		if at == len(starts) {
-			return 0, nil, false
-		}
-		matched = append(matched, starts[at])
-		at++
-	}
-
-	score := len(wanted) * scoreInitial
-	if len(wanted) == len(starts) {
-		score += scoreInitialsExact
-	}
-	return score - min(matched[0], startPenalty), matched, true
-}
-
-func wordStarts(runes []rune) []int {
-	starts := make([]int, 0, len(runes)/4+1)
-	for at, r := range runes {
-		if (unicode.IsLetter(r) || unicode.IsDigit(r)) && isWordStart(runes, at) {
-			starts = append(starts, at)
-		}
-	}
-	return starts
-}
-
-func isWordStart(runes []rune, at int) bool {
-	if at == 0 {
-		return true
-	}
-	prev := runes[at-1]
-	return !unicode.IsLetter(prev) && !unicode.IsDigit(prev)
+	return score, matched, true
 }
 
 func shift(indexes []int, by int) []int {

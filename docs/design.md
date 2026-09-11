@@ -120,6 +120,15 @@ popup closing; it waits for the popup process to exit — the pid is in the file
 — and then runs the entry. A failure there has no popup left to show it, so it
 is reported with `notification.show`.
 
+## Borders
+
+herdr draws a pane's title on the border and its manifest requires one — a
+blank title is refused with `invalid_plugin_pane_title`, and a popup returns no
+pane id to rename afterwards. Every pane here therefore carries a zero-width
+space, which passes the check and leaves the border empty. What a pane is
+showing is inside it: the palette's query line, or the command and the value
+the field is collecting.
+
 ## Where the popup sits
 
 herdr centres a popup in the pane area and takes only a size: `plugin.pane.open`
@@ -138,10 +147,6 @@ same handover, one hop longer: the palette writes the entry down with a
 `prompt` and quits, `exec` opens the `input` pane for it, and the field writes
 the entry back with the value and asks for `exec` again, which runs it once the
 field's popup is gone in turn.
-
-herdr draws a pane's title on the border and its manifest requires one, so the
-field's is a zero-width space: what it is collecting is on its first line,
-where there is room for the command's name and what the value means.
 
 The field is not a Bubble Tea screen, and that is the point. Bubble Tea hides
 the terminal cursor for the lifetime of the program and paints its caret as

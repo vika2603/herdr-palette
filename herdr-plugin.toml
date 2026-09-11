@@ -12,9 +12,13 @@ platforms = ["linux", "macos"]
 [[build]]
 command = ["./scripts/build.sh"]
 
+# herdr draws a pane's title on the border and its manifest requires one, so
+# every pane here carries a zero-width space: it passes the check and leaves
+# the border with nothing on it. What a pane is showing is inside it, where
+# there is room to say it properly.
 [[panes]]
 id = "palette"
-title = "Commands"
+title = "\u200B"
 description = "Search and run an action"
 placement = "popup"
 width = "60%"
@@ -22,10 +26,7 @@ height = "70%"
 command = ["./bin/palette"]
 
 # The field an entry that needs a value is collected in: two lines, in a popup
-# of its own rather than in the palette's window. herdr draws a pane's title on
-# the border and requires one; this is a zero-width space, which passes that
-# check and leaves the border carrying nothing — what the field is collecting
-# is on its first line, where there is room to say it properly.
+# of its own rather than in the palette's window.
 [[panes]]
 id = "input"
 title = "\u200B"
@@ -37,7 +38,7 @@ command = ["./bin/palette"]
 
 [[panes]]
 id = "run"
-title = "Command"
+title = "\u200B"
 description = "Run a command configured under [[keys.command]]"
 # Placement and size come from the command's own configuration, passed when the
 # pane is opened.

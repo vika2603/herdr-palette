@@ -9,7 +9,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/junegunn/fzf v0.74.3
-	github.com/vika2603/herdr-client v0.1.2
+	github.com/vika2603/herdr-client v0.1.3
 )
 
 require (

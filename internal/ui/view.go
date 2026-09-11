@@ -25,9 +25,6 @@ type styles struct {
 	selectedMeta  lipgloss.Style
 	selectedMatch lipgloss.Style
 
-	// key is one keycap in the footer, on the band the selected row uses.
-	key lipgloss.Style
-
 	// status is what an agent is doing, by herdr's name for it, and selected
 	// the same over the band behind the selected row.
 	status         map[string]lipgloss.Style
@@ -47,8 +44,6 @@ func newStyles(colours theme.Theme) styles {
 		selected:      selected.Bold(true),
 		selectedMeta:  selected.Foreground(colours.Meta),
 		selectedMatch: selected.Foreground(colours.Match).Bold(true),
-
-		key: lipgloss.NewStyle().Background(colours.Selected),
 
 		status:         statusStyles(colours, lipgloss.NewStyle()),
 		selectedStatus: statusStyles(colours, selected),
@@ -282,24 +277,18 @@ func (m model) rule() string {
 }
 
 // footer is the line under the list: how much the query left on the left, and
-// what the keys do on the right, each key on the band the selected row uses.
-// A failure takes the whole line instead — the popup is too small for both.
+// what the keys do on the right. A failure takes the whole line instead — the
+// popup is too small for both.
 func (m model) footer() string {
 	if m.failure != "" {
 		return m.styles.fail.Render(truncate(m.failure, m.cols()))
 	}
 
 	left := m.styles.meta.Render(fmt.Sprintf(" %d commands", len(m.ranked)))
-	right := m.action("run", "⏎") + m.styles.rule.Render("  │  ") + m.action("close", "esc")
+	right := m.styles.meta.Render("run ⏎") + m.styles.rule.Render("  ·  ") + m.styles.meta.Render("close esc")
 	gap := max(m.cols()-lipgloss.Width(left)-lipgloss.Width(right)-1, 1)
 
 	return left + strings.Repeat(" ", gap) + right + " "
-}
-
-// action is one key and what it does, drawn the way a keycap reads: the label
-// beside the key, the key on a band of its own.
-func (m model) action(label, key string) string {
-	return m.styles.meta.Render(label+" ") + m.styles.key.Render(" "+key+" ")
 }
 
 func truncate(text string, width int) string {

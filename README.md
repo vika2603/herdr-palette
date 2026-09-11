@@ -44,21 +44,39 @@ Note that herdr's defaults already use `prefix+p` for `previous_tab` and
 
 ## What the list contains
 
-**Plugin actions** come from `plugin.action.list` at open time, with the title
-and description each plugin declared. Installing a plugin adds its actions to
-the palette with no configuration, and the palette forwards the invocation
-context so an action sees the same focused pane it would have seen from a key.
+Every row shows the key it is bound to and where it comes from, in the last
+column.
 
 **herdr's own commands** are a list this plugin maintains, because herdr
 publishes no equivalent of `plugin.action.list` for its built-in actions. Each
 one calls the socket API method with the same effect: workspace, tab, pane,
-worktree and agent commands, plus a config reload. Built-in actions with no API
-equivalent — `settings`, `help`, `toggle_sidebar`, `resize_mode` — are not in
-the list. Navigation is also left out: herdr's own `goto` and
+worktree and agent commands, plus a config reload. Their column is the group
+they belong to — `Pane`, `Tab`, `Workspace`, `Agent`, `Herdr`. Built-in actions
+with no API equivalent — `settings`, `help`, `toggle_sidebar`, `resize_mode` —
+are not in the list. Navigation is also left out: herdr's own `goto` and
 `workspace_picker` already cover it.
+
+**Your own commands**, the `[[keys.command]]` entries in `config.toml`, are
+listed as `Custom`. herdr offers no way to run one by name, so each type is
+reproduced over the API: `shell` is started detached, `pane` opens a split, and
+`popup` opens a session-modal terminal, both running the configured command
+line.
+
+**Plugin actions** come from `plugin.action.list` at open time, listed as
+`Plugin`, with the title and description each plugin declared. Installing a
+plugin adds its actions to the palette with no configuration, and the palette
+forwards the invocation context so an action sees the same focused pane it
+would have seen from a key.
 
 A command that needs a value, such as a rename or a prompt, asks for it on a
 second screen. Renames start from the current label.
+
+## Keys in the list
+
+The key column comes from herdr's own configuration: the defaults it ships,
+with `config.toml` laid over them. A default binding whose key the
+configuration gave to something else is left blank rather than shown for two
+commands.
 
 ## Keys in the popup
 

@@ -12,6 +12,8 @@ import (
 	"github.com/vika2603/herdr-client/herdr"
 	"github.com/vika2603/herdr-client/plugin"
 
+	"github.com/vika2603/herdr-palette/internal/catalog"
+	"github.com/vika2603/herdr-palette/internal/keys"
 	"github.com/vika2603/herdr-palette/internal/palette"
 	"github.com/vika2603/herdr-palette/internal/ui"
 )
@@ -21,6 +23,7 @@ const (
 	panePalette = "palette"
 	paneRun     = palette.RunEntrypoint
 	actionOpen  = "open"
+	actionExec  = palette.ExecAction
 )
 
 func main() {
@@ -33,6 +36,7 @@ func main() {
 func newPlugin() *plugin.Plugin {
 	p := plugin.New()
 	p.Action(actionOpen, onOpen)
+	p.Action(actionExec, onExec)
 	p.Pane(panePalette, onPalette)
 	p.Pane(paneRun, onRun)
 	return p
@@ -54,6 +58,19 @@ func onOpen(ctx context.Context, env *plugin.Env) error {
 	}
 	_, err := env.Client().PluginPaneOpen(ctx, params)
 	return err
+}
+
+// onExec runs what the popup handed over on its way out. It runs outside the
+// popup, so a command that opens one of its own is no longer refused.
+func onExec(ctx context.Context, env *plugin.Env) error {
+	client := env.Client()
+	entries, err := palette.Load(ctx, client, env.PluginID, catalog.Entries(), keys.Load(env.BinPath))
+	if err != nil {
+		// The catalog and the configured commands survive an unreachable
+		// action list, and the handed-over entry may well be one of them.
+		_ = err
+	}
+	return palette.RunPending(ctx, client, env, entries)
 }
 
 // onRun runs the configured command this pane was opened for. The pane closes

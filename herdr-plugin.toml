@@ -36,3 +36,12 @@ title = "Open command palette"
 description = "Search and run herdr actions and plugin actions"
 contexts = ["global", "workspace", "tab", "pane"]
 command = ["./bin/palette"]
+
+# Runs a command the popup handed over. herdr runs an action outside the popup,
+# which is what lets a relayed command open a popup of its own.
+[[actions]]
+id = "exec"
+title = "Run the handed-over command"
+description = "Internal: runs what the palette could not run from inside its popup"
+contexts = ["global"]
+command = ["./bin/palette"]

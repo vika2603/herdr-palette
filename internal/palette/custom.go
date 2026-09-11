@@ -34,7 +34,10 @@ func customEntries(own string, commands []keys.Custom) []Entry {
 			Title: customTitle(command),
 			Type:  TypeCustom,
 			Key:   command.Key,
-			Run:   runCustom(own, command),
+			// herdr refuses a second popup while the palette is up, so a
+			// popup command is handed over instead of run here.
+			OpensPopup: command.Type == keys.TypePopup,
+			Run:        runCustom(own, command),
 		})
 	}
 	return entries

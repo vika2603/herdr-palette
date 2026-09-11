@@ -48,6 +48,9 @@ func pluginEntry(action herdr.PluginActionInfo) Entry {
 		Title:          action.Title,
 		Type:           TypePlugin,
 		NeedsSelection: onlySelection(action.Contexts),
+		// What another plugin's action does is its own business, and opening
+		// a popup is the common case, so every one of them is relayed.
+		OpensPopup: true,
 		Run: func(ctx context.Context, e Exec) error {
 			_, err := e.Client.PluginActionInvoke(ctx, herdr.PluginActionInvokeParams{
 				PluginID: &pluginID,

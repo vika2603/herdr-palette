@@ -208,11 +208,7 @@ func (m model) choose() (tea.Model, tea.Cmd) {
 
 func (m model) run(entry palette.Entry, value string) tea.Cmd {
 	return func() tea.Msg {
-		err := entry.Run(m.ctx, palette.Exec{
-			Client: m.client,
-			Ctx:    m.invocation,
-			Input:  value,
-		})
+		err := m.execute(entry, value)
 		if err == nil {
 			// A failed write only costs the recent order, so it does not turn
 			// a command that ran into a command that reports failure.
@@ -220,6 +216,19 @@ func (m model) run(entry palette.Entry, value string) tea.Cmd {
 		}
 		return ranMsg{err: err}
 	}
+}
+
+// execute runs the entry, or hands it over when herdr would refuse it while
+// the popup is up.
+func (m model) execute(entry palette.Entry, value string) error {
+	if entry.OpensPopup {
+		return palette.Relay(m.ctx, m.client, m.env, entry, value, m.invocation)
+	}
+	return entry.Run(m.ctx, palette.Exec{
+		Client: m.client,
+		Ctx:    m.invocation,
+		Input:  value,
+	})
 }
 
 func (m *model) rank() {

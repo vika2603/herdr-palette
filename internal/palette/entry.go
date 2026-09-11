@@ -47,6 +47,9 @@ type Entry struct {
 	// selected, the way a plugin action declaring the selection context is
 	// only meaningful with one.
 	NeedsSelection bool
+	// OpensPopup marks an entry that herdr would refuse while the palette's
+	// own popup is up, so it is relayed to an entrypoint outside it.
+	OpensPopup bool
 }
 
 // Initial is the text the input field starts with, empty when the entry takes

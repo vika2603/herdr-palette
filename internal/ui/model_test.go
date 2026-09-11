@@ -401,3 +401,37 @@ func TestThereIsNoKeyColumnWithoutBindings(t *testing.T) {
 		t.Errorf("key column width = %d, want none when nothing is bound", m.keyWidth)
 	}
 }
+
+func TestAnEntryThatOpensAPopupIsRelayed(t *testing.T) {
+	var ran []string
+	entries := []palette.Entry{{
+		ID:         "plugin:herdr.machine-manager/open",
+		Title:      "Manage machines",
+		Type:       palette.TypePlugin,
+		OpensPopup: true,
+		Run: func(context.Context, palette.Exec) error {
+			ran = append(ran, "direct")
+			return nil
+		},
+	}}
+	server := plugintest.NewServer(t).
+		Reply(herdr.MethodPluginActionInvoke, herdr.PluginActionInvokedResponse{})
+	env := server.Env(plugintest.StateDir(t.TempDir()))
+
+	m := newModel(context.Background(), env.Client(), env, &herdr.PluginInvocationContext{}, entries, nil)
+	m.width, m.height = 60, 12
+
+	_, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("enter produced no command")
+	}
+	if msg, ok := cmd().(ranMsg); !ok || msg.err != nil {
+		t.Fatalf("running the entry returned %v", cmd())
+	}
+	if len(ran) != 0 {
+		t.Error("the entry ran inside the popup, where herdr would refuse its own popup")
+	}
+	if server.Calls()[0].Method != herdr.MethodPluginActionInvoke {
+		t.Errorf("called %q, want the entry to be handed over", server.Calls()[0].Method)
+	}
+}

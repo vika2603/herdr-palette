@@ -98,12 +98,12 @@ func (m model) row(index int) string {
 		text, meta = selectedText, selectedMeta
 	}
 
-	// Both columns are padded to a fixed width so they line up under each
+	// Both columns are left-aligned in a fixed width, so they start under each
 	// other. The key column is only there when something on show is bound.
 	entryType := fmt.Sprintf("%-*s", m.typeWidth, ranked.Entry.Type)
 	key, keyGap := "", ""
 	if m.keyWidth > 0 {
-		key = fmt.Sprintf("%*s", m.keyWidth, ranked.Entry.Key)
+		key = fmt.Sprintf("%-*s", m.keyWidth, ranked.Entry.Key)
 		keyGap = "  "
 	}
 

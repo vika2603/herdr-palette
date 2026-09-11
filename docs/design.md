@@ -39,14 +39,34 @@ herdr adds commands worth offering.
 
 ## Running the command
 
-The command runs while the popup is still open, and the TUI quits on success,
+Most commands run while the popup is still open, and the TUI quits on success,
 which closes the popup. A command that fails leaves the popup open with the
 reason on the help line, so the keystroke is not lost silently.
 
-If a command ever needs the popup gone before it runs — a layout change that
-the popup would interfere with — the way to do it without a resident daemon is
-to write the pending command to the state directory, invoke a second action
-entrypoint, and quit: herdr then forks that entrypoint outside the popup.
+Commands that open a popup of their own cannot work that way: herdr allows one
+popup at a time and answers the second with `ui_busy`. That covers the
+configured `popup` commands and every plugin action, since what another
+plugin's action does is its own business.
+
+Those are handed over instead. The palette writes the entry, its input and the
+invocation context to `pending.json`, invokes its own `exec` action, and quits.
+herdr runs an action entrypoint outside the popup, so the `exec` process
+survives the popup closing; it waits for the popup process to exit — the pid is
+in the file — and then runs the entry. A failure there has no popup left to
+show it, so it is reported with `notification.show`.
+
+## Reading herdr's configuration
+
+The key column and the configured commands both come from files rather than the
+API, because herdr exposes neither: `[keys]` and `[[keys.command]]` live in
+`config.toml`, and the defaults only in what `herdr --default-config` prints.
+`internal/keys` parses both, the defaults from the binary named by
+`HERDR_BIN_PATH`.
+
+The prose in the printed `[keys]` section contains lines shaped like
+assignments, such as the `type = "popup"` documenting custom commands, so the
+parse collects more names than there are actions. Lookups go through a fixed
+set of action names, which is what keeps that harmless.
 
 ## Matching
 

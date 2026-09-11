@@ -10,6 +10,7 @@ import (
 	"github.com/vika2603/herdr-client/plugin/plugintest"
 
 	"github.com/vika2603/herdr-palette/internal/keys"
+	"github.com/vika2603/herdr-palette/internal/settings"
 )
 
 const own = "herdr.palette"
@@ -75,7 +76,7 @@ func config() keys.Config {
 func load(t *testing.T, server *plugintest.Server) []Entry {
 	t.Helper()
 	catalog := []Entry{{ID: "herdr:tab.new", Title: "New tab", Type: "herdr", Binding: "new_tab"}}
-	list, err := Load(context.Background(), server.Env().Client(), own, catalog, config())
+	list, err := Load(context.Background(), server.Env().Client(), own, catalog, config(), nil)
 	if err != nil {
 		t.Fatalf("Load() = %v", err)
 	}
@@ -144,7 +145,7 @@ func TestLoadKeepsTheCatalogWhenTheSessionIsUnreachable(t *testing.T) {
 	server := plugintest.NewServer(t)
 
 	catalog := []Entry{{ID: "herdr:tab.new", Title: "New tab", Type: "herdr"}}
-	list, err := Load(context.Background(), server.Env().Client(), own, catalog, keys.Config{})
+	list, err := Load(context.Background(), server.Env().Client(), own, catalog, keys.Config{}, nil)
 	if err == nil {
 		t.Fatal("Load() reported no error although the action list was unavailable")
 	}
@@ -161,7 +162,7 @@ func TestPluginEntryInvokesTheAction(t *testing.T) {
 		Reply(herdr.MethodPluginActionInvoke, herdr.PluginActionInvokedResponse{})
 
 	client := server.Env().Client()
-	list, err := Load(context.Background(), client, own, nil, config())
+	list, err := Load(context.Background(), client, own, nil, config(), nil)
 	if err != nil {
 		t.Fatalf("Load() = %v", err)
 	}
@@ -234,7 +235,7 @@ func TestAPopupCommandOpensAPluginPane(t *testing.T) {
 		Reply(herdr.MethodPluginPaneOpen, herdr.OKResponse{})
 
 	client := server.Env().Client()
-	list, err := Load(context.Background(), client, own, nil, config())
+	list, err := Load(context.Background(), client, own, nil, config(), nil)
 	if err != nil {
 		t.Fatalf("Load() = %v", err)
 	}
@@ -274,7 +275,7 @@ func TestAPaneCommandOpensAZoomedPane(t *testing.T) {
 		Reply(herdr.MethodPluginPaneOpen, herdr.OKResponse{})
 
 	client := server.Env().Client()
-	list, _ := Load(context.Background(), client, own, nil, config())
+	list, _ := Load(context.Background(), client, own, nil, config(), nil)
 	entry, _ := find(list.All(), "config:prefix+alt+g")
 
 	invocation := &herdr.PluginInvocationContext{FocusedPaneID: new("w1:p1")}
@@ -307,7 +308,7 @@ func TestAShellCommandRunsWithoutTheAPI(t *testing.T) {
 	client := server.Env().Client()
 	cfg := config()
 	cfg.Custom = []keys.Custom{{Key: "prefix+t", Description: "Touch a file", Type: keys.TypeShell, Command: "true"}}
-	list, _ := Load(context.Background(), client, own, nil, cfg)
+	list, _ := Load(context.Background(), client, own, nil, cfg, nil)
 	entry, ok := find(list.All(), "config:prefix+t")
 	if !ok {
 		t.Fatal("the shell command is not in the list")
@@ -412,7 +413,7 @@ func TestAPluginActionFallsBackToItsID(t *testing.T) {
 		Reply(herdr.MethodPluginActionList, actionList()).
 		Reply(herdr.MethodSessionSnapshot, snapshot())
 
-	list, _ := Load(context.Background(), server.Env().Client(), own, nil, keys.Config{})
+	list, _ := Load(context.Background(), server.Env().Client(), own, nil, keys.Config{}, nil)
 	entry, ok := find(list.All(), "plugin:herdr.machine-manager/open")
 	if !ok {
 		t.Fatal("Load() dropped the machine manager action when the plugin list was unavailable")
@@ -441,5 +442,84 @@ func TestTheRowsThatGoSomewhereShareAQuery(t *testing.T) {
 				t.Errorf("%q matched %q, which runs a command", text, r.Entry.Name())
 			}
 		}
+	}
+}
+
+func TestTheOwnConfigurationAddsCommands(t *testing.T) {
+	server := plugintest.NewServer(t).
+		Reply(herdr.MethodPluginActionList, actionList()).
+		Reply(herdr.MethodPluginList, plugins()).
+		Reply(herdr.MethodSessionSnapshot, snapshot())
+
+	own := []settings.Command{{Title: "sync dotfiles", Run: "zsh sync.sh"}}
+	list, err := Load(context.Background(), server.Env().Client(), "herdr.palette", nil, keys.Config{}, own)
+	if err != nil {
+		t.Fatalf("Load() = %v", err)
+	}
+
+	entry, ok := find(list.All(), "command:sync dotfiles")
+	if !ok {
+		t.Fatal("a command from the plugin's own configuration is not in the list")
+	}
+	if entry.Type != TypeCustom || entry.Key != "" {
+		t.Errorf("entry = %+v, want a command of your own, bound to no key", entry)
+	}
+}
+
+// A command with no window runs detached: nothing is shown, and the API is
+// not involved at all.
+func TestACommandWithNoWindowRunsWithoutTheAPI(t *testing.T) {
+	server := plugintest.NewServer(t).
+		Reply(herdr.MethodPluginActionList, actionList()).
+		Reply(herdr.MethodPluginList, plugins()).
+		Reply(herdr.MethodSessionSnapshot, snapshot())
+
+	client := server.Env().Client()
+	own := []settings.Command{{Title: "touch a file", Run: "true"}}
+	list, _ := Load(context.Background(), client, "herdr.palette", nil, keys.Config{}, own)
+	entry, _ := find(list.All(), "command:touch a file")
+
+	before := len(server.Calls())
+	if err := entry.Run(context.Background(), Exec{Client: client, Ctx: &herdr.PluginInvocationContext{}}); err != nil {
+		t.Fatalf("Run() = %v", err)
+	}
+	if len(server.Calls()) != before {
+		t.Error("a background command went through the API, which cannot run one")
+	}
+}
+
+func TestACommandCanRunInATabOfItsOwn(t *testing.T) {
+	server := plugintest.NewServer(t).
+		Reply(herdr.MethodPluginActionList, actionList()).
+		Reply(herdr.MethodPluginList, plugins()).
+		Reply(herdr.MethodSessionSnapshot, snapshot()).
+		Reply(herdr.MethodPluginPaneOpen, herdr.PluginPaneOpenedResponse{
+			PluginPane: herdr.PluginPaneInfo{Pane: herdr.PaneInfo{PaneID: "w1:p9"}},
+		}).
+		Reply(herdr.MethodPaneRename, herdr.PaneInfoResponse{})
+
+	client := server.Env().Client()
+	own := []settings.Command{{Title: "watch tests", Run: "just watch", Window: settings.WindowTab}}
+	list, _ := Load(context.Background(), client, "herdr.palette", nil, keys.Config{}, own)
+	entry, _ := find(list.All(), "command:watch tests")
+
+	if err := entry.Run(context.Background(), Exec{Client: client, Ctx: &herdr.PluginInvocationContext{}}); err != nil {
+		t.Fatalf("Run() = %v", err)
+	}
+
+	calls := server.Calls()
+	var opened herdr.PluginPaneOpenParams
+	decode(t, calls[len(calls)-2].Params, &opened)
+	if opened.Placement == nil || *opened.Placement != herdr.PluginPanePlacementTab {
+		t.Errorf("placement = %v, want a tab of its own", opened.Placement)
+	}
+	if opened.Focus == nil || *opened.Focus {
+		t.Error("the tab took the focus, so it is not running in the background")
+	}
+
+	var renamed herdr.PaneRenameParams
+	decode(t, calls[len(calls)-1].Params, &renamed)
+	if renamed.Label == nil || *renamed.Label != "watch tests" {
+		t.Errorf("the pane was named %v, want the command's title so it can be found again", renamed.Label)
 	}
 }

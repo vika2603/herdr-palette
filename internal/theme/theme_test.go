@@ -1,23 +1,11 @@
 package theme
 
 import (
-	"os"
-	"path/filepath"
 	"reflect"
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/vika2603/herdr-client/plugin/plugintest"
 )
-
-func write(t *testing.T, dir, name, content string) string {
-	t.Helper()
-	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-		t.Fatalf("writing %s: %v", name, err)
-	}
-	return path
-}
 
 // tokens are what herdr's [theme.custom] would supply.
 var tokens = map[string]string{
@@ -37,10 +25,15 @@ func TestDefaultsAreComplete(t *testing.T) {
 			t.Errorf("%s has no default colour", name)
 		}
 	}
+	for _, status := range []string{"working", "blocked", "done", "idle"} {
+		if colours.Status[status] == nil {
+			t.Errorf("%s has no default colour", status)
+		}
+	}
 }
 
 func TestHerdrThemeTokensAreUsed(t *testing.T) {
-	colours := Load(nil, tokens)
+	colours := Load(tokens, Custom{})
 	if colours.Rule != lipgloss.Color("#414868") {
 		t.Errorf("rule = %v, want herdr's overlay0", colours.Rule)
 	}
@@ -56,11 +49,10 @@ func TestHerdrThemeTokensAreUsed(t *testing.T) {
 }
 
 func TestThePluginConfigurationWins(t *testing.T) {
-	dir := t.TempDir()
-	write(t, dir, ConfigFile, "rule = \"#111111\"\nmeta = \"8\"\n")
-	env := plugintest.Env(plugintest.ConfigDir(dir))
+	own := Custom{Colours: map[string]string{"rule": "#111111", "meta": "8"}}
 
-	colours := Load(env, tokens)
+	colours := Load(tokens, own)
+
 	if colours.Rule != lipgloss.Color("#111111") {
 		t.Errorf("rule = %v, want the plugin's own configuration", colours.Rule)
 	}
@@ -73,19 +65,13 @@ func TestThePluginConfigurationWins(t *testing.T) {
 }
 
 func TestNoConfigurationAtAll(t *testing.T) {
-	env := plugintest.Env(plugintest.ConfigDir(t.TempDir()))
-
-	if !reflect.DeepEqual(Load(env, nil), Defaults()) {
+	if !reflect.DeepEqual(Load(nil, Custom{}), Defaults()) {
 		t.Error("Load() changed a colour although nothing configures one")
 	}
 }
 
 func TestAStatusColourCanBeReplaced(t *testing.T) {
-	dir := t.TempDir()
-	write(t, dir, ConfigFile, "[status]\nworking = \"#fab387\"\n")
-	env := plugintest.Env(plugintest.ConfigDir(dir))
-
-	colours := Load(env, nil)
+	colours := Load(nil, Custom{Status: map[string]string{"working": "#fab387"}})
 
 	if colours.Status["working"] != lipgloss.Color("#fab387") {
 		t.Errorf("working = %v, want the configured colour", colours.Status["working"])

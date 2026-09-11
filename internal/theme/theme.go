@@ -8,13 +8,15 @@
 package theme
 
 import (
-	"github.com/BurntSushi/toml"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/vika2603/herdr-client/plugin"
 )
 
-// ConfigFile is the plugin's own configuration, in its config directory.
-const ConfigFile = "config.toml"
+// Custom is what the plugin's own configuration says about colours: each role
+// by the name the file gives it, and the agent statuses by herdr's names.
+type Custom struct {
+	Colours map[string]string
+	Status  map[string]string
+}
 
 // Theme is one colour per role the popup draws.
 type Theme struct {
@@ -55,14 +57,12 @@ func Defaults() Theme {
 }
 
 // Load resolves the theme. tokens are herdr's [theme.custom] overrides, read
-// with the rest of its configuration. Anything unreadable leaves the defaults
-// in place.
-func Load(env *plugin.Env, tokens map[string]string) Theme {
+// with the rest of its configuration, and own what the plugin's own
+// configuration said. Anything left out keeps the colour below it.
+func Load(tokens map[string]string, own Custom) Theme {
 	theme := Defaults()
 	applyHerdr(&theme, tokens)
-	if env != nil {
-		applyPlugin(&theme, env.ConfigPath(ConfigFile))
-	}
+	applyPlugin(&theme, own)
 	return theme
 }
 
@@ -76,33 +76,14 @@ func applyHerdr(theme *Theme, tokens map[string]string) {
 	set(&theme.Match, tokens["overlay1"])
 }
 
-// pluginConfig is the plugin's own configuration file.
-type pluginConfig struct {
-	Rule               string `toml:"rule"`
-	SelectedBackground string `toml:"selected_background"`
-	Match              string `toml:"match"`
-	Meta               string `toml:"meta"`
-	Scrollbar          string `toml:"scrollbar"`
-	Failure            string `toml:"failure"`
-	// Status is what an agent is doing, keyed by herdr's status names.
-	Status map[string]string `toml:"status"`
-}
-
-func applyPlugin(theme *Theme, path string) {
-	if path == "" {
-		return
-	}
-	var parsed pluginConfig
-	if _, err := toml.DecodeFile(path, &parsed); err != nil {
-		return
-	}
-	set(&theme.Rule, parsed.Rule)
-	set(&theme.Selected, parsed.SelectedBackground)
-	set(&theme.Match, parsed.Match)
-	set(&theme.Meta, parsed.Meta)
-	set(&theme.Scrollbar, parsed.Scrollbar)
-	set(&theme.Failure, parsed.Failure)
-	for status, colour := range parsed.Status {
+func applyPlugin(theme *Theme, own Custom) {
+	set(&theme.Rule, own.Colours["rule"])
+	set(&theme.Selected, own.Colours["selected_background"])
+	set(&theme.Match, own.Colours["match"])
+	set(&theme.Meta, own.Colours["meta"])
+	set(&theme.Scrollbar, own.Colours["scrollbar"])
+	set(&theme.Failure, own.Colours["failure"])
+	for status, colour := range own.Status {
 		if colour == "" {
 			continue
 		}

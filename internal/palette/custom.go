@@ -11,6 +11,7 @@ import (
 	"github.com/vika2603/herdr-client/plugin/manifest"
 
 	"github.com/vika2603/herdr-palette/internal/keys"
+	"github.com/vika2603/herdr-palette/internal/settings"
 )
 
 const (
@@ -20,28 +21,68 @@ const (
 	RunEnv        = "HERDR_PALETTE_COMMAND"
 )
 
-// customEntries turns the [[keys.command]] entries into rows.
+// configured is a command from either configuration file: herdr's, where it is
+// bound to a key, and the palette's own, where it is not. An empty window runs
+// it detached, with nothing to show and nowhere for its output to go.
+type configured struct {
+	id     string
+	title  string
+	key    string
+	line   string
+	window herdr.PluginPanePlacement
+	width  manifest.PopupSize
+	height manifest.PopupSize
+}
+
+// customEntries turns herdr's [[keys.command]] entries into rows.
 //
 // herdr runs these from a key and offers no method to run one by name, so each
-// type is reproduced over the API: a shell command is started detached, and a
-// pane or popup command runs in a plugin pane of this plugin, placed the way
-// herdr places its own.
+// type is reproduced over the API, placed the way herdr places its own.
 func customEntries(own string, commands []keys.Custom) []Entry {
 	entries := make([]Entry, 0, len(commands))
 	for _, command := range commands {
-		entries = append(entries, Entry{
-			ID:    "config:" + customID(command),
-			Title: customTitle(command),
-			Type:  TypeCustom,
-			Key:   command.Key,
-			Run:   runCustom(own, command),
-		})
+		entries = append(entries, entryFor(own, configured{
+			id:     "config:" + customID(command),
+			title:  customTitle(command),
+			key:    command.Key,
+			line:   command.Command,
+			window: herdrWindow(command.Type),
+			width:  command.Width,
+			height: command.Height,
+		}))
 	}
 	return entries
 }
 
-// customID keys the recent order. The key is what identifies a command in the
-// configuration; a command bound to nothing falls back to its command line.
+// ownEntries turns the palette's own [[command]] entries into rows.
+func ownEntries(own string, commands []settings.Command) []Entry {
+	entries := make([]Entry, 0, len(commands))
+	for _, command := range commands {
+		entries = append(entries, entryFor(own, configured{
+			id:     "command:" + command.Title,
+			title:  command.Title,
+			line:   command.Run,
+			window: window(command.Window),
+			width:  command.Width,
+			height: command.Height,
+		}))
+	}
+	return entries
+}
+
+func entryFor(own string, command configured) Entry {
+	return Entry{
+		ID:    command.id,
+		Title: command.title,
+		Type:  TypeCustom,
+		Key:   command.key,
+		Run:   run(own, command),
+	}
+}
+
+// customID keys the recent order. The key is what identifies a command in
+// herdr's configuration; a command bound to nothing falls back to its command
+// line.
 func customID(command keys.Custom) string {
 	if command.Key != "" {
 		return command.Key
@@ -56,50 +97,75 @@ func customTitle(command keys.Custom) string {
 	return command.Command
 }
 
-func runCustom(own string, command keys.Custom) func(context.Context, Exec) error {
+// herdrWindow maps herdr's command types onto plugin pane placements: its
+// popup type is a session-modal terminal, its pane type a temporary pane that
+// takes over the layout, which is herdr's zoomed placement rather than a split
+// beside the focused pane, and its shell type no window at all.
+func herdrWindow(commandType string) herdr.PluginPanePlacement {
+	switch commandType {
+	case keys.TypePopup:
+		return herdr.PluginPanePlacementPopup
+	case keys.TypePane:
+		return herdr.PluginPanePlacementZoomed
+	}
+	return ""
+}
+
+// window maps what a [[command]] entry asked for. A tab is the one that can be
+// returned to: it is a pane of its own, which the list then offers to go to.
+func window(asked string) herdr.PluginPanePlacement {
+	switch asked {
+	case settings.WindowPopup:
+		return herdr.PluginPanePlacementPopup
+	case settings.WindowPane:
+		return herdr.PluginPanePlacementZoomed
+	case settings.WindowTab:
+		return herdr.PluginPanePlacementTab
+	}
+	return ""
+}
+
+func run(own string, command configured) func(context.Context, Exec) error {
 	return func(ctx context.Context, e Exec) error {
-		if command.Type == keys.TypeShell {
-			return startDetached(command.Command)
+		if command.window == "" {
+			return startDetached(command.line)
 		}
 
-		where := placement(command.Type)
 		params := herdr.PluginPaneOpenParams{
 			PluginID:   own,
 			Entrypoint: RunEntrypoint,
-			Placement:  new(where),
-			Focus:      new(true),
+			Placement:  &command.window,
+			Focus:      new(command.window != herdr.PluginPanePlacementTab),
 			Cwd:        e.Ctx.FocusedPaneCwd,
-			Env:        map[string]string{RunEnv: command.Command},
+			Env:        map[string]string{RunEnv: command.line},
 		}
 		// A zoomed pane, like a split, is placed against an existing pane and
 		// takes its id; a popup always covers the active pane, and herdr
 		// rejects a target alongside it.
-		if where != herdr.PluginPanePlacementPopup {
+		if command.window == herdr.PluginPanePlacementZoomed {
 			params.TargetPaneID = e.Ctx.FocusedPaneID
 		}
-		if size, ok := popupSize(command.Width); ok {
+		if size, ok := popupSize(command.width); ok {
 			params.Width = &size
 		}
-		if size, ok := popupSize(command.Height); ok {
+		if size, ok := popupSize(command.height); ok {
 			params.Height = &size
 		}
 
-		if _, err := e.Client.PluginPaneOpen(ctx, params); err != nil {
-			return fmt.Errorf("%s: %w", customTitle(command), err)
+		opened, err := e.Client.PluginPaneOpen(ctx, params)
+		if err != nil {
+			return fmt.Errorf("%s: %w", command.title, err)
+		}
+		// A tab is opened to be found again, and every plugin pane carries the
+		// manifest's name until it is given the name of what it runs.
+		if info, ok := opened.(*herdr.PluginPaneOpenedResponse); ok && command.window == herdr.PluginPanePlacementTab {
+			_, _ = e.Client.PaneRename(ctx, herdr.PaneRenameParams{
+				PaneID: info.PluginPane.Pane.PaneID,
+				Label:  &command.title,
+			})
 		}
 		return nil
 	}
-}
-
-// placement maps herdr's command types onto plugin pane placements: its popup
-// type is a session-modal terminal, and its pane type a temporary pane that
-// takes over the layout, which is herdr's zoomed placement rather than a
-// split beside the focused pane.
-func placement(commandType string) herdr.PluginPanePlacement {
-	if commandType == keys.TypePopup {
-		return herdr.PluginPanePlacementPopup
-	}
-	return herdr.PluginPanePlacementZoomed
 }
 
 // Shell is what a configured command line runs under, matching herdr, which
@@ -122,8 +188,8 @@ func popupSize(size manifest.PopupSize) (herdr.PopupSize, bool) {
 }
 
 // startDetached runs a shell command in its own session, so it outlives the
-// popup the palette closes on its way out. Its output goes nowhere: herdr's
-// own shell type runs detached in the background too.
+// popup the palette closes on its way out. Its output goes nowhere, which is
+// what herdr's own shell type does with it.
 func startDetached(command string) error {
 	cmd := exec.Command(Shell(), "-c", command)
 	detach(cmd)

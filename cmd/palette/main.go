@@ -16,6 +16,7 @@ import (
 	"github.com/vika2603/herdr-palette/internal/keys"
 	"github.com/vika2603/herdr-palette/internal/palette"
 	"github.com/vika2603/herdr-palette/internal/prompt"
+	"github.com/vika2603/herdr-palette/internal/settings"
 	"github.com/vika2603/herdr-palette/internal/theme"
 	"github.com/vika2603/herdr-palette/internal/ui"
 )
@@ -80,7 +81,7 @@ func onExec(ctx context.Context, env *plugin.Env) error {
 
 	// An unreachable action list still leaves the catalog and the configured
 	// commands, and the handed-over entry may well be one of them.
-	list, _ := entries(ctx, env, keys.Commands())
+	list, _ := entries(ctx, env, keys.Commands(), settings.Load(env).Commands)
 	return palette.RunPending(ctx, env.Client(), list.All(), pending)
 }
 
@@ -92,12 +93,12 @@ func onInput(ctx context.Context, env *plugin.Env) error {
 		return nil
 	}
 
-	cfg := keys.Commands()
+	own := settings.Load(env)
 	value, ok, err := prompt.Ask(os.Stdin, os.Stdout, prompt.Field{
 		Title:   pending.Prompt.Title,
 		Label:   pending.Prompt.Label,
 		Initial: pending.Prompt.Initial,
-	}, theme.Load(env, cfg.Theme))
+	}, theme.Load(keys.Commands().Theme, own.Theme))
 	if err != nil || !ok {
 		return err
 	}
@@ -105,8 +106,8 @@ func onInput(ctx context.Context, env *plugin.Env) error {
 }
 
 // entries assembles the command list both entrypoints work from.
-func entries(ctx context.Context, env *plugin.Env, cfg keys.Config) (palette.List, error) {
-	return palette.Load(ctx, env.Client(), env.PluginID, catalog.Entries(), cfg)
+func entries(ctx context.Context, env *plugin.Env, cfg keys.Config, own []settings.Command) (palette.List, error) {
+	return palette.Load(ctx, env.Client(), env.PluginID, catalog.Entries(), cfg, own)
 }
 
 // onRun runs the configured command this pane was opened for. The pane closes
@@ -134,6 +135,7 @@ func onRun(ctx context.Context, env *plugin.Env) error {
 // closed popup with nil: it is a normal exit, not a failed plugin command.
 func onPalette(ctx context.Context, env *plugin.Env) error {
 	cfg := keys.Load(env.BinPath)
-	list, loadErr := entries(ctx, env, cfg)
-	return ui.Run(ctx, env, list, loadErr, theme.Load(env, cfg.Theme))
+	own := settings.Load(env)
+	list, loadErr := entries(ctx, env, cfg, own.Commands)
+	return ui.Run(ctx, env, list, loadErr, theme.Load(cfg.Theme, own.Theme))
 }

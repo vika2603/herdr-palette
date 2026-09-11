@@ -148,13 +148,30 @@ herdr's own temporary pane does. A zoomed pane is placed against an existing
 pane and takes its id; a popup covers the active pane and herdr rejects a
 target or a workspace alongside it.
 
+## The palette's own configuration
+
+`internal/settings` reads one file in the plugin's config directory, in a
+single decode: the `[[command]]` entries and the colours. It exists because
+herdr runs a `[[keys.command]]` entry from a key and nothing else, so a command
+reached through the palette would otherwise need a binding it never uses.
+
+A command runs in the window it asks for, and detached when it asks for none —
+the same shell command herdr's own `shell` type starts. The windows are the
+plugin pane placements: `popup` for a session-modal terminal, `pane` for
+herdr's zoomed placement, and `tab` for a tab of its own, opened without focus
+and renamed to the command's title. A tab is the one a command can be returned
+to: it is a pane, so the rows that go somewhere list it, which a detached
+process has no way to be. herdr has no hidden pane or tab to put it in instead.
+
 ## Colours
 
 herdr does not publish its theme: the API has no method for it, and
 config.toml carries only the theme's name plus the tokens the user overrode.
 `internal/theme` therefore resolves each colour from three places, each
 overriding the one before it — built-in defaults, the `[theme.custom]` tokens
-`internal/keys` read, and the plugin's own config.toml.
+`internal/keys` read, and what `internal/settings` read from the plugin's own
+configuration. The statuses an agent can be in are colours of the same kind,
+keyed by herdr's names for them.
 
 The defaults are ANSI indexes, which follow the terminal, except the rule and
 the selected row: both need a shade just off the terminal's background, which

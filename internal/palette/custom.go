@@ -74,10 +74,10 @@ func runCustom(own string, command keys.Custom) func(context.Context, Exec) erro
 			Cwd:        e.Ctx.FocusedPaneCwd,
 			Env:        map[string]string{RunEnv: command.Command},
 		}
-		// A split is placed against an existing pane and takes its id; a popup
-		// always covers the active pane and herdr rejects either a workspace
-		// or a target alongside it.
-		if where == herdr.PluginPanePlacementSplit {
+		// A zoomed pane, like a split, is placed against an existing pane and
+		// takes its id; a popup always covers the active pane, and herdr
+		// rejects a target alongside it.
+		if where != herdr.PluginPanePlacementPopup {
 			params.TargetPaneID = e.Ctx.FocusedPaneID
 		}
 		if size, ok := parseSize(command.Width); ok {
@@ -95,12 +95,14 @@ func runCustom(own string, command keys.Custom) func(context.Context, Exec) erro
 }
 
 // placement maps herdr's command types onto plugin pane placements: its popup
-// type is a session-modal terminal, its pane type a temporary split.
+// type is a session-modal terminal, and its pane type a temporary pane that
+// takes over the layout, which is herdr's zoomed placement rather than a
+// split beside the focused pane.
 func placement(commandType string) herdr.PluginPanePlacement {
 	if commandType == keys.TypePopup {
 		return herdr.PluginPanePlacementPopup
 	}
-	return herdr.PluginPanePlacementSplit
+	return herdr.PluginPanePlacementZoomed
 }
 
 // parseSize reads the cell count or percentage herdr accepts for a popup.

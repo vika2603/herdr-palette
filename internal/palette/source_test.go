@@ -217,7 +217,7 @@ func TestAPopupCommandOpensAPluginPane(t *testing.T) {
 	}
 }
 
-func TestAPaneCommandOpensASplit(t *testing.T) {
+func TestAPaneCommandOpensAZoomedPane(t *testing.T) {
 	server := plugintest.NewServer(t).
 		Reply(herdr.MethodPluginActionList, actionList()).
 		Reply(herdr.MethodPluginPaneOpen, herdr.OKResponse{})
@@ -233,14 +233,14 @@ func TestAPaneCommandOpensASplit(t *testing.T) {
 	var params herdr.PluginPaneOpenParams
 	calls := server.Calls()
 	decode(t, calls[len(calls)-1].Params, &params)
-	if params.Placement == nil || *params.Placement != herdr.PluginPanePlacementSplit {
-		t.Error("a pane command did not open a split")
+	if params.Placement == nil || *params.Placement != herdr.PluginPanePlacementZoomed {
+		t.Error("a pane command opened beside the focused pane instead of taking over the layout")
 	}
 	if params.TargetPaneID == nil || *params.TargetPaneID != "w1:p1" {
-		t.Error("a split was opened without the pane it splits, which herdr rejects")
+		t.Error("a zoomed pane was opened without the pane it is placed against, which herdr rejects")
 	}
 	if params.WorkspaceID != nil {
-		t.Error("a split carried a workspace id, which herdr rejects alongside the target pane")
+		t.Error("a zoomed pane carried a workspace id, which herdr rejects alongside the target pane")
 	}
 	if params.Width != nil || params.Height != nil {
 		t.Error("a pane command sent a popup size")

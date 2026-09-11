@@ -18,7 +18,7 @@ import (
 	"github.com/vika2603/herdr-palette/internal/palette"
 )
 
-// Groups shown in the Detail column.
+// Groups shown in the last column.
 const (
 	groupWorkspace = "Workspace"
 	groupTab       = "Tab"
@@ -26,6 +26,11 @@ const (
 	groupAgent     = "Agent"
 	groupHerdr     = "Herdr"
 )
+
+// Binding names come from herdr's [keys] section. split_vertical opens the new
+// pane to the right and split_horizontal below it, as the keyboard
+// documentation for 0.9.0 states.
+//
 
 // Errors for a command the current context cannot run. herdr fills the
 // invocation context from what is focused, so a missing id means the palette
@@ -41,9 +46,10 @@ var (
 func Entries() []palette.Entry {
 	entries := []palette.Entry{
 		{
-			ID:     "herdr:workspace.new",
-			Title:  "New workspace",
-			Detail: groupWorkspace,
+			ID:      "herdr:workspace.new",
+			Binding: "new_workspace",
+			Title:   "New workspace",
+			Type:    groupWorkspace,
 			Run: func(ctx context.Context, e palette.Exec) error {
 				// source_workspace_id lets the new workspace follow the
 				// focused pane's cwd policy instead of starting at $HOME.
@@ -55,9 +61,10 @@ func Entries() []palette.Entry {
 			},
 		},
 		{
-			ID:     "herdr:workspace.rename",
-			Title:  "Rename workspace",
-			Detail: groupWorkspace,
+			ID:      "herdr:workspace.rename",
+			Binding: "rename_workspace",
+			Title:   "Rename workspace",
+			Type:    groupWorkspace,
 			Input: &palette.Input{
 				Label:   "Workspace name",
 				Initial: func(c *herdr.PluginInvocationContext) string { return deref(c.WorkspaceLabel) },
@@ -75,9 +82,10 @@ func Entries() []palette.Entry {
 			},
 		},
 		{
-			ID:     "herdr:workspace.close",
-			Title:  "Close workspace",
-			Detail: groupWorkspace,
+			ID:      "herdr:workspace.close",
+			Binding: "close_workspace",
+			Title:   "Close workspace",
+			Type:    groupWorkspace,
 			Run: func(ctx context.Context, e palette.Exec) error {
 				id, err := need(e.Ctx.WorkspaceID, errNoWorkspace)
 				if err != nil {
@@ -88,10 +96,11 @@ func Entries() []palette.Entry {
 			},
 		},
 		{
-			ID:     "herdr:worktree.new",
-			Title:  "New worktree workspace",
-			Detail: groupWorkspace,
-			Input:  &palette.Input{Label: "New branch"},
+			ID:      "herdr:worktree.new",
+			Binding: "new_worktree",
+			Title:   "New worktree workspace",
+			Type:    groupWorkspace,
+			Input:   &palette.Input{Label: "New branch"},
 			Run: func(ctx context.Context, e palette.Exec) error {
 				_, err := e.Client.WorktreeCreate(ctx, herdr.WorktreeCreateParams{
 					Branch: &e.Input,
@@ -102,10 +111,11 @@ func Entries() []palette.Entry {
 			},
 		},
 		{
-			ID:     "herdr:worktree.open",
-			Title:  "Open worktree workspace",
-			Detail: groupWorkspace,
-			Input:  &palette.Input{Label: "Existing branch"},
+			ID:      "herdr:worktree.open",
+			Binding: "open_worktree",
+			Title:   "Open worktree workspace",
+			Type:    groupWorkspace,
+			Input:   &palette.Input{Label: "Existing branch"},
 			Run: func(ctx context.Context, e palette.Exec) error {
 				_, err := e.Client.WorktreeOpen(ctx, herdr.WorktreeOpenParams{
 					Branch: &e.Input,
@@ -117,9 +127,10 @@ func Entries() []palette.Entry {
 		},
 
 		{
-			ID:     "herdr:tab.new",
-			Title:  "New tab",
-			Detail: groupTab,
+			ID:      "herdr:tab.new",
+			Binding: "new_tab",
+			Title:   "New tab",
+			Type:    groupTab,
 			Run: func(ctx context.Context, e palette.Exec) error {
 				_, err := e.Client.TabCreate(ctx, herdr.TabCreateParams{
 					WorkspaceID: e.Ctx.WorkspaceID,
@@ -130,9 +141,10 @@ func Entries() []palette.Entry {
 			},
 		},
 		{
-			ID:     "herdr:tab.rename",
-			Title:  "Rename tab",
-			Detail: groupTab,
+			ID:      "herdr:tab.rename",
+			Binding: "rename_tab",
+			Title:   "Rename tab",
+			Type:    groupTab,
 			Input: &palette.Input{
 				Label:   "Tab name",
 				Initial: func(c *herdr.PluginInvocationContext) string { return deref(c.TabLabel) },
@@ -147,9 +159,10 @@ func Entries() []palette.Entry {
 			},
 		},
 		{
-			ID:     "herdr:tab.close",
-			Title:  "Close tab",
-			Detail: groupTab,
+			ID:      "herdr:tab.close",
+			Binding: "close_tab",
+			Title:   "Close tab",
+			Type:    groupTab,
 			Run: func(ctx context.Context, e palette.Exec) error {
 				id, err := need(e.Ctx.TabID, errNoTab)
 				if err != nil {
@@ -161,21 +174,24 @@ func Entries() []palette.Entry {
 		},
 
 		{
-			ID:     "herdr:pane.split.right",
-			Title:  "Split pane right",
-			Detail: groupPane,
-			Run:    split(herdr.SplitDirectionRight),
+			ID:      "herdr:pane.split.right",
+			Binding: "split_vertical",
+			Title:   "Split pane right",
+			Type:    groupPane,
+			Run:     split(herdr.SplitDirectionRight),
 		},
 		{
-			ID:     "herdr:pane.split.down",
-			Title:  "Split pane down",
-			Detail: groupPane,
-			Run:    split(herdr.SplitDirectionDown),
+			ID:      "herdr:pane.split.down",
+			Binding: "split_horizontal",
+			Title:   "Split pane down",
+			Type:    groupPane,
+			Run:     split(herdr.SplitDirectionDown),
 		},
 		{
-			ID:     "herdr:pane.zoom",
-			Title:  "Toggle pane zoom",
-			Detail: groupPane,
+			ID:      "herdr:pane.zoom",
+			Binding: "zoom",
+			Title:   "Toggle pane zoom",
+			Type:    groupPane,
 			Run: func(ctx context.Context, e palette.Exec) error {
 				_, err := e.Client.PaneZoom(ctx, herdr.PaneZoomParams{
 					PaneID: e.Ctx.FocusedPaneID,
@@ -185,10 +201,11 @@ func Entries() []palette.Entry {
 			},
 		},
 		{
-			ID:     "herdr:pane.rename",
-			Title:  "Rename pane",
-			Detail: groupPane,
-			Input:  &palette.Input{Label: "Pane name"},
+			ID:      "herdr:pane.rename",
+			Binding: "rename_pane",
+			Title:   "Rename pane",
+			Type:    groupPane,
+			Input:   &palette.Input{Label: "Pane name"},
 			Run: func(ctx context.Context, e palette.Exec) error {
 				id, err := need(e.Ctx.FocusedPaneID, errNoPane)
 				if err != nil {
@@ -199,9 +216,10 @@ func Entries() []palette.Entry {
 			},
 		},
 		{
-			ID:     "herdr:pane.close",
-			Title:  "Close pane",
-			Detail: groupPane,
+			ID:      "herdr:pane.close",
+			Binding: "close_pane",
+			Title:   "Close pane",
+			Type:    groupPane,
 			Run: func(ctx context.Context, e palette.Exec) error {
 				id, err := need(e.Ctx.FocusedPaneID, errNoPane)
 				if err != nil {
@@ -212,9 +230,10 @@ func Entries() []palette.Entry {
 			},
 		},
 		{
-			ID:     "herdr:pane.edit_scrollback",
-			Title:  "Edit pane scrollback",
-			Detail: groupPane,
+			ID:      "herdr:pane.edit_scrollback",
+			Binding: "edit_scrollback",
+			Title:   "Edit pane scrollback",
+			Type:    groupPane,
 			Run: func(ctx context.Context, e palette.Exec) error {
 				id, err := need(e.Ctx.FocusedPaneID, errNoPane)
 				if err != nil {
@@ -225,35 +244,39 @@ func Entries() []palette.Entry {
 			},
 		},
 		{
-			ID:     "herdr:pane.focus.left",
-			Title:  "Focus pane left",
-			Detail: groupPane,
-			Run:    focus(herdr.PaneDirectionLeft),
+			ID:      "herdr:pane.focus.left",
+			Binding: "focus_pane_left",
+			Title:   "Focus pane left",
+			Type:    groupPane,
+			Run:     focus(herdr.PaneDirectionLeft),
 		},
 		{
-			ID:     "herdr:pane.focus.down",
-			Title:  "Focus pane down",
-			Detail: groupPane,
-			Run:    focus(herdr.PaneDirectionDown),
+			ID:      "herdr:pane.focus.down",
+			Binding: "focus_pane_down",
+			Title:   "Focus pane down",
+			Type:    groupPane,
+			Run:     focus(herdr.PaneDirectionDown),
 		},
 		{
-			ID:     "herdr:pane.focus.up",
-			Title:  "Focus pane up",
-			Detail: groupPane,
-			Run:    focus(herdr.PaneDirectionUp),
+			ID:      "herdr:pane.focus.up",
+			Binding: "focus_pane_up",
+			Title:   "Focus pane up",
+			Type:    groupPane,
+			Run:     focus(herdr.PaneDirectionUp),
 		},
 		{
-			ID:     "herdr:pane.focus.right",
-			Title:  "Focus pane right",
-			Detail: groupPane,
-			Run:    focus(herdr.PaneDirectionRight),
+			ID:      "herdr:pane.focus.right",
+			Binding: "focus_pane_right",
+			Title:   "Focus pane right",
+			Type:    groupPane,
+			Run:     focus(herdr.PaneDirectionRight),
 		},
 
 		{
-			ID:     "herdr:agent.prompt",
-			Title:  "Prompt the focused agent",
-			Detail: groupAgent,
-			Input:  &palette.Input{Label: "Prompt"},
+			ID:    "herdr:agent.prompt",
+			Title: "Prompt the focused agent",
+			Type:  groupAgent,
+			Input: &palette.Input{Label: "Prompt"},
 			Run: func(ctx context.Context, e palette.Exec) error {
 				if e.Ctx.FocusedPaneAgent == nil {
 					return errNoAgent
@@ -271,9 +294,10 @@ func Entries() []palette.Entry {
 		},
 
 		{
-			ID:     "herdr:server.reload_config",
-			Title:  "Reload herdr config",
-			Detail: groupHerdr,
+			ID:      "herdr:server.reload_config",
+			Binding: "reload_config",
+			Title:   "Reload herdr config",
+			Type:    groupHerdr,
 			Run: func(ctx context.Context, e palette.Exec) error {
 				_, err := e.Client.ServerReloadConfig(ctx)
 				return err

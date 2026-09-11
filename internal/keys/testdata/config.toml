@@ -1,0 +1,24 @@
+[keys]
+prefix = "ctrl+b"
+new_workspace = "prefix+alt+n"
+previous_tab = ""
+
+[[keys.command]]
+key = "prefix+f"
+description = "Open git jump"
+type = "popup"
+command = "zsh jump.sh"
+width = "70%"
+height = "60%"
+
+[[keys.command]]
+key = "prefix+alt+g"
+description = "Open Lazygit"
+type = "pane"
+command = "lazygit"
+
+[[keys.command]]
+key = "prefix+shift+s"
+description = "Manage machines"
+type = "plugin_action"
+command = "herdr.machine-manager.open"

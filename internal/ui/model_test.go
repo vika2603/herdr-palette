@@ -26,12 +26,12 @@ func testEntries(ran *[]string) []palette.Entry {
 		}
 	}
 	return []palette.Entry{
-		{ID: "a", Title: "Split pane right", Detail: "Pane", Run: record("a")},
-		{ID: "b", Title: "New tab", Detail: "Tab", Run: record("b")},
+		{ID: "a", Title: "Split pane right", Type: "Pane", Run: record("a")},
+		{ID: "b", Title: "New tab", Type: "Tab", Run: record("b")},
 		{
-			ID:     "c",
-			Title:  "Rename workspace",
-			Detail: "Workspace",
+			ID:    "c",
+			Title: "Rename workspace",
+			Type:  "herdr",
 			Input: &palette.Input{
 				Label:   "Workspace name",
 				Initial: func(c *herdr.PluginInvocationContext) string { return "current" },
@@ -255,10 +255,10 @@ func wheelModel(t *testing.T) model {
 	entries := make([]palette.Entry, 0, 10)
 	for i := range 10 {
 		entries = append(entries, palette.Entry{
-			ID:     string(rune('a' + i)),
-			Title:  "Command " + string(rune('a'+i)),
-			Detail: "Group",
-			Run:    func(context.Context, palette.Exec) error { return nil },
+			ID:    string(rune('a' + i)),
+			Title: "Command " + string(rune('a'+i)),
+			Type:  "herdr",
+			Run:   func(context.Context, palette.Exec) error { return nil },
 		})
 	}
 	m := newModel(context.Background(), nil, testEnv(t), &herdr.PluginInvocationContext{}, entries, nil)
@@ -373,5 +373,31 @@ func TestNoScrollbarWhenEverythingFits(t *testing.T) {
 
 	if strings.Contains(view, "┃") || strings.Contains(view, "│") {
 		t.Errorf("a list that fits drew a scrollbar:\n%s", view)
+	}
+}
+
+func TestTheKeyColumnShowsWhatEachCommandIsBoundTo(t *testing.T) {
+	entries := []palette.Entry{
+		{ID: "a", Title: "New tab", Type: "herdr", Key: "prefix+c"},
+		{ID: "b", Title: "Split pane right", Type: "herdr"},
+	}
+	m := newModel(context.Background(), nil, testEnv(t), &herdr.PluginInvocationContext{}, entries, nil)
+	m.width, m.height = 60, 12
+
+	view := m.View()
+	if !strings.Contains(view, "prefix+c") {
+		t.Errorf("the key is missing from the row:\n%s", view)
+	}
+	if m.keyWidth != len("prefix+c") {
+		t.Errorf("key column width = %d, want the widest key", m.keyWidth)
+	}
+}
+
+func TestThereIsNoKeyColumnWithoutBindings(t *testing.T) {
+	var ran []string
+	m := testModel(t, nil, &ran)
+
+	if m.keyWidth != 0 {
+		t.Errorf("key column width = %d, want none when nothing is bound", m.keyWidth)
 	}
 }

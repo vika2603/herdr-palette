@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 
 	"github.com/vika2603/herdr-client/herdr"
 	"github.com/vika2603/herdr-client/plugin"
@@ -18,6 +19,7 @@ import (
 // Entrypoint ids herdr-plugin.toml declares.
 const (
 	panePalette = "palette"
+	paneRun     = palette.RunEntrypoint
 	actionOpen  = "open"
 )
 
@@ -32,6 +34,7 @@ func newPlugin() *plugin.Plugin {
 	p := plugin.New()
 	p.Action(actionOpen, onOpen)
 	p.Pane(panePalette, onPalette)
+	p.Pane(paneRun, onRun)
 	return p
 }
 
@@ -50,6 +53,27 @@ func onOpen(ctx context.Context, env *plugin.Env) error {
 		params.Env = map[string]string{palette.ContextEnv: string(env.ContextJSON)}
 	}
 	_, err := env.Client().PluginPaneOpen(ctx, params)
+	return err
+}
+
+// onRun runs the configured command this pane was opened for. The pane closes
+// when the command exits, the way herdr's own pane and popup commands behave.
+// A command that exits non-zero is the command's business, not a failed plugin
+// entrypoint.
+func onRun(ctx context.Context, env *plugin.Env) error {
+	command := os.Getenv(palette.RunEnv)
+	if command == "" {
+		return errors.New("the pane was opened without a command to run")
+	}
+
+	cmd := exec.CommandContext(ctx, palette.Shell(), "-c", command)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	err := cmd.Run()
+
+	var exit *exec.ExitError
+	if errors.As(err, &exit) || errors.Is(err, context.Canceled) {
+		return nil
+	}
 	return err
 }
 

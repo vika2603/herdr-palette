@@ -61,8 +61,8 @@ func Rank(entries []Entry, query string, recent []string) []Ranked {
 		if ranked[i].Score != ranked[j].Score {
 			return ranked[i].Score > ranked[j].Score
 		}
-		if ranked[i].Entry.Detail != ranked[j].Entry.Detail {
-			return ranked[i].Entry.Detail < ranked[j].Entry.Detail
+		if ranked[i].Entry.Type != ranked[j].Entry.Type {
+			return ranked[i].Entry.Type < ranked[j].Entry.Type
 		}
 		return ranked[i].Entry.Title < ranked[j].Entry.Title
 	})
@@ -76,9 +76,9 @@ func rankOne(entry Entry, query string) (Ranked, bool) {
 	if score, matched, ok := match(entry.Title, query); ok {
 		return Ranked{Entry: entry, Matched: matched, Score: score}, true
 	}
-	// The group or plugin name is not part of the title, but typing it is a
-	// natural way to narrow the list.
-	prefix := entry.Detail + " "
+	// The type is not part of the title, but typing it is a natural way to
+	// narrow the list to one kind of command.
+	prefix := entry.Type + " "
 	if score, matched, ok := match(prefix+entry.Title, query); ok {
 		return Ranked{
 			Entry:   entry,

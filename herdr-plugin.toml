@@ -21,6 +21,15 @@ width = "60%"
 height = "50%"
 command = ["./bin/palette"]
 
+[[panes]]
+id = "run"
+title = "Command"
+description = "Run a command configured under [[keys.command]]"
+# Placement and size come from the command's own configuration, passed when the
+# pane is opened.
+placement = "popup"
+command = ["./bin/palette"]
+
 [[actions]]
 id = "open"
 title = "Open command palette"

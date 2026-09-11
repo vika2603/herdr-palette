@@ -27,6 +27,10 @@ type model struct {
 	ranked []palette.Ranked
 	cursor int
 	offset int
+	// keyWidth is the width of the key column, zero when nothing on show is
+	// bound to a key, and typeWidth the width of the type column.
+	keyWidth  int
+	typeWidth int
 
 	// pending is the entry waiting for its input. The input screen is open
 	// while it is set.
@@ -221,6 +225,12 @@ func (m model) run(entry palette.Entry, value string) tea.Cmd {
 func (m *model) rank() {
 	m.ranked = palette.Rank(m.entries, m.query.Value(), m.recent)
 	m.cursor, m.offset = 0, 0
+
+	m.keyWidth, m.typeWidth = 0, 0
+	for _, ranked := range m.ranked {
+		m.keyWidth = max(m.keyWidth, len([]rune(ranked.Entry.Key)))
+		m.typeWidth = max(m.typeWidth, len([]rune(ranked.Entry.Type)))
+	}
 }
 
 func (m *model) move(by int) {

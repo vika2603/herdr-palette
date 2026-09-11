@@ -7,11 +7,11 @@ import (
 
 func entries() []Entry {
 	return []Entry{
-		{ID: "a", Title: "Split pane right", Detail: "Pane"},
-		{ID: "b", Title: "Split pane down", Detail: "Pane"},
-		{ID: "c", Title: "New tab", Detail: "Tab"},
-		{ID: "d", Title: "Rename workspace", Detail: "Workspace"},
-		{ID: "e", Title: "Manage machines", Detail: "Machine Manager"},
+		{ID: "a", Title: "Split pane right", Type: "Pane"},
+		{ID: "b", Title: "Split pane down", Type: "Pane"},
+		{ID: "c", Title: "New tab", Type: "Tab"},
+		{ID: "d", Title: "Rename workspace", Type: "Workspace"},
+		{ID: "e", Title: "Manage machines", Type: "Plugin"},
 	}
 }
 
@@ -52,8 +52,8 @@ func TestRankMatchesThroughTheDetailColumn(t *testing.T) {
 
 func TestRankScoresATitleMatchAboveADetailMatch(t *testing.T) {
 	list := []Entry{
-		{ID: "detail", Title: "Unrelated", Detail: "New tab group"},
-		{ID: "title", Title: "New tab", Detail: "Tab"},
+		{ID: "detail", Title: "Unrelated", Type: "New tab group"},
+		{ID: "title", Title: "New tab", Type: "Tab"},
 	}
 	ranked := Rank(list, "new tab", nil)
 	if got := ranked[0].Entry.ID; got != "title" {
@@ -79,7 +79,7 @@ func TestRecentDoesNotOutrankAClearlyBetterMatch(t *testing.T) {
 }
 
 func TestMatchedPositionsAreTitleRelative(t *testing.T) {
-	ranked := Rank([]Entry{{ID: "e", Title: "Manage machines", Detail: "Machine Manager"}}, "mm", nil)
+	ranked := Rank([]Entry{{ID: "e", Title: "Manage machines", Type: "Plugin"}}, "mm", nil)
 	if len(ranked) != 1 {
 		t.Fatalf("Rank() returned %d entries, want 1", len(ranked))
 	}
@@ -122,8 +122,8 @@ func TestRankMatchesWordsInAnyOrder(t *testing.T) {
 
 func TestRankPrefersAWordStart(t *testing.T) {
 	list := []Entry{
-		{ID: "inside", Title: "Unsplit the layout", Detail: "Pane"},
-		{ID: "start", Title: "Split pane right", Detail: "Pane"},
+		{ID: "inside", Title: "Unsplit the layout", Type: "Pane"},
+		{ID: "start", Title: "Split pane right", Type: "Pane"},
 	}
 	ranked := Rank(list, "split", nil)
 	if got := ranked[0].Entry.ID; got != "start" {

@@ -3,6 +3,8 @@ package catalog
 import (
 	"context"
 	"encoding/json"
+	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/vika2603/herdr-client/herdr"
@@ -253,7 +255,7 @@ func TestEntriesAreWellFormed(t *testing.T) {
 			t.Errorf("%q has no id", e.Title)
 		case e.Title == "":
 			t.Errorf("%s has no title", e.ID)
-		case e.Detail == "":
+		case e.Type == "":
 			t.Errorf("%s has no group", e.ID)
 		case e.Run == nil:
 			t.Errorf("%s has no command", e.ID)
@@ -261,5 +263,24 @@ func TestEntriesAreWellFormed(t *testing.T) {
 			t.Errorf("%s is listed twice, so the recent order would key both", e.ID)
 		}
 		seen[e.ID] = true
+	}
+}
+
+// The key column is only right if the binding names are the ones herdr uses.
+// They come from the default configuration the installed herdr prints.
+func TestBindingsNameRealHerdrActions(t *testing.T) {
+	out, err := exec.Command("herdr", "--default-config").Output()
+	if err != nil {
+		t.Skip("herdr is not on PATH")
+	}
+
+	config := string(out)
+	for _, e := range Entries() {
+		if e.Binding == "" {
+			continue
+		}
+		if !strings.Contains(config, e.Binding+" = ") {
+			t.Errorf("%s names the action %q, which herdr's configuration does not define", e.ID, e.Binding)
+		}
 	}
 }

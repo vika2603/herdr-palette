@@ -10,12 +10,24 @@ import (
 // Colors are ANSI indexes rather than hex, so the popup follows the terminal
 // theme herdr is rendered in.
 var (
-	dimStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	titleStyle    = lipgloss.NewStyle().Bold(true)
-	matchStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("4")).Bold(true)
-	selectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Bold(true)
-	errStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
-	thumbStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
+	dimStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	titleStyle = lipgloss.NewStyle().Bold(true)
+	matchStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("4")).Bold(true)
+	errStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+	thumbStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
+
+	// The selected row is a band of background rather than a marker, so the
+	// eye finds it without reading the first column. The shade matches the
+	// selected row in herdr's own agents sidebar: barely off the background,
+	// so a long list does not read as a grey block.
+	//
+	// Every segment of the row carries the background itself: a style wrapped
+	// around text that already contains escape sequences would be cut short by
+	// the first reset inside it.
+	selectedBackground = lipgloss.AdaptiveColor{Dark: "#2C2C3A", Light: "#E6E6EE"}
+	selectedText       = lipgloss.NewStyle().Background(selectedBackground).Bold(true)
+	selectedMatch      = lipgloss.NewStyle().Background(selectedBackground).Foreground(lipgloss.Color("12")).Bold(true)
+	selectedMeta       = lipgloss.NewStyle().Background(selectedBackground).Foreground(lipgloss.Color("7"))
 )
 
 // Sizes used until the first resize message arrives.
@@ -63,7 +75,7 @@ func (m model) listView() string {
 
 	rows := m.rows()
 	if len(m.ranked) == 0 {
-		lines = append(lines, dimStyle.Render("  no command matches"))
+		lines = append(lines, dimStyle.Render(" no command matches"))
 		rows--
 	}
 	for i := m.offset; i < len(m.ranked) && i < m.offset+rows; i++ {
@@ -81,23 +93,33 @@ func (m model) row(index int) string {
 	ranked := m.ranked[index]
 	selected := index == m.cursor
 
-	marker := "  "
+	text, meta := lipgloss.NewStyle(), dimStyle
 	if selected {
-		marker = selectedStyle.Render("▌ ")
+		text, meta = selectedText, selectedMeta
 	}
 
-	detail := ranked.Entry.Detail
-	// The title gets whatever the marker, the detail column, a gap and the
-	// scrollbar with its margin leave.
-	width := m.cols() - lipgloss.Width(detail) - 6
-	title := highlight(truncate(ranked.Entry.Title, width), ranked.Matched, selected)
+	// Both columns are padded to a fixed width so they line up under each
+	// other. The key column is only there when something on show is bound.
+	entryType := fmt.Sprintf("%-*s", m.typeWidth, ranked.Entry.Type)
+	key, keyGap := "", ""
+	if m.keyWidth > 0 {
+		key = fmt.Sprintf("%*s", m.keyWidth, ranked.Entry.Key)
+		keyGap = "  "
+	}
 
-	gap := m.cols() - 4 - lipgloss.Width(title) - lipgloss.Width(detail)
+	// The row is padded on both sides, and gives up two more columns to the
+	// scrollbar and the blank that keeps it off the text.
+	fixed := lipgloss.Width(entryType) + lipgloss.Width(key) + len(keyGap) + 6
+	title := highlight(truncate(ranked.Entry.Title, m.cols()-fixed), ranked.Matched, selected)
+
+	gap := m.cols() - 4 - lipgloss.Width(title) - lipgloss.Width(key) - len(keyGap) - lipgloss.Width(entryType)
 	if gap < 1 {
 		gap = 1
 	}
-	// A blank column keeps the scrollbar off the text.
-	return marker + title + strings.Repeat(" ", gap) + dimStyle.Render(detail) + " " + m.scrollbar(index-m.offset)
+
+	row := text.Render(" ") + title + text.Render(strings.Repeat(" ", gap)) +
+		meta.Render(key) + text.Render(keyGap) + meta.Render(entryType) + text.Render(" ")
+	return row + " " + m.scrollbar(index-m.offset)
 }
 
 // scrollbar draws where the visible window sits in the whole list, one column
@@ -124,23 +146,23 @@ func (m model) scrollbar(row int) string {
 
 // highlight bolds the runes the query matched.
 func highlight(title string, matched []int, selected bool) string {
-	base := lipgloss.NewStyle()
+	base, hit := lipgloss.NewStyle(), matchStyle
 	if selected {
-		base = titleStyle
+		base, hit = selectedText, selectedMatch
 	}
 	if len(matched) == 0 {
 		return base.Render(title)
 	}
 
-	hit := make(map[int]bool, len(matched))
+	matches := make(map[int]bool, len(matched))
 	for _, at := range matched {
-		hit[at] = true
+		matches[at] = true
 	}
 
 	var out strings.Builder
 	for i, r := range []rune(title) {
-		if hit[i] {
-			out.WriteString(matchStyle.Render(string(r)))
+		if matches[i] {
+			out.WriteString(hit.Render(string(r)))
 			continue
 		}
 		out.WriteString(base.Render(string(r)))

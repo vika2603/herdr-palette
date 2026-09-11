@@ -31,10 +31,18 @@ type Entry struct {
 	// ID is stable across runs: it keys the recent-command order.
 	ID    string
 	Title string
-	// Detail names where the entry comes from, the herdr group or the plugin.
-	Detail string
-	Input  *Input
-	Run    func(context.Context, Exec) error
+	// Type is the last column: the group a herdr command belongs to, or what
+	// an entry is when it does not come from herdr.
+	Type string
+	// Binding is the herdr action this entry mirrors, such as new_workspace,
+	// used to look up the key that does the same thing. Empty when herdr has
+	// no such action.
+	Binding string
+	// Key is what the configuration binds the entry to, filled in at load
+	// time and shown next to the title.
+	Key   string
+	Input *Input
+	Run   func(context.Context, Exec) error
 	// NeedsSelection keeps the entry out of the list when no pane text is
 	// selected, the way a plugin action declaring the selection context is
 	// only meaningful with one.
@@ -49,6 +57,14 @@ func (e Entry) Initial(ctx *herdr.PluginInvocationContext) string {
 	}
 	return e.Input.Initial(ctx)
 }
+
+// Types for the entries that do not come from herdr itself. A plugin's own
+// name is not used: what matters in the column is that the row is a plugin
+// action rather than which plugin registered it.
+const (
+	TypeCustom = "Custom"
+	TypePlugin = "Plugin"
+)
 
 // ContextEnv is the environment variable the action entrypoint uses to pass
 // its invocation context to the popup pane it opens.

@@ -18,14 +18,17 @@ title = "Commands"
 description = "Search and run an action"
 placement = "popup"
 width = "60%"
-height = "50%"
+height = "70%"
 command = ["./bin/palette"]
 
 # The field an entry that needs a value is collected in: two lines, in a popup
-# of its own rather than in the palette's window.
+# of its own rather than in the palette's window. herdr draws a pane's title on
+# the border and requires one; this is a zero-width space, which passes that
+# check and leaves the border carrying nothing — what the field is collecting
+# is on its first line, where there is room to say it properly.
 [[panes]]
 id = "input"
-title = "Value"
+title = "\u200B"
 description = "Collect the value a command needs"
 placement = "popup"
 width = "40%"

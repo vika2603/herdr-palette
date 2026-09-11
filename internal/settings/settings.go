@@ -41,9 +41,20 @@ type Command struct {
 	Height manifest.PopupSize `toml:"height"`
 }
 
+// Window is the size of the palette's own popup. herdr centres a popup in the
+// pane area and offers no say over where it sits, so the height is also what
+// decides how high up it starts: a taller one begins closer to the top.
+type Window struct {
+	Width  manifest.PopupSize `toml:"width"`
+	Height manifest.PopupSize `toml:"height"`
+}
+
 // Settings is what the file says.
 type Settings struct {
 	Commands []Command
+	// Window is the size the palette asks for, empty where the file says
+	// nothing and the manifest's own size stands.
+	Window Window
 	// Theme are the colours the file overrides.
 	Theme theme.Custom
 }
@@ -51,6 +62,7 @@ type Settings struct {
 // file is the whole document, decoded in one pass.
 type file struct {
 	Command []Command `toml:"command"`
+	Window  Window    `toml:"window"`
 
 	Rule               string            `toml:"rule"`
 	SelectedBackground string            `toml:"selected_background"`
@@ -76,6 +88,7 @@ func Load(env *plugin.Env) Settings {
 
 	return Settings{
 		Commands: commands(parsed.Command),
+		Window:   parsed.Window,
 		Theme: theme.Custom{
 			Colours: map[string]string{
 				"rule":                parsed.Rule,

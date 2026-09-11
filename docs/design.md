@@ -120,6 +120,16 @@ popup closing; it waits for the popup process to exit — the pid is in the file
 — and then runs the entry. A failure there has no popup left to show it, so it
 is reported with `notification.show`.
 
+## Where the popup sits
+
+herdr centres a popup in the pane area and takes only a size: `plugin.pane.open`
+has no position, and config.toml has no popup placement. A percentage is of the
+pane area — a popup opened from a pane of half the width still measures 60% of
+the whole area, which is what makes it the area rather than the pane it is
+centred in. The sidebar is outside that area, so the popup sits half the
+sidebar's width right of the window's centre, and the height is the only lever
+on how high up it starts.
+
 ## Collecting a value
 
 A command that needs a value — a rename, a branch name, a prompt — gets a
@@ -128,6 +138,10 @@ same handover, one hop longer: the palette writes the entry down with a
 `prompt` and quits, `exec` opens the `input` pane for it, and the field writes
 the entry back with the value and asks for `exec` again, which runs it once the
 field's popup is gone in turn.
+
+herdr draws a pane's title on the border and its manifest requires one, so the
+field's is a zero-width space: what it is collecting is on its first line,
+where there is room for the command's name and what the value means.
 
 The field is not a Bubble Tea screen, and that is the point. Bubble Tea hides
 the terminal cursor for the lifetime of the program and paints its caret as

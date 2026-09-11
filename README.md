@@ -117,6 +117,24 @@ The window is what decides whether a command can be returned to. A background
 command is a detached process with no pane, which herdr cannot show later; a
 tab is a pane, so the palette lists it and `go to` reaches it.
 
+## The palette's own window
+
+herdr centres a popup in the pane area and offers no say over where it sits, so
+its height is also what decides how high up it starts: a taller one begins
+closer to the top. The same file sets it:
+
+```toml
+[window]
+width = "60%"
+height = "70%"
+```
+
+Sizes take either spelling herdr does, a percentage or a cell count. Left out,
+the plugin's own 60% by 70% stands. The pane area is what the percentage is of,
+which is the terminal minus the sidebar — the popup is centred in it, so it
+sits half the sidebar's width right of the window's centre, and nothing in
+herdr's API moves it.
+
 ## Keys in the list
 
 The key column comes from herdr's own configuration: the defaults it ships,

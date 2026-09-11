@@ -83,3 +83,14 @@ func TestNoConfigurationFile(t *testing.T) {
 		t.Errorf("read %+v with no file to read", own.Commands)
 	}
 }
+
+func TestTheWindowSizeIsRead(t *testing.T) {
+	own := configured(t, "[window]\nwidth = \"70%\"\nheight = 30\n")
+
+	if own.Window.Width.Percent != 70 {
+		t.Errorf("width = %v, want the configured percentage", own.Window.Width)
+	}
+	if own.Window.Height.Cells != 30 {
+		t.Errorf("height = %v, want the configured cell count", own.Window.Height)
+	}
+}

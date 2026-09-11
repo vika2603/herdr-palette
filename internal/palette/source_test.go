@@ -324,15 +324,15 @@ func TestAShellCommandRunsWithoutTheAPI(t *testing.T) {
 }
 
 func TestPopupSizeIsOnlySentWhenConfigured(t *testing.T) {
-	if _, ok := popupSize(manifest.PopupSize{}); ok {
+	if _, ok := PopupSize(manifest.PopupSize{}); ok {
 		t.Error("an unset size was sent as a size")
 	}
-	size, ok := popupSize(manifest.PopupSize{Percent: 70})
+	size, ok := PopupSize(manifest.PopupSize{Percent: 70})
 	if !ok || size.Percent != 70 {
-		t.Errorf("popupSize() = %v, %v, want the configured percentage", size, ok)
+		t.Errorf("PopupSize() = %v, %v, want the configured percentage", size, ok)
 	}
-	if size, ok := popupSize(manifest.PopupSize{Cells: 80}); !ok || size.Cells != 80 {
-		t.Errorf("popupSize() = %v, %v, want the configured cell count", size, ok)
+	if size, ok := PopupSize(manifest.PopupSize{Cells: 80}); !ok || size.Cells != 80 {
+		t.Errorf("PopupSize() = %v, %v, want the configured cell count", size, ok)
 	}
 }
 

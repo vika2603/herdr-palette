@@ -145,10 +145,10 @@ func run(own string, command configured) func(context.Context, Exec) error {
 		if command.window == herdr.PluginPanePlacementZoomed {
 			params.TargetPaneID = e.Ctx.FocusedPaneID
 		}
-		if size, ok := popupSize(command.width); ok {
+		if size, ok := PopupSize(command.width); ok {
 			params.Width = &size
 		}
-		if size, ok := popupSize(command.height); ok {
+		if size, ok := PopupSize(command.height); ok {
 			params.Height = &size
 		}
 
@@ -177,10 +177,10 @@ func Shell() string {
 	return "/bin/sh"
 }
 
-// popupSize carries a configured size over to the API, reporting whether one
+// PopupSize carries a configured size over to the API, reporting whether one
 // was configured at all. The two types hold the same two fields; the manifest
 // package is what decoded the cell count or percentage herdr accepts.
-func popupSize(size manifest.PopupSize) (herdr.PopupSize, bool) {
+func PopupSize(size manifest.PopupSize) (herdr.PopupSize, bool) {
 	if size == (manifest.PopupSize{}) {
 		return herdr.PopupSize{}, false
 	}

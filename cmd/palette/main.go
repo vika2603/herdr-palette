@@ -47,13 +47,20 @@ func newPlugin() *plugin.Plugin {
 	return p
 }
 
-// onOpen opens the palette popup. Placement and size come from the manifest,
-// so the call names only the plugin and the entrypoint.
+// onOpen opens the palette popup. Placement comes from the manifest, and the
+// size from it too unless the plugin's own configuration asks for another.
 func onOpen(ctx context.Context, env *plugin.Env) error {
 	params := herdr.PluginPaneOpenParams{
 		PluginID:   env.PluginID,
 		Entrypoint: panePalette,
 		Focus:      new(true),
+	}
+	window := settings.Load(env).Window
+	if size, ok := palette.PopupSize(window.Width); ok {
+		params.Width = &size
+	}
+	if size, ok := palette.PopupSize(window.Height); ok {
+		params.Height = &size
 	}
 	// The commands act on what was focused when the key was pressed. The
 	// popup's own entrypoint environment describes the popup pane, so the

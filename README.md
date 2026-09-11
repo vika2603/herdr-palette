@@ -130,10 +130,10 @@ height = "70%"
 ```
 
 Sizes take either spelling herdr does, a percentage or a cell count. Left out,
-the plugin's own 60% by 70% stands. The pane area is what the percentage is of,
-which is the terminal minus the sidebar — the popup is centred in it, so it
-sits half the sidebar's width right of the window's centre, and nothing in
-herdr's API moves it.
+herdr's own popup size stands, which is about half the pane area each way. The
+pane area is what a percentage is of, which is the terminal minus the sidebar —
+the popup is centred in it, so it sits half the sidebar's width right of the
+window's centre, and nothing in herdr's API moves it.
 
 ## Keys in the list
 

@@ -137,7 +137,9 @@ pane area — a popup opened from a pane of half the width still measures 60% of
 the whole area, which is what makes it the area rather than the pane it is
 centred in. The sidebar is outside that area, so the popup sits half the
 sidebar's width right of the window's centre, and the height is the only lever
-on how high up it starts.
+on how high up it starts. The manifest asks for no size, leaving herdr's own
+popup default, which the `[window]` table of the plugin's configuration
+replaces.
 
 ## Collecting a value
 

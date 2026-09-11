@@ -6,7 +6,7 @@ next to the actions every other installed plugin registered and the workspaces,
 tabs and panes you can jump to, filters them as you type, and remembers what
 you ran last.
 
-Requires herdr 0.9.0 or newer. Linux and macOS.
+Requires [herdr](https://herdr.dev) 0.9.0 or newer. Linux and macOS.
 
 ## Install
 
@@ -14,7 +14,15 @@ Requires herdr 0.9.0 or newer. Linux and macOS.
 herdr plugin install vika2603/herdr-palette
 ```
 
-Or, from a checkout:
+Install builds the binary from source when a Go toolchain is present, and
+otherwise downloads the binary attached to the release that matches the
+manifest version, accepting it only if its SHA-256 matches
+[`scripts/checksums.txt`](scripts/checksums.txt) in the checkout. Release
+binaries are built by the `release` workflow for macOS and Linux on amd64 and
+arm64.
+
+Or, from a checkout — `herdr plugin link` runs no build command, so `just link`
+builds the working tree first:
 
 ```sh
 just link

@@ -33,7 +33,12 @@ func Run(ctx context.Context, env *plugin.Env, list palette.List, loadErr error,
 	// Cell motion reports clicks and the wheel. herdr forwards mouse events to
 	// a pane app that asks for them, so the popup gets them even while herdr's
 	// own mouse capture is on.
-	program := tea.NewProgram(m, tea.WithContext(ctx), tea.WithMouseCellMotion())
+	//
+	// The renderer writes a frame on its own ticker, so the first frame waits
+	// out one interval before the popup shows anything. The palette is up for
+	// a keystroke or two and draws a screen of text; the fastest rate the
+	// renderer accepts halves that wait and costs nothing it has to draw.
+	program := tea.NewProgram(m, tea.WithContext(ctx), tea.WithMouseCellMotion(), tea.WithFPS(120))
 	_, err := program.Run()
 	if ctx.Err() != nil {
 		return nil

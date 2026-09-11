@@ -111,7 +111,10 @@ height = "80%"
 `window = "pane"` is the fourth: a temporary pane over the layout, which closes
 when the command exits. A command with no `title` is listed under what it runs,
 and one with no `run` is left out. These rows are listed as `command:`,
-alongside the `[[keys.command]]` entries from herdr's own configuration.
+alongside the `[[keys.command]]` entries from herdr's own configuration, and
+their titles are shown lowercase like every other command in the list.
+
+A command runs where the focused pane is, whether it opens a window or not.
 
 The window is what decides whether a command can be returned to. A background
 command is a detached process with no pane, which herdr cannot show later; a

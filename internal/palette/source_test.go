@@ -2,8 +2,11 @@ package palette
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/vika2603/herdr-client/herdr"
 	"github.com/vika2603/herdr-client/plugin/manifest"
@@ -522,4 +525,32 @@ func TestACommandCanRunInATabOfItsOwn(t *testing.T) {
 	if renamed.Label == nil || *renamed.Label != "watch tests" {
 		t.Errorf("the pane was named %v, want the command's title so it can be found again", renamed.Label)
 	}
+}
+
+// A background command runs where the focused pane is, the way one that opens
+// a window does.
+func TestABackgroundCommandRunsInTheFocusedPanesDirectory(t *testing.T) {
+	server := plugintest.NewServer(t).
+		Reply(herdr.MethodPluginActionList, actionList()).
+		Reply(herdr.MethodPluginList, plugins()).
+		Reply(herdr.MethodSessionSnapshot, snapshot())
+
+	dir := t.TempDir()
+	own := []settings.Command{{Title: "mark the directory", Run: "touch marker"}}
+	list, _ := Load(context.Background(), server.Env().Client(), "herdr.palette", nil, keys.Config{}, own)
+	entry, _ := find(list.All(), "command:mark the directory")
+
+	invocation := &herdr.PluginInvocationContext{FocusedPaneCwd: &dir}
+	if err := entry.Run(context.Background(), Exec{Client: server.Env().Client(), Ctx: invocation}); err != nil {
+		t.Fatalf("Run() = %v", err)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(filepath.Join(dir, "marker")); err == nil {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Error("the command did not run in the focused pane's directory")
 }

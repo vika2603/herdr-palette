@@ -60,7 +60,7 @@ func ownEntries(own string, commands []settings.Command) []Entry {
 	for _, command := range commands {
 		entries = append(entries, entryFor(own, configured{
 			id:     "command:" + command.Title,
-			title:  command.Title,
+			title:  strings.ToLower(command.Title),
 			line:   command.Run,
 			window: window(command.Window),
 			width:  command.Width,
@@ -128,7 +128,7 @@ func window(asked string) herdr.PluginPanePlacement {
 func run(own string, command configured) func(context.Context, Exec) error {
 	return func(ctx context.Context, e Exec) error {
 		if command.window == "" {
-			return startDetached(command.line)
+			return startDetached(command.line, herdr.Value(e.Ctx.FocusedPaneCwd))
 		}
 
 		params := herdr.PluginPaneOpenParams{
@@ -189,9 +189,11 @@ func PopupSize(size manifest.PopupSize) (herdr.PopupSize, bool) {
 
 // startDetached runs a shell command in its own session, so it outlives the
 // popup the palette closes on its way out. Its output goes nowhere, which is
-// what herdr's own shell type does with it.
-func startDetached(command string) error {
+// what herdr's own shell type does with it. It runs where the focused pane is,
+// as a command that opens a window does.
+func startDetached(command, dir string) error {
 	cmd := exec.Command(Shell(), "-c", command)
+	cmd.Dir = dir
 	detach(cmd)
 	if err := cmd.Start(); err != nil {
 		return err

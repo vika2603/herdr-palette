@@ -114,12 +114,12 @@ To set them yourself, write `config.toml` in the plugin's config directory
 ANSI index, and anything left out keeps what the rules above resolved:
 
 ```toml
-rule = "#414868"
-selected_background = "#24283b"
-match = "#7aa2f7"
-meta = "8"
-scrollbar = "7"
-failure = "1"
+rule = "#414868"                # the lines above and below the list
+selected_background = "#24283b" # the band behind the selected row
+match = "#7aa2f7"               # the query's letters inside a title
+meta = "8"                      # the key and type columns
+scrollbar = "8"                 # the scrollbar's thumb, on a track drawn in rule
+failure = "1"                   # the error line
 ```
 
 ## Development

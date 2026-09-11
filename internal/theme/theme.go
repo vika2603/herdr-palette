@@ -20,9 +20,10 @@ const ConfigFile = "config.toml"
 
 // Theme is one colour per role the popup draws.
 type Theme struct {
-	// Rule is the lines above and below the list, Selected the band behind
-	// the selected row, Match the query's letters inside a title, Meta the key
-	// and type columns, Scrollbar its thumb, and Failure the error line.
+	// Rule is the lines above and below the list and the scrollbar's track,
+	// Selected the band behind the selected row, Match the query's letters
+	// inside a title, Meta the key and type columns, Scrollbar the thumb, and
+	// Failure the error line.
 	Rule      lipgloss.TerminalColor
 	Selected  lipgloss.TerminalColor
 	Match     lipgloss.TerminalColor
@@ -41,7 +42,7 @@ func Defaults() Theme {
 		Selected:  lipgloss.AdaptiveColor{Dark: "#2C2C3A", Light: "#E6E6EE"},
 		Match:     lipgloss.Color("4"),
 		Meta:      lipgloss.Color("8"),
-		Scrollbar: lipgloss.Color("7"),
+		Scrollbar: lipgloss.Color("8"),
 		Failure:   lipgloss.Color("1"),
 	}
 }

@@ -51,10 +51,10 @@ opened from there. A plugin popup is not part of the session's panes, so the
 palette's own window never appears in its list.
 
 Every one of these rows starts with "go to", so typing that — or `goto`, which
-a subsequence match reaches as well — narrows the list to them. A pane's
-row shows the name it was given, or what the program in it reports, and carries
-the workspace, the tab and the working directory as search text as well, so a
-project name finds the panes inside it.
+a subsequence match reaches as well — narrows the list to them. A pane's row
+shows the name it was given, or what the program in it reports, and carries the
+workspace it sits in and its directory as search text, so a project name finds
+the panes inside it and the row says which one it matched.
 
 ## Why herdr's commands are a hand-written list
 
@@ -178,8 +178,12 @@ before it is scored, which keeps the positions it returns lined up with what is
 drawn.
 
 A query that matches no row is retried with the entry's `Search` text
-prepended, scored lower. `Search` is not rendered; for a plugin action it is
-the plugin's id, and for a pane the workspace, tab and directory it sits in.
+prepended, scored lower. `Search` is not part of the row — for a plugin action
+it is the plugin's id, and for a pane the workspace and directory it sits in —
+so a row matched that way would have nothing highlighted. The positions in
+front of the row belong to the search text, and the row shows it next to the
+title, dimmed and highlighted the same way, in whatever width is left once the
+title and the key have theirs.
 
 ## Mouse
 

@@ -30,11 +30,6 @@ func sessionEntries(snapshot herdr.SessionSnapshot) []Entry {
 	for _, workspace := range snapshot.Workspaces {
 		workspaces[workspace.WorkspaceID] = workspace.Label
 	}
-	tabs := make(map[string]string, len(snapshot.Tabs))
-	for _, tab := range snapshot.Tabs {
-		tabs[tab.TabID] = tab.Label
-	}
-
 	entries := make([]Entry, 0, len(snapshot.Workspaces)+len(snapshot.Tabs)+len(snapshot.Panes))
 	for _, workspace := range snapshot.Workspaces {
 		if workspace.Focused {
@@ -79,8 +74,9 @@ func sessionEntries(snapshot herdr.SessionSnapshot) []Entry {
 			Title: goTo + paneLabel(pane),
 			Type:  TypePane,
 			// The pane's own title says little about where it is, so the
-			// workspace and tab it sits in are searchable as well.
-			Search: workspaces[pane.WorkspaceID] + " " + tabs[pane.TabID] + " " + herdr.Value(pane.Cwd),
+			// workspace it sits in and its directory are searchable as well,
+			// and shown next to the row when that is what the query matched.
+			Search: workspaces[pane.WorkspaceID] + " " + herdr.Value(pane.Cwd),
 			Run: func(ctx context.Context, e Exec) error {
 				_, err := e.Client.PaneFocus(ctx, herdr.PaneTarget{PaneID: id})
 				return err

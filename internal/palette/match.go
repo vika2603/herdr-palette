@@ -30,7 +30,12 @@ const (
 type Ranked struct {
 	Entry   Entry
 	Matched []int
-	Score   int
+	// Detail is the entry's search text when that is where the query matched,
+	// with DetailMatched indexing it. A row whose match is in text it does not
+	// show has nothing to highlight, so the text is shown next to it.
+	Detail        string
+	DetailMatched []int
+	Score         int
 }
 
 // query is what the user typed, prepared once for a whole pass. Every word has
@@ -102,10 +107,13 @@ func rankOne(entry Entry, q query) (Ranked, bool) {
 	// natural way to narrow the list.
 	prefix := entry.Search + " "
 	if score, matched, ok := match(fold(prefix+name), q); ok {
+		cut := len([]rune(prefix))
 		return Ranked{
-			Entry:   entry,
-			Matched: shift(matched, len([]rune(prefix))),
-			Score:   score - searchPenalty,
+			Entry:         entry,
+			Matched:       shift(matched, cut),
+			Detail:        entry.Search,
+			DetailMatched: before(matched, cut),
+			Score:         score - searchPenalty,
 		}, true
 	}
 	return Ranked{}, false
@@ -130,6 +138,18 @@ func match(hay string, q query) (int, []int, bool) {
 
 	sort.Ints(matched)
 	return score, matched, true
+}
+
+// before keeps the indexes that fall in front of the cut, which are the ones
+// inside the search text rather than the row.
+func before(indexes []int, cut int) []int {
+	out := make([]int, 0, len(indexes))
+	for _, i := range indexes {
+		if i < cut {
+			out = append(out, i)
+		}
+	}
+	return out
 }
 
 func shift(indexes []int, by int) []int {

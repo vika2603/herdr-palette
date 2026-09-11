@@ -71,9 +71,9 @@ seen from a key. Typing the plugin's id finds them as well.
 
 **`workspace:`, `tab:` and `pane:`** are what is open in the session, and
 running one goes there. They all read "go to …", so typing `go to` or `goto`
-narrows the list to them. Panes also carry the workspace, the tab and the
-working directory as search text, so typing a project name finds the panes
-inside it. Where the palette was opened from is left out.
+narrows the list to them. Panes also carry the workspace they sit in and their
+working directory, so typing a project name finds the panes inside it. Where
+the palette was opened from is left out.
 
 A command that needs a value, such as a rename or a prompt, opens a small field
 of its own once the palette closes. Renames start from the current label. The
@@ -109,8 +109,10 @@ list, and stays blank while everything fits.
 
 Matching is fzf's own: every word of the query has to appear in the row, in
 any order (`pane split`), each as a run of letters that need not be adjacent,
-so initials work too (`spr` for "herdr: split pane right"). Recently run
-commands come first when the query is empty.
+so initials work too (`spr` for "herdr: split pane right"). A row can also
+match on text it does not show, such as a plugin's id or the directory a pane
+is in; it then shows that text next to the title, so the match is visible.
+Recently run commands come first when the query is empty.
 
 ## Colours
 

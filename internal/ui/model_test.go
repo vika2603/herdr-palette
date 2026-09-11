@@ -456,3 +456,29 @@ func TestAUIBusyRefusalIsRelayed(t *testing.T) {
 		t.Errorf("called %q, want the command to be handed over", server.Calls()[0].Method)
 	}
 }
+
+func TestARowMatchedOnTextItDoesNotShowShowsThatText(t *testing.T) {
+	var ran []string
+	entries := []palette.Entry{{
+		ID:     "e",
+		Title:  "manage machines",
+		Type:   "Machine Manager",
+		Search: "herdr.machine-manager",
+		Run:    func(context.Context, palette.Exec) error { ran = append(ran, "e"); return nil },
+	}}
+	m := newModel(
+		context.Background(),
+		testEnv(t),
+		&herdr.PluginInvocationContext{},
+		entries,
+		nil,
+		theme.Defaults(),
+	)
+	m.width, m.height = 72, 12
+
+	view := typeQuery(t, m, "herdr.machine").View()
+
+	if !strings.Contains(view, "herdr.machine") {
+		t.Errorf("the row does not say what the query matched:\n%s", view)
+	}
+}

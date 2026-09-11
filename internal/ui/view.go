@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/vika2603/herdr-palette/internal/palette"
 	"github.com/vika2603/herdr-palette/internal/theme"
 )
 
@@ -58,6 +59,11 @@ const (
 	// sides, the blank that keeps the scrollbar off the text, and the
 	// scrollbar itself.
 	margins = 4
+	// detailShare is the fraction of a row the matched search text may take,
+	// and minDetail the width below which it is left out: what the row is
+	// comes first, and a couple of letters of context explain nothing.
+	detailShare = 3
+	minDetail   = 10
 )
 
 func (m model) cols() int {
@@ -117,14 +123,39 @@ func (m model) row(index int) string {
 		key = fmt.Sprintf("%*s", m.keyWidth, ranked.Entry.Key)
 	}
 
-	width := lipgloss.Width(key)
-	name := truncate(ranked.Entry.Name(), m.cols()-width-margins-2)
+	// The row is what the query is answered with, so it is measured first and
+	// the matched search text takes what is left over.
+	room := m.cols() - margins - 2 - lipgloss.Width(key)
+	full := ranked.Entry.Name()
+	detail, detailWidth := m.detail(ranked, room-lipgloss.Width(full)-2, selected)
+
+	name := truncate(full, room-detailWidth)
 	namespace := min(len([]rune(ranked.Entry.Namespace())), len([]rune(name)))
 	rendered := m.highlight(name, namespace, ranked.Matched, selected)
-	gap := max(m.cols()-margins-lipgloss.Width(rendered)-width, 1)
+	gap := max(m.cols()-margins-lipgloss.Width(rendered)-detailWidth-lipgloss.Width(key), 1)
 
-	row := text.Render(" ") + rendered + text.Render(strings.Repeat(" ", gap)) + meta.Render(key) + text.Render(" ")
+	row := text.Render(" ") + rendered + text.Render(strings.Repeat(" ", gap)) +
+		detail + meta.Render(key) + text.Render(" ")
 	return row + " " + m.scrollbar(index-m.offset)
+}
+
+// detail draws the text a row matched on when the row itself does not show it,
+// such as the plugin an action came from or the workspace a pane sits in. It
+// is what keeps a match visible: the row it is next to has nothing highlighted.
+func (m model) detail(ranked palette.Ranked, room int, selected bool) (string, int) {
+	room = min(room, m.cols()/detailShare)
+	if len(ranked.DetailMatched) == 0 || room < minDetail {
+		return "", 0
+	}
+
+	text := truncate(ranked.Detail, room)
+	rendered := m.highlight(text, len([]rune(text)), ranked.DetailMatched, selected)
+
+	gap := m.styles.title
+	if selected {
+		gap = m.styles.selected
+	}
+	return rendered + gap.Render("  "), lipgloss.Width(rendered) + 2
 }
 
 // scrollbar draws where the visible window sits in the whole list, one column

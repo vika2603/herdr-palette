@@ -133,3 +133,70 @@ func TestRankPrefersAWordStart(t *testing.T) {
 		t.Errorf("ranked %q first, want the title that starts with the word", got)
 	}
 }
+
+// The positions are what the row highlights, so they have to cover the query
+// and index the row as it is drawn.
+func TestRankReportsWhereTheQueryMatched(t *testing.T) {
+	entry := Entry{ID: "a", Title: "split pane right", Type: "Herdr"}
+
+	ranked := Rank([]Entry{entry}, "split", nil)
+	if len(ranked) != 1 {
+		t.Fatalf("Rank() returned %d entries, want 1", len(ranked))
+	}
+	name := []rune(entry.Name())
+	var matched string
+	for _, at := range ranked[0].Matched {
+		matched += string(name[at])
+	}
+	if matched != "split" {
+		t.Errorf("the row highlights %q, want the query", matched)
+	}
+}
+
+func TestEveryWordOfTheQueryIsHighlighted(t *testing.T) {
+	entry := Entry{ID: "a", Title: "split pane right", Type: "Herdr"}
+
+	ranked := Rank([]Entry{entry}, "right split", nil)
+	if len(ranked) != 1 {
+		t.Fatalf("Rank() returned %d entries, want 1", len(ranked))
+	}
+	name := []rune(entry.Name())
+	var matched string
+	for _, at := range ranked[0].Matched {
+		matched += string(name[at])
+	}
+	if matched != "splitright" {
+		t.Errorf("the row highlights %q, want both words in the order they are drawn", matched)
+	}
+}
+
+// A row matched on text it does not show has nothing to highlight, so the
+// matched text comes back with it.
+func TestAMatchInTheSearchTextIsReported(t *testing.T) {
+	entry := Entry{
+		ID:     "e",
+		Title:  "manage machines",
+		Type:   "Machine Manager",
+		Search: "herdr.machine-manager",
+	}
+
+	ranked := Rank([]Entry{entry}, "herdr.machine", nil)
+	if len(ranked) != 1 {
+		t.Fatalf("Rank() returned %d entries, want 1", len(ranked))
+	}
+	if ranked[0].Detail != entry.Search {
+		t.Errorf("detail = %q, want the text the query matched", ranked[0].Detail)
+	}
+
+	search := []rune(entry.Search)
+	var matched string
+	for _, at := range ranked[0].DetailMatched {
+		matched += string(search[at])
+	}
+	if matched != "herdr.machine" {
+		t.Errorf("the detail highlights %q, want the query", matched)
+	}
+	if len(ranked[0].Matched) != 0 {
+		t.Error("the row itself was highlighted, although the query is not in it")
+	}
+}

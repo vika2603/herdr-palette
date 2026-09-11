@@ -50,7 +50,9 @@ column.
 **herdr's own commands** are a list this plugin maintains, because herdr
 publishes no equivalent of `plugin.action.list` for its built-in actions. Each
 one calls the socket API method with the same effect: workspace, tab, pane,
-worktree and agent commands, plus a config reload. Their column is the group
+worktree and agent commands, plus a config reload. Splitting left and up is
+there too, which herdr has no action for — it splits right or down and swaps
+the new pane into place. Their column is the group
 they belong to — `Pane`, `Tab`, `Workspace`, `Agent`, `Herdr`. Built-in actions
 with no API equivalent — `settings`, `help`, `toggle_sidebar`, `resize_mode` —
 are not in the list. Navigation is also left out: herdr's own `goto` and

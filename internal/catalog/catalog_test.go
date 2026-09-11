@@ -41,7 +41,8 @@ func server(t *testing.T) *plugintest.Server {
 		Reply(herdr.MethodTabCreate, herdr.TabCreatedResponse{}).
 		Reply(herdr.MethodTabRename, herdr.TabInfoResponse{}).
 		Reply(herdr.MethodTabClose, herdr.OKResponse{}).
-		Reply(herdr.MethodPaneSplit, herdr.PaneInfoResponse{}).
+		Reply(herdr.MethodPaneSplit, herdr.PaneInfoResponse{Pane: herdr.PaneInfo{PaneID: "w1:p2"}}).
+		Reply(herdr.MethodPaneSwap, herdr.PaneSwapResponse{}).
 		Reply(herdr.MethodPaneZoom, herdr.PaneZoomResponse{}).
 		Reply(herdr.MethodPaneRename, herdr.PaneInfoResponse{}).
 		Reply(herdr.MethodPaneClose, herdr.OKResponse{}).
@@ -69,9 +70,9 @@ func decode(t *testing.T, raw json.RawMessage, into any) {
 	}
 }
 
-// run executes one entry against the scripted server and returns the single
-// call it made.
-func run(t *testing.T, id, input string) plugintest.Call {
+// run executes one entry against the scripted server and returns the calls it
+// made.
+func run(t *testing.T, id, input string) []plugintest.Call {
 	t.Helper()
 	s := server(t)
 	e := entry(t, id)
@@ -83,10 +84,10 @@ func run(t *testing.T, id, input string) plugintest.Call {
 		t.Fatalf("%s: Run() = %v", id, err)
 	}
 	calls := s.Calls()
-	if len(calls) != 1 {
-		t.Fatalf("%s made %d calls, want 1", id, len(calls))
+	if len(calls) == 0 {
+		t.Fatalf("%s made no calls", id)
 	}
-	return calls[0]
+	return calls
 }
 
 func TestEachEntryCallsItsMethod(t *testing.T) {
@@ -105,6 +106,8 @@ func TestEachEntryCallsItsMethod(t *testing.T) {
 		{id: "herdr:tab.close", method: herdr.MethodTabClose},
 		{id: "herdr:pane.split.right", method: herdr.MethodPaneSplit},
 		{id: "herdr:pane.split.down", method: herdr.MethodPaneSplit},
+		{id: "herdr:pane.split.left", method: herdr.MethodPaneSplit},
+		{id: "herdr:pane.split.up", method: herdr.MethodPaneSplit},
 		{id: "herdr:pane.zoom", method: herdr.MethodPaneZoom},
 		{id: "herdr:pane.rename", input: "renamed", method: herdr.MethodPaneRename},
 		{id: "herdr:pane.close", method: herdr.MethodPaneClose},
@@ -119,7 +122,7 @@ func TestEachEntryCallsItsMethod(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.id, func(t *testing.T) {
-			if got := run(t, c.id, c.input).Method; got != c.method {
+			if got := run(t, c.id, c.input)[0].Method; got != c.method {
 				t.Errorf("called %q, want %q", got, c.method)
 			}
 		})
@@ -128,7 +131,7 @@ func TestEachEntryCallsItsMethod(t *testing.T) {
 
 func TestNewWorkspaceFollowsTheFocusedWorkspace(t *testing.T) {
 	var params herdr.WorkspaceCreateParams
-	decode(t, run(t, "herdr:workspace.new", "").Params, &params)
+	decode(t, run(t, "herdr:workspace.new", "")[0].Params, &params)
 
 	if params.SourceWorkspaceID == nil || *params.SourceWorkspaceID != "w1" {
 		t.Error("source_workspace_id was not sent, so the new workspace loses the cwd policy")
@@ -140,7 +143,7 @@ func TestNewWorkspaceFollowsTheFocusedWorkspace(t *testing.T) {
 
 func TestRenameSendsTheTypedValue(t *testing.T) {
 	var params herdr.WorkspaceRenameParams
-	decode(t, run(t, "herdr:workspace.rename", "renamed").Params, &params)
+	decode(t, run(t, "herdr:workspace.rename", "renamed")[0].Params, &params)
 
 	if params.WorkspaceID != "w1" || params.Label != "renamed" {
 		t.Errorf("renamed %+v, want w1 to become \"renamed\"", params)
@@ -158,7 +161,7 @@ func TestRenameStartsFromTheCurrentLabel(t *testing.T) {
 
 func TestNewTabOpensInTheFocusedPaneCwd(t *testing.T) {
 	var params herdr.TabCreateParams
-	decode(t, run(t, "herdr:tab.new", "").Params, &params)
+	decode(t, run(t, "herdr:tab.new", "")[0].Params, &params)
 
 	if params.WorkspaceID == nil || *params.WorkspaceID != "w1" {
 		t.Error("the tab was not created in the focused workspace")
@@ -170,7 +173,7 @@ func TestNewTabOpensInTheFocusedPaneCwd(t *testing.T) {
 
 func TestSplitTargetsTheFocusedPane(t *testing.T) {
 	var params herdr.PaneSplitParams
-	decode(t, run(t, "herdr:pane.split.down", "").Params, &params)
+	decode(t, run(t, "herdr:pane.split.down", "")[0].Params, &params)
 
 	if params.Direction != herdr.SplitDirectionDown {
 		t.Errorf("direction = %q, want down", params.Direction)
@@ -182,7 +185,7 @@ func TestSplitTargetsTheFocusedPane(t *testing.T) {
 
 func TestPromptTargetsTheFocusedPane(t *testing.T) {
 	var params herdr.AgentPromptParams
-	decode(t, run(t, "herdr:agent.prompt", "go on").Params, &params)
+	decode(t, run(t, "herdr:agent.prompt", "go on")[0].Params, &params)
 
 	if params.Target != "p1" || params.Text != "go on" {
 		t.Errorf("prompted %+v, want the focused pane to receive the text", params)
@@ -191,7 +194,7 @@ func TestPromptTargetsTheFocusedPane(t *testing.T) {
 
 func TestWorktreeTakesTheBranchAndTheWorkspaceCwd(t *testing.T) {
 	var params herdr.WorktreeCreateParams
-	decode(t, run(t, "herdr:worktree.new", "feature").Params, &params)
+	decode(t, run(t, "herdr:worktree.new", "feature")[0].Params, &params)
 
 	if params.Branch == nil || *params.Branch != "feature" {
 		t.Error("the branch name was not sent")
@@ -282,5 +285,38 @@ func TestBindingsNameRealHerdrActions(t *testing.T) {
 		if !strings.Contains(config, e.Binding+" = ") {
 			t.Errorf("%s names the action %q, which herdr's configuration does not define", e.ID, e.Binding)
 		}
+	}
+}
+
+// herdr splits right and down only, so the palette's left and up entries split
+// and then swap the new pane into place.
+func TestSplittingLeftSwapsTheNewPaneIntoPlace(t *testing.T) {
+	calls := run(t, "herdr:pane.split.left", "")
+	if len(calls) != 2 {
+		t.Fatalf("made %d calls, want a split and a swap", len(calls))
+	}
+
+	var split herdr.PaneSplitParams
+	decode(t, calls[0].Params, &split)
+	if split.Direction != herdr.SplitDirectionRight {
+		t.Errorf("split %q, want herdr's right split", split.Direction)
+	}
+
+	if calls[1].Method != herdr.MethodPaneSwap {
+		t.Fatalf("second call is %q, want a swap", calls[1].Method)
+	}
+	var swap herdr.PaneSwapParams
+	decode(t, calls[1].Params, &swap)
+	if swap.PaneID == nil || *swap.PaneID != "w1:p2" {
+		t.Error("the swap does not name the pane the split just created")
+	}
+	if swap.Direction == nil || *swap.Direction != herdr.PaneDirectionLeft {
+		t.Error("the new pane was not swapped to the left")
+	}
+}
+
+func TestSplittingRightDoesNotSwap(t *testing.T) {
+	if calls := run(t, "herdr:pane.split.right", ""); len(calls) != 1 {
+		t.Errorf("made %d calls, want the split alone", len(calls))
 	}
 }

@@ -178,14 +178,26 @@ func Entries() []palette.Entry {
 			Binding: "split_vertical",
 			Title:   "Split pane right",
 			Type:    groupPane,
-			Run:     split(herdr.SplitDirectionRight),
+			Run:     split(herdr.SplitDirectionRight, ""),
 		},
 		{
 			ID:      "herdr:pane.split.down",
 			Binding: "split_horizontal",
 			Title:   "Split pane down",
 			Type:    groupPane,
-			Run:     split(herdr.SplitDirectionDown),
+			Run:     split(herdr.SplitDirectionDown, ""),
+		},
+		{
+			ID:    "herdr:pane.split.left",
+			Title: "Split pane left",
+			Type:  groupPane,
+			Run:   split(herdr.SplitDirectionRight, herdr.PaneDirectionLeft),
+		},
+		{
+			ID:    "herdr:pane.split.up",
+			Title: "Split pane up",
+			Type:  groupPane,
+			Run:   split(herdr.SplitDirectionDown, herdr.PaneDirectionUp),
 		},
 		{
 			ID:      "herdr:pane.zoom",
@@ -307,13 +319,24 @@ func Entries() []palette.Entry {
 	return entries
 }
 
-func split(direction herdr.SplitDirection) func(context.Context, palette.Exec) error {
+// split opens a pane next to the focused one. herdr splits right and down
+// only, so a pane to the left or above is that same split followed by swapping
+// the new pane with the neighbour in the direction asked for; swapWith is
+// empty for the two directions herdr splits in directly.
+func split(direction herdr.SplitDirection, swapWith herdr.PaneDirection) func(context.Context, palette.Exec) error {
 	return func(ctx context.Context, e palette.Exec) error {
-		_, err := e.Client.PaneSplit(ctx, herdr.PaneSplitParams{
+		pane, err := e.Client.PaneSplit(ctx, herdr.PaneSplitParams{
 			Direction:    direction,
 			TargetPaneID: e.Ctx.FocusedPaneID,
 			WorkspaceID:  e.Ctx.WorkspaceID,
 			Focus:        new(true),
+		})
+		if err != nil || swapWith == "" {
+			return err
+		}
+		_, err = e.Client.PaneSwap(ctx, herdr.PaneSwapParams{
+			PaneID:    &pane.Pane.PaneID,
+			Direction: &swapWith,
 		})
 		return err
 	}

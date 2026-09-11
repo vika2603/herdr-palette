@@ -88,6 +88,36 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		return m.key(msg)
+
+	case tea.MouseMsg:
+		return m.mouse(msg)
+	}
+	return m, nil
+}
+
+// wheelStep is how many rows one wheel notch moves the selection.
+const wheelStep = 3
+
+// mouse moves the selection with the wheel and runs the row a click lands on.
+// The input screen takes no mouse input: there is nothing to point at.
+func (m model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if m.pending != nil || msg.Action != tea.MouseActionPress {
+		return m, nil
+	}
+	switch msg.Button {
+	case tea.MouseButtonWheelUp:
+		m.move(-wheelStep)
+		return m, nil
+	case tea.MouseButtonWheelDown:
+		m.move(wheelStep)
+		return m, nil
+	case tea.MouseButtonLeft:
+		index := m.offset + msg.Y - headerRows
+		if msg.Y < headerRows || index >= len(m.ranked) {
+			return m, nil
+		}
+		m.cursor = index
+		return m.choose()
 	}
 	return m, nil
 }

@@ -64,6 +64,16 @@ A query that matches no title is retried against the group or plugin name
 prepended, scored lower, so typing `machine` finds the Machine Manager's
 actions.
 
+## Mouse
+
+The program runs with `tea.WithMouseCellMotion`, which reports clicks and the
+wheel. herdr captures the mouse for its own UI but forwards events to a pane
+app that asks for them, so the popup receives them.
+
+A click's row is `offset + Y - headerRows`, where `headerRows` is the query
+line and the rule under it. A click outside the rendered rows does nothing,
+and the value screen takes no mouse input.
+
 ## State
 
 `recent.json` in the plugin's state directory holds the ids of the commands

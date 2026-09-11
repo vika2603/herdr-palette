@@ -247,3 +247,131 @@ func TestSelectionActionsAreHiddenWithoutASelection(t *testing.T) {
 		t.Errorf("kept %d entries with a selection, want both", len(with))
 	}
 }
+
+// wheelModel has more commands than the window fits, which is when the wheel
+// and the scrollbar do anything.
+func wheelModel(t *testing.T) model {
+	t.Helper()
+	entries := make([]palette.Entry, 0, 10)
+	for i := range 10 {
+		entries = append(entries, palette.Entry{
+			ID:     string(rune('a' + i)),
+			Title:  "Command " + string(rune('a'+i)),
+			Detail: "Group",
+			Run:    func(context.Context, palette.Exec) error { return nil },
+		})
+	}
+	m := newModel(context.Background(), nil, testEnv(t), &herdr.PluginInvocationContext{}, entries, nil)
+	m.width, m.height = 40, 8
+	return m
+}
+
+func wheel(button tea.MouseButton) tea.MouseMsg {
+	return tea.MouseMsg{Action: tea.MouseActionPress, Button: button}
+}
+
+func TestTheWheelMovesTheSelection(t *testing.T) {
+	m := wheelModel(t)
+
+	m, _ = send(t, m, wheel(tea.MouseButtonWheelDown))
+	if m.cursor != wheelStep {
+		t.Errorf("cursor = %d after one notch down, want %d", m.cursor, wheelStep)
+	}
+
+	m, _ = send(t, m, wheel(tea.MouseButtonWheelUp))
+	if m.cursor != 0 {
+		t.Errorf("cursor = %d after one notch up, want 0", m.cursor)
+	}
+}
+
+func TestTheWheelScrollsTheWindow(t *testing.T) {
+	m := wheelModel(t)
+	for range 3 {
+		m, _ = send(t, m, wheel(tea.MouseButtonWheelDown))
+	}
+	if m.cursor != len(m.ranked)-1 {
+		t.Fatalf("cursor = %d, want the last row", m.cursor)
+	}
+	if m.offset == 0 {
+		t.Error("the window did not follow the selection past the last visible row")
+	}
+}
+
+func TestAClickRunsTheRowItLandsOn(t *testing.T) {
+	var ran []string
+	m := testModel(t, nil, &ran)
+
+	// The second row: the query line and the rule come first.
+	_, cmd := send(t, m, tea.MouseMsg{
+		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonLeft,
+		Y:      headerRows + 1,
+	})
+	if cmd == nil {
+		t.Fatal("the click ran nothing")
+	}
+	cmd()
+	if want := m.ranked[1].Entry.ID; len(ran) != 1 || ran[0] != want {
+		t.Errorf("ran %v, want the clicked row %q", ran, want)
+	}
+}
+
+func TestAClickOutsideTheListDoesNothing(t *testing.T) {
+	var ran []string
+	m := testModel(t, nil, &ran)
+
+	for _, y := range []int{0, headerRows - 1, headerRows + len(m.ranked)} {
+		if _, cmd := send(t, m, tea.MouseMsg{
+			Action: tea.MouseActionPress,
+			Button: tea.MouseButtonLeft,
+			Y:      y,
+		}); cmd != nil {
+			t.Errorf("a click on row %d ran something", y)
+		}
+	}
+}
+
+func TestTheInputScreenIgnoresTheMouse(t *testing.T) {
+	var ran []string
+	m := typeQuery(t, testModel(t, nil, &ran), "rename")
+	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+
+	before := m.cursor
+	m, cmd := send(t, m, wheel(tea.MouseButtonWheelDown))
+	if cmd != nil || m.cursor != before {
+		t.Error("the wheel moved the list behind the input screen")
+	}
+}
+
+func TestTheScrollbarShowsTheWindow(t *testing.T) {
+	m := wheelModel(t)
+
+	view := m.View()
+	if !strings.Contains(view, "█") || !strings.Contains(view, "│") {
+		t.Fatalf("the scrollbar is missing from a list longer than the window:\n%s", view)
+	}
+
+	lines := strings.Split(view, "\n")
+	first := lines[headerRows]
+	if !strings.HasSuffix(first, "█") {
+		t.Error("the thumb is not at the top while the window is")
+	}
+
+	for range 4 {
+		m, _ = send(t, m, wheel(tea.MouseButtonWheelDown))
+	}
+	lines = strings.Split(m.View(), "\n")
+	last := lines[headerRows+m.rows()-1]
+	if !strings.HasSuffix(last, "█") {
+		t.Errorf("the thumb does not reach the bottom on the last page:\n%s", m.View())
+	}
+}
+
+func TestNoScrollbarWhenEverythingFits(t *testing.T) {
+	var ran []string
+	view := testModel(t, nil, &ran).View()
+
+	if strings.Contains(view, "█") || strings.Contains(view, "│") {
+		t.Errorf("a list that fits drew a scrollbar:\n%s", view)
+	}
+}

@@ -32,7 +32,11 @@ func Run(ctx context.Context, env *plugin.Env) error {
 	// No alternate screen: the popup is a pane herdr destroys when it closes,
 	// so there is no scrollback to protect, and staying on the main screen
 	// keeps the view readable to pane.read.
-	program := tea.NewProgram(m, tea.WithContext(ctx))
+	//
+	// Cell motion reports clicks and the wheel. herdr forwards mouse events to
+	// a pane app that asks for them, so the popup gets them even while herdr's
+	// own mouse capture is on.
+	program := tea.NewProgram(m, tea.WithContext(ctx), tea.WithMouseCellMotion())
 	_, err := program.Run()
 	if ctx.Err() != nil {
 		return nil

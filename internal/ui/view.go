@@ -15,6 +15,7 @@ var (
 	matchStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("4")).Bold(true)
 	selectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Bold(true)
 	errStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+	thumbStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
 )
 
 // Sizes used until the first resize message arrives.
@@ -26,6 +27,10 @@ const (
 // chrome is the row budget the list does not get: the query line, the two
 // rules, and the help line.
 const chrome = 4
+
+// headerRows is how many lines precede the first command row: the query line
+// and the rule under it. A click's row is counted from there.
+const headerRows = 2
 
 func (m model) cols() int {
 	if m.width <= 0 {
@@ -82,15 +87,38 @@ func (m model) row(index int) string {
 	}
 
 	detail := ranked.Entry.Detail
-	// The title gets whatever the marker, the detail column and a gap leave.
-	width := m.cols() - lipgloss.Width(detail) - 4
+	// The title gets whatever the marker, the detail column, a gap and the
+	// scrollbar leave.
+	width := m.cols() - lipgloss.Width(detail) - 5
 	title := highlight(truncate(ranked.Entry.Title, width), ranked.Matched, selected)
 
-	gap := m.cols() - 2 - lipgloss.Width(title) - lipgloss.Width(detail)
+	gap := m.cols() - 3 - lipgloss.Width(title) - lipgloss.Width(detail)
 	if gap < 1 {
 		gap = 1
 	}
-	return marker + title + strings.Repeat(" ", gap) + dimStyle.Render(detail)
+	return marker + title + strings.Repeat(" ", gap) + dimStyle.Render(detail) + m.scrollbar(index-m.offset)
+}
+
+// scrollbar draws where the visible window sits in the whole list, one column
+// at the right edge. It stays blank while everything fits, so rows do not
+// shift as the query narrows the list.
+func (m model) scrollbar(row int) string {
+	rows, total := m.rows(), len(m.ranked)
+	if total <= rows {
+		return " "
+	}
+
+	size := max(1, rows*rows/total)
+	start := m.offset * rows / total
+	// The thumb has to reach the bottom on the last page, which integer
+	// division alone does not guarantee.
+	if m.offset+rows >= total {
+		start = rows - size
+	}
+	if row >= start && row < start+size {
+		return thumbStyle.Render("█")
+	}
+	return dimStyle.Render("│")
 }
 
 // highlight bolds the runes the query matched.

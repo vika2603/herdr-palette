@@ -70,6 +70,11 @@ second screen. Renames start from the current label.
 | `pgup` / `pgdown` | move a page |
 | `ctrl+u` | clear the query |
 | `esc` | close the popup, or leave the value screen |
+| wheel | move the selection |
+| left click | run the row it lands on |
+
+A scrollbar at the right edge shows where the visible rows sit in the whole
+list, and stays blank while everything fits.
 
 Matching accepts the words of a title in any order (`pane split`) and a
 title's initials (`spr` for "Split pane right"). Recently run commands come

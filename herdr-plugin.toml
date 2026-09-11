@@ -1,0 +1,29 @@
+# A command palette for herdr: one popup that searches every action and runs it.
+# One binary serves both manifest entrypoints, the action bound to a key and the
+# popup pane that runs the TUI. See docs/design.md.
+
+id = "herdr.palette"
+name = "Command Palette"
+version = "0.1.0"
+min_herdr_version = "0.9.0"
+description = "Search and run herdr actions and plugin actions from one popup"
+platforms = ["linux", "macos"]
+
+[[build]]
+command = ["./scripts/build.sh"]
+
+[[panes]]
+id = "palette"
+title = "Commands"
+description = "Search and run an action"
+placement = "popup"
+width = "60%"
+height = "50%"
+command = ["./bin/palette"]
+
+[[actions]]
+id = "open"
+title = "Open command palette"
+description = "Search and run herdr actions and plugin actions"
+contexts = ["global", "workspace", "tab", "pane"]
+command = ["./bin/palette"]

@@ -50,9 +50,11 @@ and pane becomes a row that focuses it — `workspace.focus`, `tab.focus`,
 opened from there. A plugin popup is not part of the session's panes, so the
 palette's own window never appears in its list.
 
-A pane's row shows the name it was given, or what the program in it reports,
-and carries the workspace, the tab and the working directory as search text, so
-a project name finds the panes inside it.
+Every one of these rows starts with "go to", so typing that narrows the list to
+them; the spelling without the space is search text on each of them. A pane's
+row shows the name it was given, or what the program in it reports, and carries
+the workspace, the tab and the working directory as search text as well, so a
+project name finds the panes inside it.
 
 ## Why herdr's commands are a hand-written list
 

@@ -346,8 +346,8 @@ func TestOpenPanesAndWorkspacesAreListedToGoTo(t *testing.T) {
 	if !ok {
 		t.Fatal("the other workspace is not in the list")
 	}
-	if workspace.Type != TypeWorkspace || !strings.Contains(workspace.Title, "palette") {
-		t.Errorf("entry = %+v, want the workspace's own label", workspace)
+	if workspace.Type != TypeWorkspace || workspace.Title != "go to palette" {
+		t.Errorf("entry = %+v, want going to the workspace under its own label", workspace)
 	}
 	pane, ok := find(entries, "pane:w2:p1")
 	if !ok {
@@ -416,5 +416,27 @@ func TestAPluginActionFallsBackToItsID(t *testing.T) {
 	}
 	if entry.Type != "machine-manager" {
 		t.Errorf("namespace = %q, want the distinctive half of the plugin id", entry.Type)
+	}
+}
+
+// Typing what the rows have in common narrows the list to them, in either
+// spelling.
+func TestTheRowsThatGoSomewhereShareAQuery(t *testing.T) {
+	server := plugintest.NewServer(t).
+		Reply(herdr.MethodPluginActionList, actionList()).
+		Reply(herdr.MethodPluginList, plugins()).
+		Reply(herdr.MethodSessionSnapshot, snapshot())
+	entries := load(t, server)
+
+	for _, text := range []string{"go to", "goto"} {
+		ranked := Rank(entries, text, nil)
+		if len(ranked) != 3 {
+			t.Errorf("%q matched %d rows, want the workspace, the tab and the pane", text, len(ranked))
+		}
+		for _, r := range ranked {
+			if r.Entry.Type != TypeWorkspace && r.Entry.Type != TypeTab && r.Entry.Type != TypePane {
+				t.Errorf("%q matched %q, which runs a command", text, r.Entry.Name())
+			}
+		}
 	}
 }

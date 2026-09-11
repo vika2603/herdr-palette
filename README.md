@@ -70,9 +70,10 @@ the invocation context so an action sees the same focused pane it would have
 seen from a key. Typing the plugin's id finds them as well.
 
 **`workspace:`, `tab:` and `pane:`** are what is open in the session, and
-running one goes there. Panes carry the workspace, the tab and the working
-directory as search text, so typing a project name finds the panes inside it.
-Where the palette was opened from is left out.
+running one goes there. They all read "go to …", so typing `go to` — or `goto`
+— narrows the list to them. Panes also carry the workspace, the tab and the
+working directory as search text, so typing a project name finds the panes
+inside it. Where the palette was opened from is left out.
 
 A command that needs a value, such as a rename or a prompt, opens a small field
 of its own once the palette closes. Renames start from the current label. The

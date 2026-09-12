@@ -27,6 +27,8 @@ const (
 	paneRun     = palette.RunEntrypoint
 	paneInput   = palette.InputEntrypoint
 	actionOpen  = "open"
+	actionGoto  = "goto"
+	actionBack  = "back"
 	actionExec  = palette.ExecAction
 )
 
@@ -40,6 +42,8 @@ func main() {
 func newPlugin() *plugin.Plugin {
 	p := plugin.New()
 	p.Action(actionOpen, onOpen)
+	p.Action(actionGoto, onGoto)
+	p.Action(actionBack, onBack)
 	p.Action(actionExec, onExec)
 	p.Pane(panePalette, onPalette)
 	p.Pane(paneRun, onRun)
@@ -50,6 +54,22 @@ func newPlugin() *plugin.Plugin {
 // onOpen opens the palette popup. Placement comes from the manifest, and the
 // size from it too unless the plugin's own configuration asks for another.
 func onOpen(ctx context.Context, env *plugin.Env) error {
+	return open(ctx, env, nil)
+}
+
+// onGoto opens the same popup with its query already narrowed to what is open,
+// so a key bound to it reaches a pane by name with no commands in the way.
+func onGoto(ctx context.Context, env *plugin.Env) error {
+	return open(ctx, env, map[string]string{palette.GoesEnv: "1"})
+}
+
+// onBack goes to the last place the palette went to, with no popup in
+// between: the recent order already says where that was.
+func onBack(ctx context.Context, env *plugin.Env) error {
+	return palette.Back(ctx, env.Client(), env)
+}
+
+func open(ctx context.Context, env *plugin.Env, extra map[string]string) error {
 	params := herdr.PluginPaneOpenParams{
 		PluginID:   env.PluginID,
 		Entrypoint: panePalette,
@@ -65,8 +85,12 @@ func onOpen(ctx context.Context, env *plugin.Env) error {
 	// The commands act on what was focused when the key was pressed. The
 	// popup's own entrypoint environment describes the popup pane, so the
 	// invocation context is handed over explicitly.
+	params.Env = extra
 	if len(env.ContextJSON) > 0 {
-		params.Env = map[string]string{palette.ContextEnv: string(env.ContextJSON)}
+		if params.Env == nil {
+			params.Env = map[string]string{}
+		}
+		params.Env[palette.ContextEnv] = string(env.ContextJSON)
 	}
 	_, err := env.Client().PluginPaneOpen(ctx, params)
 	return err

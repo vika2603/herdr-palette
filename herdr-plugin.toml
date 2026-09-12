@@ -54,6 +54,25 @@ description = "Search and run herdr actions and plugin actions"
 contexts = ["global", "workspace", "tab", "pane"]
 command = ["./bin/palette"]
 
+# The same popup, opened with its query already narrowed to what is open. Bound
+# to a key of its own it reaches a pane by name with no commands in the way.
+[[actions]]
+id = "goto"
+title = "Go to an open pane"
+description = "Search the workspaces, tabs and panes of the session and go to one"
+contexts = ["global", "workspace", "tab", "pane"]
+command = ["./bin/palette"]
+
+# Goes straight to the last place the palette went to, with no popup in
+# between. What it returns to is whatever the recent order holds first, a
+# workspace, a tab or a pane.
+[[actions]]
+id = "back"
+title = "Go back to the last place"
+description = "Focus the workspace, tab or pane the palette last went to"
+contexts = ["global", "workspace", "tab", "pane"]
+command = ["./bin/palette"]
+
 # Runs a command the popup handed over. herdr runs an action outside the popup,
 # which is what lets a relayed command open a popup of its own.
 [[actions]]

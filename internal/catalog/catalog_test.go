@@ -120,7 +120,19 @@ func server(t *testing.T) *plugintest.Server {
 		Reply(herdr.MethodPluginEnable, herdr.PluginEnabledResponse{}).
 		Reply(herdr.MethodPluginDisable, herdr.PluginDisabledResponse{}).
 		Reply(herdr.MethodPluginPaneOpen, herdr.PluginPaneOpenedResponse{}).
-		Reply(herdr.MethodServerReloadConfig, herdr.ConfigReloadResponse{})
+		Reply(herdr.MethodServerReloadConfig, herdr.ConfigReloadResponse{}).
+		Reply(herdr.MethodPaneRead, herdr.PaneReadResponse{Read: herdr.PaneReadResult{
+			Text: "make: *** [test] Error 1\n\n  panic: nil map\n",
+		}}).
+		Reply(herdr.MethodAgentGet, herdr.AgentInfoResponse{Agent: herdr.AgentInfo{
+			PaneID: "w1:p3", Agent: new("claude"), Name: new("reviewer"),
+			AgentStatus: herdr.AgentStatusWorking,
+		}}).
+		Reply(herdr.MethodAgentWait, herdr.AgentInfoResponse{Agent: herdr.AgentInfo{
+			PaneID: "w1:p3", Agent: new("claude"), Name: new("reviewer"),
+			AgentStatus: herdr.AgentStatusBlocked, Cwd: new("/repo"),
+		}}).
+		Reply(herdr.MethodNotificationShow, herdr.NotificationShowResponse{})
 }
 
 func entry(t *testing.T, id string) palette.Entry {
@@ -132,6 +144,20 @@ func entry(t *testing.T, id string) palette.Entry {
 	}
 	t.Fatalf("no catalog entry with id %q", id)
 	return palette.Entry{}
+}
+
+// paramsOf is what the last call to a method was made with. The calls are
+// looked up by name rather than by position: a command makes more than one,
+// and which one it makes first is not what a test is about.
+func paramsOf(t *testing.T, s *plugintest.Server, method string) json.RawMessage {
+	t.Helper()
+	for i := len(s.Calls()) - 1; i >= 0; i-- {
+		if call := s.Calls()[i]; call.Method == method {
+			return call.Params
+		}
+	}
+	t.Fatalf("%s was never called", method)
+	return nil
 }
 
 func decode(t *testing.T, raw json.RawMessage, into any) {
@@ -663,7 +689,7 @@ func TestALayoutIsSavedOpenedAndForgotten(t *testing.T) {
 		t.Fatalf("saving the layout: %v", err)
 	}
 	var export herdr.LayoutExportParams
-	decode(t, s.Calls()[0].Params, &export)
+	decode(t, paramsOf(t, s, herdr.MethodLayoutExport), &export)
 	if export.TabID == nil || *export.TabID != "t1" {
 		t.Errorf("exported %+v, want the focused tab", export)
 	}
@@ -681,7 +707,7 @@ func TestALayoutIsSavedOpenedAndForgotten(t *testing.T) {
 		t.Fatalf("opening the layout: %v", err)
 	}
 	var apply herdr.LayoutApplyParams
-	decode(t, s.Calls()[1].Params, &apply)
+	decode(t, paramsOf(t, s, herdr.MethodLayoutApply), &apply)
 	if apply.TabLabel == nil || *apply.TabLabel != "work" {
 		t.Errorf("applied %+v, want a new tab named after the layout", apply)
 	}

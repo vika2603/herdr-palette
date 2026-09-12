@@ -42,6 +42,12 @@ var (
 
 // Entries returns the catalog. The ids are stable: they key the recent order.
 func Entries() []palette.Entry {
+	return append(append(herdrEntries(), askEntries()...), searchEntries()...)
+}
+
+// herdrEntries are the commands that mirror one of herdr's own actions, each
+// calling the socket API method with the same effect.
+func herdrEntries() []palette.Entry {
 	return []palette.Entry{
 		{
 			ID:      "herdr:workspace.new",

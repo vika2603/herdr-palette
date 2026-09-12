@@ -383,7 +383,11 @@ func herdrEntries() []palette.Entry {
 				if err != nil {
 					return err
 				}
-				return layout.Save(e.Env, e.Input, exported.Layout.Root)
+				agents, err := runningAgents(ctx, e.Client, exported.Layout.Root)
+				if err != nil {
+					return err
+				}
+				return layout.Save(e.Env, e.Input, exported.Layout.Root, agents)
 			},
 		},
 		{
@@ -402,19 +406,23 @@ func herdrEntries() []palette.Entry {
 				if err != nil {
 					return err
 				}
-				_, err = e.Client.LayoutApply(ctx, herdr.LayoutApplyParams{
+				applied, err := e.Client.LayoutApply(ctx, herdr.LayoutApplyParams{
 					Root:        root,
 					WorkspaceID: e.Ctx.WorkspaceID,
 					TabLabel:    &e.Chosen,
 					Focus:       new(true),
 				})
-				return err
+				if err != nil {
+					return err
+				}
+				return startAgents(ctx, e.Client, applied.Layout.Root, layout.Agents(e.Env, e.Chosen))
 			},
 		},
 		{
-			ID:    "herdr:layout.forget",
-			Title: "forget a saved layout",
-			Type:  groupHerdr,
+			ID:      "herdr:layout.forget",
+			Title:   "forget a saved layout",
+			Confirm: true,
+			Type:    groupHerdr,
 			Choices: &palette.Choices{
 				Label: "Layout to forget",
 				Empty: "no layout has been saved yet",

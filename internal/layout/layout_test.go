@@ -29,7 +29,7 @@ func exported() herdr.LayoutNode {
 // the arrangement again.
 func TestASavedLayoutKeepsTheArrangementWithoutThePanes(t *testing.T) {
 	env := testEnv(t)
-	if err := Save(env, "work", exported()); err != nil {
+	if err := Save(env, "work", exported(), nil); err != nil {
 		t.Fatalf("Save() = %v", err)
 	}
 
@@ -62,7 +62,7 @@ func TestASavedLayoutKeepsTheArrangementWithoutThePanes(t *testing.T) {
 func TestSavingUnderAUsedNameReplacesItAndComesFirst(t *testing.T) {
 	env := testEnv(t)
 	for _, name := range []string{"work", "review", "work"} {
-		if err := Save(env, name, exported()); err != nil {
+		if err := Save(env, name, exported(), nil); err != nil {
 			t.Fatalf("Save(%q) = %v", name, err)
 		}
 	}
@@ -78,7 +78,7 @@ func TestSavingUnderAUsedNameReplacesItAndComesFirst(t *testing.T) {
 
 func TestANamelessLayoutIsNotSaved(t *testing.T) {
 	env := testEnv(t)
-	if err := Save(env, "  ", exported()); err == nil {
+	if err := Save(env, "  ", exported(), nil); err == nil {
 		t.Fatal("Save() kept a layout with no name to find it by")
 	}
 	if len(List(env)) != 0 {
@@ -88,7 +88,7 @@ func TestANamelessLayoutIsNotSaved(t *testing.T) {
 
 func TestForgettingALayout(t *testing.T) {
 	env := testEnv(t)
-	if err := Save(env, "work", exported()); err != nil {
+	if err := Save(env, "work", exported(), nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := Remove(env, "work"); err != nil {

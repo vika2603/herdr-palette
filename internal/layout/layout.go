@@ -21,9 +21,17 @@ const File = "layouts.json"
 // Saved is one arrangement under the name it was saved with. The tree is kept
 // as it was written rather than decoded, so a layout herdr describes in a way
 // this plugin does not know survives being listed next to the others.
+//
+// Agents is what each pane was running, one per pane in the order
+// herdr.LayoutPanes walks them, empty where a pane ran no agent. An exported tree carries a pane's
+// directory but not what was in it, so an arrangement applied again would come
+// back as a row of shells; this is what the palette adds. A layout saved before
+// there was anywhere to write them down has none, which reads as a layout of
+// plain panes.
 type Saved struct {
-	Name string          `json:"name"`
-	Root json.RawMessage `json:"root"`
+	Name   string          `json:"name"`
+	Root   json.RawMessage `json:"root"`
+	Agents []string        `json:"agents,omitempty"`
 }
 
 type file struct {
@@ -43,7 +51,7 @@ func List(env *plugin.Env) []Saved {
 
 // Save writes the arrangement down under name, replacing a layout of the same
 // name and putting it first.
-func Save(env *plugin.Env, name string, root herdr.LayoutNode) error {
+func Save(env *plugin.Env, name string, root herdr.LayoutNode, agents []string) error {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return errors.New("a layout needs a name to be saved under")
@@ -53,8 +61,19 @@ func Save(env *plugin.Env, name string, root herdr.LayoutNode) error {
 		return err
 	}
 
-	layouts := append([]Saved{{Name: name, Root: tree}}, without(List(env), name)...)
+	saved := Saved{Name: name, Root: tree, Agents: agents}
+	layouts := append([]Saved{saved}, without(List(env), name)...)
 	return env.WriteStateJSON(File, file{Layouts: layouts})
+}
+
+// Agents is what the layout saved under name had running in each of its panes.
+func Agents(env *plugin.Env, name string) []string {
+	for _, saved := range List(env) {
+		if saved.Name == name {
+			return saved.Agents
+		}
+	}
+	return nil
 }
 
 // Remove forgets the layout saved under name.

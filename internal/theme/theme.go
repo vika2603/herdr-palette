@@ -12,7 +12,8 @@ import (
 )
 
 // Custom is what the plugin's own configuration says about colours: each role
-// by the name the file gives it, and the agent statuses by herdr's names.
+// by the name the file gives it, and each state a row can be in by its own
+// name.
 type Custom struct {
 	Colours map[string]string
 	Status  map[string]string
@@ -30,8 +31,9 @@ type Theme struct {
 	Meta      lipgloss.TerminalColor
 	Scrollbar lipgloss.TerminalColor
 	Failure   lipgloss.TerminalColor
-	// Status is the colour of what an agent is doing, keyed by the status
-	// herdr reports. A status with no colour of its own is drawn in Meta.
+	// Status is the colour of the state a row is in, keyed by its name: what
+	// an agent is doing, by herdr's names for it, and whether a plugin is on.
+	// A state with no colour of its own is drawn in Meta.
 	Status map[string]lipgloss.TerminalColor
 }
 
@@ -48,10 +50,12 @@ func Defaults() Theme {
 		Scrollbar: lipgloss.Color("8"),
 		Failure:   lipgloss.Color("1"),
 		Status: map[string]lipgloss.TerminalColor{
-			"working": lipgloss.Color("3"),
-			"blocked": lipgloss.Color("1"),
-			"done":    lipgloss.Color("2"),
-			"idle":    lipgloss.Color("8"),
+			"working":  lipgloss.Color("3"),
+			"blocked":  lipgloss.Color("1"),
+			"done":     lipgloss.Color("2"),
+			"idle":     lipgloss.Color("8"),
+			"enabled":  lipgloss.Color("2"),
+			"disabled": lipgloss.Color("8"),
 		},
 	}
 }

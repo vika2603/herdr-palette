@@ -25,7 +25,7 @@ func TestDefaultsAreComplete(t *testing.T) {
 			t.Errorf("%s has no default colour", name)
 		}
 	}
-	for _, status := range []string{"working", "blocked", "done", "idle"} {
+	for _, status := range []string{"working", "blocked", "done", "idle", "enabled", "disabled"} {
 		if colours.Status[status] == nil {
 			t.Errorf("%s has no default colour", status)
 		}

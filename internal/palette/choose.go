@@ -8,6 +8,9 @@ type Choice struct {
 	Value  string
 	Title  string
 	Detail string
+	// Status is what herdr calls the state the detail describes, which gives
+	// it a colour of its own, the way an agent's status has one.
+	Status string
 	// Search is text the query may match that the row does not show, the way
 	// an entry's own search text works.
 	Search string
@@ -39,6 +42,7 @@ func ChoiceEntries(entry Entry, choices []Choice) []Entry {
 			ID:          entry.ID,
 			Title:       choice.Title,
 			Detail:      choice.Detail,
+			Status:      choice.Status,
 			Search:      choice.Search,
 			Chosen:      choice.Value,
 			AlwaysRelay: entry.AlwaysRelay,

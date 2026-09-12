@@ -781,10 +781,12 @@ func installedPlugins(ctx context.Context, e palette.Exec) ([]palette.Choice, er
 		if plugin.PluginID == e.Env.PluginID {
 			continue
 		}
+		state := pluginState(plugin.Enabled)
 		choices = append(choices, palette.Choice{
 			Value:  plugin.PluginID,
 			Title:  plugin.Name,
-			Detail: pluginState(plugin.Enabled),
+			Detail: state,
+			Status: state,
 			// The row shows the name, and the id is how a plugin is spelt
 			// everywhere else, so typing it finds the row too.
 			Search: plugin.PluginID,

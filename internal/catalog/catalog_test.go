@@ -762,6 +762,10 @@ func TestManagingPluginsListsTheOthersAndWhatTheyAre(t *testing.T) {
 	if list[1].Detail != "disabled" || list[1].Search != "herdr.auto-title" {
 		t.Errorf("row = %+v, want that it is off, found by its id too", list[1])
 	}
+	// The state is drawn in a colour of its own, the way an agent's status is.
+	if list[0].Status != "enabled" || list[1].Status != "disabled" {
+		t.Errorf("states = %q and %q, want each row to carry the one it shows", list[0].Status, list[1].Status)
+	}
 }
 
 // The list is a screen, so what a plugin is now is read again rather than

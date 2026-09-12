@@ -210,11 +210,13 @@ meta = "8"                      # the key column and the namespace
 scrollbar = "8"                 # the scrollbar's thumb, on a track drawn in rule
 failure = "1"                   # the error line
 
-[status]                        # what an agent is doing, by herdr's names
-working = "3"
+[status]                        # the state a row is in, by its own name
+working = "3"                   # what an agent is doing, by herdr's names
 blocked = "1"
 done = "2"
 idle = "8"
+enabled = "2"                   # whether a plugin is on
+disabled = "8"
 ```
 
 ## Development

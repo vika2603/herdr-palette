@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/term"
 
 	"github.com/vika2603/herdr-palette/internal/theme"
@@ -109,7 +110,9 @@ func (s screen) render(l line) string {
 	// Home, then each line cleared as it is drawn: the field never draws more
 	// than these two lines, so there is nothing else to erase.
 	out.WriteString("\x1b[H\x1b[2K")
-	out.WriteString(s.heading)
+	// Cut to the pane: a heading wider than the line wraps onto the one the
+	// value is edited on.
+	out.WriteString(ansi.Truncate(s.heading, s.width, "…"))
 	out.WriteString("\r\n\x1b[2K")
 	out.WriteString(caret)
 	out.WriteString(string(l.runes[from:to]))

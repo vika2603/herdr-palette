@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/lipgloss"
+
 	"github.com/vika2603/herdr-palette/internal/theme"
 )
 
@@ -54,4 +56,36 @@ func TestTheLabelIsShownNextToTheTitle(t *testing.T) {
 	if !strings.Contains(got, "Create worktree") || !strings.Contains(got, "New branch") {
 		t.Errorf("heading = %q, want both the title and what the value means", got)
 	}
+}
+
+// A heading wider than the pane wraps onto the line the value is edited on,
+// which puts the cursor where the text is not.
+func TestALongHeadingIsCutToThePane(t *testing.T) {
+	view := screen{
+		heading: heading(Field{
+			Title: strings.Repeat("a name that goes on ", 5),
+			Label: "and a label after it",
+		}, theme.Defaults()),
+		width: 40,
+	}
+
+	for _, line := range strings.Split(view.render(line{}), "\r\n") {
+		if width := lipgloss.Width(stripCursor(line)); width > 40 {
+			t.Errorf("a line is %d wide, want no more than 40: %q", width, line)
+		}
+	}
+}
+
+// stripCursor takes out the escape sequences the field ends a frame with,
+// which place the terminal's own cursor and are not content.
+func stripCursor(line string) string {
+	for _, seq := range []string{"\x1b[?25h", "\x1b[H", "\x1b[2K"} {
+		line = strings.ReplaceAll(line, seq, "")
+	}
+	if at := strings.Index(line, "\x1b[2;"); at >= 0 {
+		if end := strings.Index(line[at:], "H"); end >= 0 {
+			line = line[:at] + line[at+end+1:]
+		}
+	}
+	return line
 }

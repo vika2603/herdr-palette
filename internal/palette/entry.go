@@ -43,7 +43,14 @@ type Entry struct {
 	// time and shown next to the title.
 	Key   string
 	Input *Input
-	Run   func(context.Context, Exec) error
+	// Choices is the list an entry picks its target from, shown in the
+	// palette's own window once the entry is chosen. What was picked reaches
+	// Run as Exec.Input, the way a collected value does.
+	Choices *Choices
+	// Chosen is the value a row picked from that list carries: the palette
+	// runs the entry with it, and a handover writes it down as the input.
+	Chosen string
+	Run    func(context.Context, Exec) error
 	// NeedsSelection keeps the entry out of the list when no pane text is
 	// selected, the way a plugin action declaring the selection context is
 	// only meaningful with one.

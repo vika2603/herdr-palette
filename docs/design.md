@@ -168,6 +168,31 @@ herdr's own temporary pane does. A zoomed pane is placed against an existing
 pane and takes its id; a popup covers the active pane and herdr rejects a
 target or a workspace alongside it.
 
+## Picking a target from a list
+
+A command whose target is one of several things herdr knows about — the
+worktree to open, the tab to move the pane to — asks for the list and shows it
+in the palette's own window, in place of the commands. The rows are ranked and
+drawn by the same code, so a target is filtered, highlighted and clicked the
+way a command is.
+
+It is the palette's window rather than the field's because nothing is typed
+that the list does not already hold, and because the field is a popup of its
+own: it costs the handover and a second popup to collect what a list can
+answer directly. The commands come back on `esc`, filtered by the query that
+led to them.
+
+Each row carries the command's own id and the value picked. The id is what
+keeps the handover working — the exec entrypoint resolves an entry against the
+command list, where the row itself does not appear — and what the recent order
+counts, so it remembers the command rather than the worktree it was run on. The
+value travels as the entry's input, the same field a collected value uses, so
+the two paths meet at `Exec.Input` and only one of them can be set on an entry.
+
+The list is asked for off the update loop, like a command, and the rows the
+session pushes in the meantime are kept for the way back rather than drawn over
+the targets.
+
 ## The palette's own configuration
 
 `internal/settings` reads one file in the plugin's config directory, in a

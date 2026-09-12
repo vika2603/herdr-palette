@@ -53,7 +53,7 @@ func sessionEntries(snapshot herdr.SessionSnapshot) []Entry {
 		id := workspace.WorkspaceID
 		entries = append(entries, Entry{
 			ID:    "workspace:" + id,
-			Title: goTo + label(workspace.Label, "workspace", workspace.Number),
+			Title: goTo + Label(workspace.Label, "workspace", workspace.Number),
 			Type:  TypeWorkspace,
 			Run: func(ctx context.Context, e Exec) error {
 				_, err := e.Client.WorkspaceFocus(ctx, herdr.WorkspaceTarget{WorkspaceID: id})
@@ -69,7 +69,7 @@ func sessionEntries(snapshot herdr.SessionSnapshot) []Entry {
 		id := tab.TabID
 		entries = append(entries, Entry{
 			ID:     "tab:" + id,
-			Title:  goTo + label(tab.Label, "tab", tab.Number),
+			Title:  goTo + Label(tab.Label, "tab", tab.Number),
 			Type:   TypeTab,
 			Detail: workspaces[tab.WorkspaceID],
 			Run: func(ctx context.Context, e Exec) error {
@@ -149,7 +149,9 @@ func paneLabel(pane herdr.PaneInfo) string {
 	return pane.PaneID
 }
 
-func label(configured, kind string, number uint64) string {
+// Label is the name a workspace, tab or pane goes by: the one it was given,
+// or what it is and its number when it was given none.
+func Label(configured, kind string, number uint64) string {
 	if configured != "" {
 		return configured
 	}

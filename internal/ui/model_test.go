@@ -539,3 +539,169 @@ func TestRebuildingWhatIsOpenKeepsTheSelection(t *testing.T) {
 		t.Errorf("detail = %q, want the status the agent has now", got)
 	}
 }
+
+// chooserModel is a palette of one command, which picks its target from a
+// list. picked records what running it received.
+func chooserModel(t *testing.T, picked *string, list func(context.Context, palette.Exec) ([]palette.Choice, error)) model {
+	t.Helper()
+	entries := []palette.Entry{
+		{ID: "a", Title: "split pane right", Type: "Herdr", Run: func(context.Context, palette.Exec) error { return nil }},
+		{
+			ID:    "open",
+			Title: "open worktree workspace",
+			Type:  "Herdr",
+			Choices: &palette.Choices{
+				Label: "Worktree to open",
+				Empty: "every worktree is open already",
+				List:  list,
+			},
+			Run: func(_ context.Context, e palette.Exec) error {
+				*picked = e.Input
+				return nil
+			},
+		},
+	}
+
+	m := newModel(
+		context.Background(),
+		testEnv(t),
+		&herdr.PluginInvocationContext{WorkspaceID: new("w1")},
+		palette.List{Commands: entries},
+		nil,
+		theme.Defaults(),
+	)
+	m.width, m.height = 72, 12
+	return m
+}
+
+func worktreeChoices(context.Context, palette.Exec) ([]palette.Choice, error) {
+	return []palette.Choice{
+		{Value: "/trees/spike", Title: "spike"},
+		{Value: "/trees/fix", Title: "fix"},
+	}, nil
+}
+
+// choose selects the command whose targets are listed and takes the list it
+// asks herdr for, which is what the popup does with the message.
+func choose(t *testing.T, m model, query string) model {
+	t.Helper()
+	m = typeQuery(t, m, query)
+
+	_, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("enter produced no command")
+	}
+	msg, ok := cmd().(choicesMsg)
+	if !ok {
+		t.Fatalf("enter returned %T, want the entry's targets", cmd())
+	}
+	m, _ = send(t, m, msg)
+	return m
+}
+
+func TestAnEntryWithTargetsListsThemInThePalette(t *testing.T) {
+	var picked string
+	m := choose(t, chooserModel(t, &picked, worktreeChoices), "worktree")
+
+	if m.choosing == nil {
+		t.Fatal("the palette still shows the command list")
+	}
+	if len(m.ranked) != 2 {
+		t.Fatalf("shows %d rows, want the two worktrees", len(m.ranked))
+	}
+	if m.query.Placeholder != "Worktree to open" {
+		t.Errorf("placeholder = %q, want what the list is collecting", m.query.Placeholder)
+	}
+	if picked != "" {
+		t.Errorf("the command ran with %q before a target was picked", picked)
+	}
+}
+
+func TestPickingATargetRunsTheCommandWithIt(t *testing.T) {
+	var picked string
+	m := typeQuery(t, choose(t, chooserModel(t, &picked, worktreeChoices), "worktree"), "fix")
+
+	_, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("enter produced no command")
+	}
+	if msg, ok := cmd().(ranMsg); !ok || msg.err != nil {
+		t.Fatalf("running the command returned %v", cmd())
+	}
+	if picked != "/trees/fix" {
+		t.Errorf("ran with %q, want the target that was picked", picked)
+	}
+}
+
+// The recent order counts the command, not the target it was run on.
+func TestAPickedTargetRecordsTheCommandAsRecent(t *testing.T) {
+	var picked string
+	m := choose(t, chooserModel(t, &picked, worktreeChoices), "worktree")
+
+	_, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	cmd()
+
+	if got := palette.ReadRecent(m.env); len(got) == 0 || got[0] != "open" {
+		t.Errorf("recent = %v, want the command that just ran", got)
+	}
+}
+
+func TestEscLeavesTheTargetsForTheCommandList(t *testing.T) {
+	var picked string
+	m := choose(t, chooserModel(t, &picked, worktreeChoices), "worktree")
+
+	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	if m.choosing != nil {
+		t.Fatal("the targets are still up")
+	}
+	if m.query.Value() != "worktree" {
+		t.Errorf("query = %q, want the one the command list was filtered by", m.query.Value())
+	}
+	if m.query.Placeholder != searchPlaceholder {
+		t.Errorf("placeholder = %q, want the command list's own", m.query.Placeholder)
+	}
+	if len(m.ranked) == 0 || m.ranked[0].Entry.ID != "open" {
+		t.Error("the command list did not come back")
+	}
+}
+
+func TestAnEntryWithNothingToActOnSaysSo(t *testing.T) {
+	var picked string
+	none := func(context.Context, palette.Exec) ([]palette.Choice, error) {
+		return nil, nil
+	}
+	m := choose(t, chooserModel(t, &picked, none), "worktree")
+
+	if m.choosing != nil {
+		t.Fatal("an empty list is up, which has nothing to pick")
+	}
+	if m.failure != "every worktree is open already" {
+		t.Errorf("failure = %q, want what the entry says about an empty list", m.failure)
+	}
+}
+
+// What is open keeps changing while the popup is up, and the targets are not
+// those rows: they stay until the choice is made or abandoned.
+func TestTheSessionDoesNotReplaceTheTargets(t *testing.T) {
+	var picked string
+	m := choose(t, chooserModel(t, &picked, worktreeChoices), "worktree")
+
+	m, _ = send(t, m, openMsg{open: []palette.Entry{{ID: "pane:p9", Title: "go to zsh", Type: palette.TypePane}}})
+	if len(m.ranked) != 2 {
+		t.Fatalf("shows %d rows, want the two worktrees", len(m.ranked))
+	}
+
+	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	if !lists(m.entries, "pane:p9") {
+		t.Error("the rebuilt session rows are missing from the command list")
+	}
+}
+
+func lists(entries []palette.Entry, id string) bool {
+	for _, entry := range entries {
+		if entry.ID == id {
+			return true
+		}
+	}
+	return false
+}

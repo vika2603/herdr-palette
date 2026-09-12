@@ -91,6 +91,13 @@ of its own once the palette closes. Renames start from the current label. The
 field keeps the terminal's own cursor on the insertion point, which is what
 macOS input methods anchor their candidate window to.
 
+A command that acts on one of several things — the worktree to open or remove,
+the tab to move the pane to — lists them in the palette's own window instead of
+asking for a value. Typing filters them the way it filters the commands,
+`enter` runs the command on the row, and `esc` goes back to the command list
+with the query it was filtered by. A command with nothing to act on says so on
+the line under the list and stays where it is.
+
 ## The palette's own window
 
 The palette has a configuration file of its own, in the directory
@@ -129,7 +136,7 @@ commands.
 | `up` / `down`, `ctrl+p` / `ctrl+n` | move the selection |
 | `pgup` / `pgdown` | move a page |
 | `ctrl+u` | clear the query |
-| `esc` | close the popup |
+| `esc` | close the popup, or leave a list of targets for the commands |
 | wheel | move the selection |
 | left click | run the row it lands on |
 

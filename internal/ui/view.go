@@ -77,6 +77,10 @@ const (
 	defaultRows = 12
 )
 
+// searchPlaceholder stands in the empty query line. A list of targets says
+// what it is collecting there instead.
+const searchPlaceholder = "Search commands"
+
 const (
 	// chrome is the row budget the list does not get: the query line, the two
 	// rules, and the help line.
@@ -121,7 +125,7 @@ func (m model) listView() string {
 
 	rows := m.rows()
 	if len(m.ranked) == 0 {
-		lines = append(lines, m.styles.meta.Render(" no command matches"))
+		lines = append(lines, m.styles.meta.Render(m.empty()))
 		rows--
 	}
 	for i := m.offset; i < len(m.ranked) && i < m.offset+rows; i++ {
@@ -276,19 +280,35 @@ func (m model) rule() string {
 	return m.styles.rule.Render(strings.Repeat("─", m.cols()))
 }
 
-// footer is the line under the list: how much the query left on the left, and
-// what the keys do on the right. A failure takes the whole line instead — the
-// popup is too small for both.
+// empty is the line that stands where the rows would be when the query leaves
+// none: what was searched is what it names.
+func (m model) empty() string {
+	if m.choosing != nil {
+		return " no match"
+	}
+	return " no command matches"
+}
+
+// footer is the line under the list: what is on show on the left, and what the
+// keys do on the right. A failure takes the whole line instead — the popup is
+// too small for both.
 func (m model) footer() string {
 	if m.failure != "" {
 		return m.styles.fail.Render(truncate(m.failure, m.cols()))
 	}
 
-	left := m.styles.meta.Render(fmt.Sprintf(" %d commands", len(m.ranked)))
-	right := m.styles.meta.Render("run ⏎") + m.styles.rule.Render("  ·  ") + m.styles.meta.Render("close esc")
-	gap := max(m.cols()-lipgloss.Width(left)-lipgloss.Width(right)-1, 1)
+	left, back := fmt.Sprintf(" %d commands", len(m.ranked)), "close esc"
+	if m.choosing != nil {
+		// The command the targets belong to is no longer on the list, so the
+		// footer is where it stays legible.
+		left, back = " "+m.choosing.entry.Name(), "back esc"
+	}
 
-	return left + strings.Repeat(" ", gap) + right + " "
+	rendered := m.styles.meta.Render(left)
+	right := m.styles.meta.Render("run ⏎") + m.styles.rule.Render("  ·  ") + m.styles.meta.Render(back)
+	gap := max(m.cols()-lipgloss.Width(rendered)-lipgloss.Width(right)-1, 1)
+
+	return rendered + strings.Repeat(" ", gap) + right + " "
 }
 
 func truncate(text string, width int) string {

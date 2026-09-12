@@ -24,6 +24,23 @@ type (
 	openMsg    struct{ open []palette.Entry }
 )
 
+// choicesMsg carries what an entry can act on, once herdr has answered with
+// the list. The entry travels with it: the selection may have moved on while
+// the call was out.
+type choicesMsg struct {
+	entry   palette.Entry
+	choices []palette.Choice
+	err     error
+}
+
+// chooser is the entry waiting for its target while the palette shows what it
+// can act on. query is what the command list was filtered by, which comes back
+// when the choice is abandoned.
+type chooser struct {
+	entry palette.Entry
+	query string
+}
+
 type model struct {
 	ctx        context.Context
 	env        *plugin.Env
@@ -37,6 +54,9 @@ type model struct {
 	// changes carries a signal per batch of herdr events, at most one waiting.
 	changes <-chan struct{}
 	recent  []string
+	// choosing is set while the rows are an entry's targets rather than the
+	// command list.
+	choosing *chooser
 
 	query  textinput.Model
 	ranked []palette.Ranked
@@ -61,7 +81,7 @@ func newModel(
 ) model {
 	query := textinput.New()
 	query.Prompt = "› "
-	query.Placeholder = "Search commands"
+	query.Placeholder = searchPlaceholder
 	query.Focus()
 
 	m := model{
@@ -103,6 +123,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case openMsg:
 		m.setOpen(msg.open)
+		return m, nil
+
+	case choicesMsg:
+		m.choices(msg)
 		return m, nil
 
 	case tea.KeyMsg:
@@ -150,6 +174,12 @@ func (m model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) keyList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
+		// A list of targets is a step inside the palette, so esc goes back to
+		// the commands rather than closing the popup.
+		if m.choosing != nil {
+			m.abandon()
+			return m, nil
+		}
 		return m, tea.Quit
 	case "down", "ctrl+n":
 		m.move(1)
@@ -177,12 +207,56 @@ func (m model) keyList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// choose runs the selected entry.
+// choose runs the selected entry, or asks herdr what it can act on when the
+// entry picks its target from a list. A row of such a list carries the target
+// and no list of its own, so choosing one runs the entry.
 func (m model) choose() (tea.Model, tea.Cmd) {
 	if len(m.ranked) == 0 {
 		return m, nil
 	}
-	return m, m.run(m.ranked[m.cursor].Entry)
+	entry := m.ranked[m.cursor].Entry
+	if entry.Choices != nil {
+		return m, m.list(entry)
+	}
+	return m, m.run(entry)
+}
+
+// list asks for the entry's targets. It runs off the update loop, the way a
+// command does, so a slow socket does not hold up a keystroke.
+func (m model) list(entry palette.Entry) tea.Cmd {
+	return func() tea.Msg {
+		choices, err := entry.Choices.List(m.ctx, palette.Exec{Client: m.env.Client(), Ctx: m.invocation})
+		return choicesMsg{entry: entry, choices: choices, err: err}
+	}
+}
+
+// choices shows what the entry can act on, or says why there is nothing to
+// show. Either way the popup stays open: the keystroke that asked for the list
+// is answered where it was made.
+func (m *model) choices(msg choicesMsg) {
+	switch {
+	case msg.err != nil:
+		m.failure = msg.err.Error()
+	case len(msg.choices) == 0:
+		m.failure = msg.entry.Choices.Empty
+	default:
+		m.choosing = &chooser{entry: msg.entry, query: m.query.Value()}
+		m.entries = palette.ChoiceEntries(msg.entry, msg.choices)
+		m.query.SetValue("")
+		m.query.Placeholder = msg.entry.Choices.Label
+		m.failure = ""
+		m.rank()
+	}
+}
+
+// abandon leaves the targets for the command list, filtered the way it was.
+func (m *model) abandon() {
+	m.query.SetValue(m.choosing.query)
+	m.query.Placeholder = searchPlaceholder
+	m.choosing = nil
+	m.failure = ""
+	m.collect()
+	m.rank()
 }
 
 func (m model) run(entry palette.Entry) tea.Cmd {
@@ -197,7 +271,8 @@ func (m model) run(entry palette.Entry) tea.Cmd {
 	}
 }
 
-// execute runs the entry, or hands it over to run outside the popup.
+// execute runs the entry, or hands it over to run outside the popup. A row
+// picked from a list of targets carries it, which is the entry's input.
 //
 // herdr allows one popup at a time and answers the second with ui_busy, which
 // is the signal to hand over: a command that wants a popup cannot run while
@@ -215,7 +290,7 @@ func (m model) execute(entry palette.Entry) error {
 		return relay()
 	}
 
-	err := entry.Run(m.ctx, palette.Exec{Client: client, Ctx: m.invocation})
+	err := entry.Run(m.ctx, palette.Exec{Client: client, Ctx: m.invocation, Input: entry.Chosen})
 	if herdr.IsCode(err, herdr.ErrCodeUIBusy) {
 		return relay()
 	}
@@ -236,7 +311,14 @@ func (m model) reload() tea.Cmd {
 
 // setOpen takes the rebuilt rows without moving the selection off the entry it
 // is on, which would otherwise jump under the user as an agent changes state.
+// While a list of targets is up the rows are not the session's, so the rebuilt
+// ones are kept for the way back instead of being shown.
 func (m *model) setOpen(open []palette.Entry) {
+	if m.choosing != nil {
+		m.open = open
+		return
+	}
+
 	var selected string
 	if m.cursor < len(m.ranked) {
 		selected = m.ranked[m.cursor].Entry.ID

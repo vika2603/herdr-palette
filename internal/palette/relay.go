@@ -55,9 +55,13 @@ type Prompt struct {
 // ui_busy while the palette is up. herdr runs an action entrypoint outside the
 // popup, so the palette writes down what to run, asks for that entrypoint, and
 // quits.
+//
+// A row picked from an entry's list of targets carries what was picked, which
+// travels as the entry's input: the list is gone by the time the entry runs.
 func Relay(ctx context.Context, client *herdr.Client, env *plugin.Env, entry Entry, invocation *herdr.PluginInvocationContext) error {
 	return handOver(ctx, client, env, Pending{
 		EntryID: entry.ID,
+		Input:   entry.Chosen,
 		Context: invocation,
 	})
 }

@@ -72,6 +72,10 @@ pane over the layout, and `popup` a session-modal terminal, both running the
 configured command line. Sizes are accepted in either spelling herdr takes, a
 percentage such as `"70%"` or a cell count such as `80`.
 
+Enabling and disabling an installed plugin are commands too; the palette
+leaves itself out of what can be disabled, since that is the popup the choice
+is being made in.
+
 **A plugin's own name**, such as `machine manager:`, is every action it
 registered, read from `plugin.action.list` at open time. Installing a plugin
 adds its actions to the palette with no configuration, and the palette forwards

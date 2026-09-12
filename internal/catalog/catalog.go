@@ -529,6 +529,35 @@ func Entries() []palette.Entry {
 		},
 
 		{
+			ID:    "herdr:plugin.enable",
+			Title: "enable a plugin",
+			Type:  groupHerdr,
+			Choices: &palette.Choices{
+				Label: "Plugin to enable",
+				Empty: "no installed plugin is disabled",
+				List:  plugins(false),
+			},
+			Run: func(ctx context.Context, e palette.Exec) error {
+				_, err := e.Client.PluginEnable(ctx, herdr.PluginSetEnabledParams{PluginID: e.Chosen})
+				return err
+			},
+		},
+		{
+			ID:    "herdr:plugin.disable",
+			Title: "disable a plugin",
+			Type:  groupHerdr,
+			Choices: &palette.Choices{
+				Label: "Plugin to disable",
+				Empty: "no other plugin is enabled",
+				List:  plugins(true),
+			},
+			Run: func(ctx context.Context, e palette.Exec) error {
+				_, err := e.Client.PluginDisable(ctx, herdr.PluginSetEnabledParams{PluginID: e.Chosen})
+				return err
+			},
+		},
+
+		{
 			ID:      "herdr:server.reload_config",
 			Binding: "reload_config",
 			Title:   "reload config",
@@ -729,6 +758,34 @@ func savedLayouts(_ context.Context, e palette.Exec) ([]palette.Choice, error) {
 		choices = append(choices, palette.Choice{Value: one.Name, Title: one.Name})
 	}
 	return choices, nil
+}
+
+// plugins is every installed plugin that is enabled, or every one that is
+// not. The palette leaves itself out of what can be disabled: it would be
+// taking away the popup the choice is being made in, and the list of plugin
+// actions leaves its own out for the same reason.
+func plugins(enabled bool) func(context.Context, palette.Exec) ([]palette.Choice, error) {
+	return func(ctx context.Context, e palette.Exec) ([]palette.Choice, error) {
+		installed, err := e.Client.PluginList(ctx, herdr.PluginListParams{})
+		if err != nil {
+			return nil, err
+		}
+
+		choices := make([]palette.Choice, 0, len(installed.Plugins))
+		for _, plugin := range installed.Plugins {
+			if plugin.Enabled != enabled || (enabled && plugin.PluginID == e.Env.PluginID) {
+				continue
+			}
+			choices = append(choices, palette.Choice{
+				Value: plugin.PluginID,
+				Title: plugin.Name,
+				// The row shows the name, and the id is how a plugin is
+				// spelt everywhere else, so typing it finds the row too.
+				Search: plugin.PluginID,
+			})
+		}
+		return choices, nil
+	}
 }
 
 // sessionAgents is every pane in the session running an agent, as targets to

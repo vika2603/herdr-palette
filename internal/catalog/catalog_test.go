@@ -113,6 +113,13 @@ func server(t *testing.T) *plugintest.Server {
 		}).
 		Reply(herdr.MethodLayoutExport, herdr.LayoutExportResponse{Layout: herdr.LayoutDescription{Root: exportedLayout()}}).
 		Reply(herdr.MethodLayoutApply, herdr.LayoutApplyResponse{}).
+		Reply(herdr.MethodPluginList, herdr.PluginListResponse{Plugins: []herdr.InstalledPluginInfo{
+			{PluginID: "herdr.palette", Name: "Command Palette", Enabled: true},
+			{PluginID: "herdr.machine-manager", Name: "Machine Manager", Enabled: true},
+			{PluginID: "herdr.auto-title", Name: "Auto Title"},
+		}}).
+		Reply(herdr.MethodPluginEnable, herdr.PluginEnabledResponse{}).
+		Reply(herdr.MethodPluginDisable, herdr.PluginDisabledResponse{}).
 		Reply(herdr.MethodServerReloadConfig, herdr.ConfigReloadResponse{})
 }
 
@@ -185,6 +192,9 @@ func choices(t *testing.T, id string) []palette.Choice {
 	}
 	s := server(t)
 	env := s.Env(plugintest.StateDir(t.TempDir()))
+	// The palette leaves its own plugin out of what can be disabled, which it
+	// knows by the id the entrypoint environment carries.
+	env.PluginID = "herdr.palette"
 	list, err := e.Choices.List(context.Background(), palette.Exec{
 		Client: env.Client(),
 		Ctx:    fullContext(),
@@ -241,6 +251,8 @@ func TestEachEntryCallsItsMethod(t *testing.T) {
 		{id: "herdr:agent.rename", collected: step{input: "reviewer"}, method: herdr.MethodAgentRename},
 		{id: "herdr:agent.prompt", collected: step{input: "go on"}, method: herdr.MethodAgentPrompt},
 		{id: "herdr:agent.prompt.any", collected: step{chosen: "p9", input: "go on"}, method: herdr.MethodAgentPrompt},
+		{id: "herdr:plugin.enable", collected: step{chosen: "herdr.auto-title"}, method: herdr.MethodPluginEnable},
+		{id: "herdr:plugin.disable", collected: step{chosen: "herdr.machine-manager"}, method: herdr.MethodPluginDisable},
 		{id: "herdr:server.reload_config", method: herdr.MethodServerReloadConfig},
 	}
 
@@ -731,5 +743,26 @@ func TestPromptingAnAgentSendsTheTextToThePickedPane(t *testing.T) {
 
 	if params.Target != "p9" || params.Text != "go on" {
 		t.Errorf("prompted %+v, want the agent that was picked to receive the text", params)
+	}
+}
+
+// Disabling the palette would take away the popup the choice is being made in,
+// so it is not among the plugins that can be disabled.
+func TestDisablingAPluginLeavesThePaletteOut(t *testing.T) {
+	got := values(choices(t, "herdr:plugin.disable"))
+
+	if len(got) != 1 || got[0] != "herdr.machine-manager" {
+		t.Errorf("offered %v, want the enabled plugins but this one", got)
+	}
+}
+
+func TestEnablingAPluginOffersTheDisabledOnes(t *testing.T) {
+	list := choices(t, "herdr:plugin.enable")
+
+	if got := values(list); len(got) != 1 || got[0] != "herdr.auto-title" {
+		t.Fatalf("offered %v, want the plugin that is disabled", got)
+	}
+	if list[0].Title != "Auto Title" || list[0].Search != "herdr.auto-title" {
+		t.Errorf("row = %+v, want the plugin's name, found by its id too", list[0])
 	}
 }

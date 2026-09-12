@@ -110,13 +110,37 @@ func Entries() []palette.Entry {
 			Binding: "open_worktree",
 			Title:   "open worktree workspace",
 			Type:    groupHerdr,
-			Input:   &palette.Input{Label: "Existing branch"},
+			Choices: &palette.Choices{
+				Label: "Worktree to open",
+				Empty: "every worktree of this repository is open already",
+				List:  worktreesToOpen,
+			},
+			// The path identifies a worktree whether or not it is on a branch,
+			// which a detached one is not.
 			Run: func(ctx context.Context, e palette.Exec) error {
 				_, err := e.Client.WorktreeOpen(ctx, herdr.WorktreeOpenParams{
-					Branch: &e.Input,
-					Cwd:    e.Ctx.WorkspaceCwd,
-					Focus:  new(true),
+					Path:  &e.Input,
+					Cwd:   e.Ctx.WorkspaceCwd,
+					Focus: new(true),
 				})
+				return err
+			},
+		},
+		{
+			ID:      "herdr:worktree.remove",
+			Binding: "remove_worktree",
+			Title:   "remove worktree workspace",
+			Type:    groupHerdr,
+			Choices: &palette.Choices{
+				Label: "Worktree to remove",
+				Empty: "no worktree of this repository is open in a workspace",
+				List:  worktreesToRemove,
+			},
+			// Force is left unset, so herdr refuses a checkout with work in it
+			// and the reason reaches the popup. Picking the worktree from the
+			// list is the step herdr's own binding asks a confirmation for.
+			Run: func(ctx context.Context, e palette.Exec) error {
+				_, err := e.Client.WorktreeRemove(ctx, herdr.WorktreeRemoveParams{WorkspaceID: e.Input})
 				return err
 			},
 		},
@@ -166,6 +190,20 @@ func Entries() []palette.Entry {
 				_, err = e.Client.TabClose(ctx, herdr.TabTarget{TabID: id})
 				return err
 			},
+		},
+		{
+			ID:      "herdr:tab.move.previous",
+			Binding: "move_tab_previous",
+			Title:   "move tab toward the front",
+			Type:    groupHerdr,
+			Run:     moveTab(-1),
+		},
+		{
+			ID:      "herdr:tab.move.next",
+			Binding: "move_tab_next",
+			Title:   "move tab toward the back",
+			Type:    groupHerdr,
+			Run:     moveTab(1),
 		},
 
 		{
@@ -278,6 +316,73 @@ func Entries() []palette.Entry {
 			Type:    groupHerdr,
 			Run:     focus(herdr.PaneDirectionRight),
 		},
+		{
+			ID:      "herdr:pane.cycle.next",
+			Binding: "cycle_pane_next",
+			Title:   "focus next pane",
+			Type:    groupHerdr,
+			Run:     cycle(1),
+		},
+		{
+			ID:      "herdr:pane.cycle.previous",
+			Binding: "cycle_pane_previous",
+			Title:   "focus previous pane",
+			Type:    groupHerdr,
+			Run:     cycle(-1),
+		},
+		{
+			ID:      "herdr:pane.resize.left",
+			Binding: "resize_pane_left",
+			Title:   "resize pane left",
+			Type:    groupHerdr,
+			Run:     resize(herdr.PaneDirectionLeft),
+		},
+		{
+			ID:      "herdr:pane.resize.down",
+			Binding: "resize_pane_down",
+			Title:   "resize pane down",
+			Type:    groupHerdr,
+			Run:     resize(herdr.PaneDirectionDown),
+		},
+		{
+			ID:      "herdr:pane.resize.up",
+			Binding: "resize_pane_up",
+			Title:   "resize pane up",
+			Type:    groupHerdr,
+			Run:     resize(herdr.PaneDirectionUp),
+		},
+		{
+			ID:      "herdr:pane.resize.right",
+			Binding: "resize_pane_right",
+			Title:   "resize pane right",
+			Type:    groupHerdr,
+			Run:     resize(herdr.PaneDirectionRight),
+		},
+		{
+			ID:    "herdr:pane.move",
+			Title: "move pane to another tab",
+			Type:  groupHerdr,
+			Choices: &palette.Choices{
+				Label: "Tab to move the pane to",
+				Empty: "no other tab is open",
+				List:  otherTabs,
+			},
+			Run: func(ctx context.Context, e palette.Exec) error {
+				id, err := need(e.Ctx.FocusedPaneID, errNoPane)
+				if err != nil {
+					return err
+				}
+				_, err = e.Client.PaneMove(ctx, herdr.PaneMoveParams{
+					PaneID: id,
+					Destination: herdr.PaneMoveDestinationTab{
+						TabID: e.Input,
+						Split: herdr.SplitDirectionRight,
+					},
+					Focus: new(true),
+				})
+				return err
+			},
+		},
 
 		{
 			ID:    "herdr:agent.prompt",
@@ -334,6 +439,221 @@ func split(direction herdr.SplitDirection, swapWith herdr.PaneDirection) func(co
 		})
 		return err
 	}
+}
+
+// resize moves the border the focused pane shares with its neighbour in the
+// direction asked for. The amount is left to herdr, which is the step its own
+// resize keys take.
+func resize(direction herdr.PaneDirection) func(context.Context, palette.Exec) error {
+	return func(ctx context.Context, e palette.Exec) error {
+		_, err := e.Client.PaneResize(ctx, herdr.PaneResizeParams{
+			Direction: direction,
+			PaneID:    e.Ctx.FocusedPaneID,
+		})
+		return err
+	}
+}
+
+// cycle focuses the pane after or before the focused one among the panes of
+// its tab, wrapping round at the ends. herdr's own cycle keys have no API
+// behind them, so the order is the one the snapshot lists the tab's panes in.
+func cycle(by int) func(context.Context, palette.Exec) error {
+	return func(ctx context.Context, e palette.Exec) error {
+		id, err := need(e.Ctx.FocusedPaneID, errNoPane)
+		if err != nil {
+			return err
+		}
+		snapshot, err := e.Client.SessionSnapshot(ctx)
+		if err != nil {
+			return err
+		}
+
+		siblings, at := tabPanes(snapshot.Snapshot, id)
+		if at < 0 {
+			return errNoPane
+		}
+		if len(siblings) < 2 {
+			return nil
+		}
+		next := siblings[((at+by)%len(siblings)+len(siblings))%len(siblings)]
+		_, err = e.Client.PaneFocus(ctx, herdr.PaneTarget{PaneID: next})
+		return err
+	}
+}
+
+// tabPanes is the panes of the tab the pane is in, in the order the snapshot
+// lists them, and where the pane sits among them.
+func tabPanes(snapshot herdr.SessionSnapshot, paneID string) ([]string, int) {
+	tab := ""
+	for _, pane := range snapshot.Panes {
+		if pane.PaneID == paneID {
+			tab = pane.TabID
+		}
+	}
+	if tab == "" {
+		return nil, -1
+	}
+
+	var panes []string
+	at := -1
+	for _, pane := range snapshot.Panes {
+		if pane.TabID != tab {
+			continue
+		}
+		if pane.PaneID == paneID {
+			at = len(panes)
+		}
+		panes = append(panes, pane.PaneID)
+	}
+	return panes, at
+}
+
+// moveTab moves the focused tab one place among the tabs of its workspace.
+//
+// herdr reads an insert index as a position in the list as it stands and puts
+// the tab in front of whatever is there, so a place back is one index less and
+// a place on is two more — the tab itself still occupies the index between.
+// The index may be the length, which is the end; past it herdr refuses, so a
+// tab already at the end it is moved toward stays where it is.
+func moveTab(by int) func(context.Context, palette.Exec) error {
+	return func(ctx context.Context, e palette.Exec) error {
+		id, err := need(e.Ctx.TabID, errNoTab)
+		if err != nil {
+			return err
+		}
+		snapshot, err := e.Client.SessionSnapshot(ctx)
+		if err != nil {
+			return err
+		}
+
+		count, at := workspaceTabs(snapshot.Snapshot, id)
+		if at < 0 {
+			return errNoTab
+		}
+		insert := at + by
+		if by > 0 {
+			insert++
+		}
+		if insert < 0 || insert > count {
+			return nil
+		}
+		_, err = e.Client.TabMove(ctx, herdr.TabMoveParams{TabID: id, InsertIndex: uint64(insert)})
+		return err
+	}
+}
+
+// workspaceTabs is how many tabs the tab's workspace holds and where the tab
+// sits among them. The snapshot lists them in the order they are shown, which
+// is what an insert index counts: a tab's number stays with it when it moves
+// and is not its position.
+func workspaceTabs(snapshot herdr.SessionSnapshot, tabID string) (int, int) {
+	workspace := ""
+	for _, tab := range snapshot.Tabs {
+		if tab.TabID == tabID {
+			workspace = tab.WorkspaceID
+		}
+	}
+	if workspace == "" {
+		return 0, -1
+	}
+
+	count, at := 0, -1
+	for _, tab := range snapshot.Tabs {
+		if tab.WorkspaceID != workspace {
+			continue
+		}
+		if tab.TabID == tabID {
+			at = count
+		}
+		count++
+	}
+	return count, at
+}
+
+// otherTabs is every tab but the one the palette was opened in, as targets to
+// move the focused pane to.
+func otherTabs(ctx context.Context, e palette.Exec) ([]palette.Choice, error) {
+	snapshot, err := e.Client.SessionSnapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	workspaces := make(map[string]string, len(snapshot.Snapshot.Workspaces))
+	for _, workspace := range snapshot.Snapshot.Workspaces {
+		workspaces[workspace.WorkspaceID] = workspace.Label
+	}
+
+	choices := make([]palette.Choice, 0, len(snapshot.Snapshot.Tabs))
+	for _, tab := range snapshot.Snapshot.Tabs {
+		if tab.TabID == herdr.Value(e.Ctx.TabID) {
+			continue
+		}
+		choices = append(choices, palette.Choice{
+			Value:  tab.TabID,
+			Title:  palette.Label(tab.Label, "tab", tab.Number),
+			Detail: workspaces[tab.WorkspaceID],
+		})
+	}
+	return choices, nil
+}
+
+// worktreesToOpen is every worktree of the repository the palette was opened
+// in that no workspace is on yet.
+func worktreesToOpen(ctx context.Context, e palette.Exec) ([]palette.Choice, error) {
+	return worktrees(ctx, e, func(tree herdr.WorktreeInfo) (palette.Choice, bool) {
+		if tree.OpenWorkspaceID != nil {
+			return palette.Choice{}, false
+		}
+		return palette.Choice{
+			Value: tree.Path,
+			Title: worktreeName(tree),
+			// The row is the branch, so the checkout it is in is searchable
+			// and shown when that is what the query matched.
+			Search: tree.Path,
+		}, true
+	})
+}
+
+// worktreesToRemove is the worktrees a workspace is open on. The repository's
+// own checkout is not one of them: removing it is not what the command means,
+// and herdr addresses a removal by the workspace the worktree is open in.
+func worktreesToRemove(ctx context.Context, e palette.Exec) ([]palette.Choice, error) {
+	return worktrees(ctx, e, func(tree herdr.WorktreeInfo) (palette.Choice, bool) {
+		if tree.OpenWorkspaceID == nil || !tree.IsLinkedWorktree {
+			return palette.Choice{}, false
+		}
+		return palette.Choice{
+			Value:  *tree.OpenWorkspaceID,
+			Title:  worktreeName(tree),
+			Search: tree.Path,
+		}, true
+	})
+}
+
+// worktrees lists the repository the palette was opened in, by the same cwd
+// the commands that create and open a worktree resolve it from.
+func worktrees(ctx context.Context, e palette.Exec, pick func(herdr.WorktreeInfo) (palette.Choice, bool)) ([]palette.Choice, error) {
+	list, err := e.Client.WorktreeList(ctx, herdr.WorktreeListParams{Cwd: e.Ctx.WorkspaceCwd})
+	if err != nil {
+		return nil, err
+	}
+
+	choices := make([]palette.Choice, 0, len(list.Worktrees))
+	for _, tree := range list.Worktrees {
+		if choice, ok := pick(tree); ok {
+			choices = append(choices, choice)
+		}
+	}
+	return choices, nil
+}
+
+// worktreeName is the branch the worktree is on, or the name herdr gave it
+// when it is on none.
+func worktreeName(tree herdr.WorktreeInfo) string {
+	if branch := herdr.Value(tree.Branch); branch != "" {
+		return branch
+	}
+	return tree.Label
 }
 
 func focus(direction herdr.PaneDirection) func(context.Context, palette.Exec) error {

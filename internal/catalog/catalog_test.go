@@ -28,11 +28,52 @@ func fullContext() *herdr.PluginInvocationContext {
 	}
 }
 
+// snapshot is a session of two workspaces: the one the palette was opened in,
+// whose focused tab is the second of three and holds three panes, and another
+// workspace to move a pane to.
+func snapshot() herdr.SessionSnapshot {
+	return herdr.SessionSnapshot{
+		Workspaces: []herdr.WorkspaceInfo{
+			{WorkspaceID: "w1", Label: "repo"},
+			{WorkspaceID: "w2", Label: "notes"},
+		},
+		Tabs: []herdr.TabInfo{
+			{TabID: "t0", WorkspaceID: "w1", Label: "first", Number: 7},
+			{TabID: "t1", WorkspaceID: "w1", Label: "tab one", Number: 3},
+			{TabID: "t2", WorkspaceID: "w1", Label: "last", Number: 9},
+			{TabID: "t9", WorkspaceID: "w2", Label: "elsewhere", Number: 1},
+		},
+		Panes: []herdr.PaneInfo{
+			{PaneID: "p1", TabID: "t1", WorkspaceID: "w1"},
+			{PaneID: "p2", TabID: "t1", WorkspaceID: "w1"},
+			{PaneID: "p3", TabID: "t1", WorkspaceID: "w1"},
+			{PaneID: "p9", TabID: "t9", WorkspaceID: "w2"},
+		},
+	}
+}
+
+// worktrees is what herdr answers worktree.list with: the repository's own
+// checkout, a worktree a workspace is open on, and one that is not open.
+func worktreeList() herdr.WorktreeListResponse {
+	return herdr.WorktreeListResponse{Worktrees: []herdr.WorktreeInfo{
+		{Path: "/repo", Branch: new("main"), Label: "repo", OpenWorkspaceID: new("w1")},
+		{Path: "/trees/fix", Branch: new("fix"), Label: "fix", IsLinkedWorktree: true, OpenWorkspaceID: new("w2")},
+		{Path: "/trees/spike", Branch: new("spike"), Label: "spike", IsLinkedWorktree: true},
+	}}
+}
+
 // server answers every method the catalog can call, so one script serves the
 // whole table.
 func server(t *testing.T) *plugintest.Server {
 	t.Helper()
 	return plugintest.NewServer(t).
+		Reply(herdr.MethodSessionSnapshot, herdr.SessionSnapshotResponse{Snapshot: snapshot()}).
+		Reply(herdr.MethodWorktreeList, worktreeList()).
+		Reply(herdr.MethodWorktreeRemove, herdr.WorktreeRemovedResponse{}).
+		Reply(herdr.MethodTabMove, herdr.TabListResponse{}).
+		Reply(herdr.MethodPaneMove, herdr.PaneMoveResponse{}).
+		Reply(herdr.MethodPaneResize, herdr.PaneResizeResponse{}).
+		Reply(herdr.MethodPaneFocus, herdr.PaneInfoResponse{}).
 		Reply(herdr.MethodWorkspaceCreate, herdr.WorkspaceCreatedResponse{}).
 		Reply(herdr.MethodWorkspaceRename, herdr.WorkspaceInfoResponse{}).
 		Reply(herdr.MethodWorkspaceClose, herdr.OKResponse{}).
@@ -74,20 +115,53 @@ func decode(t *testing.T, raw json.RawMessage, into any) {
 // made.
 func run(t *testing.T, id, input string) []plugintest.Call {
 	t.Helper()
-	s := server(t)
-	e := entry(t, id)
-	if err := e.Run(context.Background(), palette.Exec{
-		Client: s.Env().Client(),
-		Ctx:    fullContext(),
-		Input:  input,
-	}); err != nil {
-		t.Fatalf("%s: Run() = %v", id, err)
-	}
-	calls := s.Calls()
+	calls := runIn(t, id, input, fullContext())
 	if len(calls) == 0 {
 		t.Fatalf("%s made no calls", id)
 	}
 	return calls
+}
+
+// runIn executes one entry against a context of its own, for the entries whose
+// outcome depends on where the palette was opened.
+func runIn(t *testing.T, id, input string, ctx *herdr.PluginInvocationContext) []plugintest.Call {
+	t.Helper()
+	s := server(t)
+	if err := entry(t, id).Run(context.Background(), palette.Exec{
+		Client: s.Env().Client(),
+		Ctx:    ctx,
+		Input:  input,
+	}); err != nil {
+		t.Fatalf("%s: Run() = %v", id, err)
+	}
+	return s.Calls()
+}
+
+// choices is the list an entry offers against the scripted server.
+func choices(t *testing.T, id string) []palette.Choice {
+	t.Helper()
+	e := entry(t, id)
+	if e.Choices == nil {
+		t.Fatalf("%s offers no list to pick from", id)
+	}
+	s := server(t)
+	list, err := e.Choices.List(context.Background(), palette.Exec{
+		Client: s.Env().Client(),
+		Ctx:    fullContext(),
+	})
+	if err != nil {
+		t.Fatalf("%s: List() = %v", id, err)
+	}
+	return list
+}
+
+// values is what picking each row hands the entry.
+func values(list []palette.Choice) []string {
+	out := make([]string, 0, len(list))
+	for _, choice := range list {
+		out = append(out, choice.Value)
+	}
+	return out
 }
 
 func TestEachEntryCallsItsMethod(t *testing.T) {
@@ -100,7 +174,8 @@ func TestEachEntryCallsItsMethod(t *testing.T) {
 		{id: "herdr:workspace.rename", input: "renamed", method: herdr.MethodWorkspaceRename},
 		{id: "herdr:workspace.close", method: herdr.MethodWorkspaceClose},
 		{id: "herdr:worktree.new", input: "feature", method: herdr.MethodWorktreeCreate},
-		{id: "herdr:worktree.open", input: "feature", method: herdr.MethodWorktreeOpen},
+		{id: "herdr:worktree.open", input: "/trees/spike", method: herdr.MethodWorktreeOpen},
+		{id: "herdr:worktree.remove", input: "w2", method: herdr.MethodWorktreeRemove},
 		{id: "herdr:tab.new", method: herdr.MethodTabCreate},
 		{id: "herdr:tab.rename", input: "renamed", method: herdr.MethodTabRename},
 		{id: "herdr:tab.close", method: herdr.MethodTabClose},
@@ -116,6 +191,11 @@ func TestEachEntryCallsItsMethod(t *testing.T) {
 		{id: "herdr:pane.focus.down", method: herdr.MethodPaneFocusDirection},
 		{id: "herdr:pane.focus.up", method: herdr.MethodPaneFocusDirection},
 		{id: "herdr:pane.focus.right", method: herdr.MethodPaneFocusDirection},
+		{id: "herdr:pane.resize.left", method: herdr.MethodPaneResize},
+		{id: "herdr:pane.resize.down", method: herdr.MethodPaneResize},
+		{id: "herdr:pane.resize.up", method: herdr.MethodPaneResize},
+		{id: "herdr:pane.resize.right", method: herdr.MethodPaneResize},
+		{id: "herdr:pane.move", input: "t9", method: herdr.MethodPaneMove},
 		{id: "herdr:agent.prompt", input: "go on", method: herdr.MethodAgentPrompt},
 		{id: "herdr:server.reload_config", method: herdr.MethodServerReloadConfig},
 	}
@@ -264,6 +344,10 @@ func TestEntriesAreWellFormed(t *testing.T) {
 			t.Errorf("%s has no command", e.ID)
 		case seen[e.ID]:
 			t.Errorf("%s is listed twice, so the recent order would key both", e.ID)
+		case e.Input != nil && e.Choices != nil:
+			t.Errorf("%s both types a value and picks one, and only one of them is collected", e.ID)
+		case e.Choices != nil && (e.Choices.Label == "" || e.Choices.Empty == "" || e.Choices.List == nil):
+			t.Errorf("%s picks from a list that is missing its label, its empty line or its source", e.ID)
 		}
 		seen[e.ID] = true
 	}
@@ -318,5 +402,161 @@ func TestSplittingLeftSwapsTheNewPaneIntoPlace(t *testing.T) {
 func TestSplittingRightDoesNotSwap(t *testing.T) {
 	if calls := run(t, "herdr:pane.split.right", ""); len(calls) != 1 {
 		t.Errorf("made %d calls, want the split alone", len(calls))
+	}
+}
+
+func TestOpeningAWorktreeOffersTheOnesNoWorkspaceIsOn(t *testing.T) {
+	list := choices(t, "herdr:worktree.open")
+
+	if got := values(list); len(got) != 1 || got[0] != "/trees/spike" {
+		t.Fatalf("offered %v, want the worktree no workspace is open on", got)
+	}
+	if list[0].Title != "spike" {
+		t.Errorf("title = %q, want the branch the worktree is on", list[0].Title)
+	}
+	if list[0].Search != "/trees/spike" {
+		t.Errorf("search text = %q, want the checkout to be searchable", list[0].Search)
+	}
+}
+
+// The path identifies a worktree whether or not it is on a branch.
+func TestOpeningAWorktreeSendsThePath(t *testing.T) {
+	var params herdr.WorktreeOpenParams
+	decode(t, run(t, "herdr:worktree.open", "/trees/spike")[0].Params, &params)
+
+	if params.Path == nil || *params.Path != "/trees/spike" {
+		t.Errorf("opened %+v, want the chosen checkout", params)
+	}
+	if params.Cwd == nil || *params.Cwd != "/repo" {
+		t.Error("the worktree is not opened from the workspace's repository")
+	}
+}
+
+func TestRemovingAWorktreeOffersTheWorkspacesOnOne(t *testing.T) {
+	list := choices(t, "herdr:worktree.remove")
+
+	if got := values(list); len(got) != 1 || got[0] != "w2" {
+		t.Fatalf("offered %v, want the workspace the linked worktree is open in", got)
+	}
+	if list[0].Title != "fix" {
+		t.Errorf("title = %q, want the branch the worktree is on", list[0].Title)
+	}
+}
+
+// herdr addresses a removal by the workspace, and leaving force unset is what
+// keeps a checkout with work in it.
+func TestRemovingAWorktreeNamesTheWorkspaceAndDoesNotForce(t *testing.T) {
+	var params herdr.WorktreeRemoveParams
+	decode(t, run(t, "herdr:worktree.remove", "w2")[0].Params, &params)
+
+	if params.WorkspaceID != "w2" {
+		t.Errorf("removed %q, want the chosen workspace", params.WorkspaceID)
+	}
+	if params.Force != nil && *params.Force {
+		t.Error("the removal is forced, so herdr would not refuse a checkout with work in it")
+	}
+}
+
+func TestMovingAPaneOffersEveryOtherTab(t *testing.T) {
+	list := choices(t, "herdr:pane.move")
+
+	want := []string{"t0", "t2", "t9"}
+	if got := values(list); len(got) != len(want) || got[0] != want[0] || got[2] != want[2] {
+		t.Fatalf("offered %v, want %v: every tab but the one the palette was opened in", got, want)
+	}
+	if list[2].Detail != "notes" {
+		t.Errorf("detail = %q, want the workspace the tab sits in", list[2].Detail)
+	}
+}
+
+func TestMovingAPaneTargetsTheChosenTab(t *testing.T) {
+	var params herdr.PaneMoveParams
+	decode(t, run(t, "herdr:pane.move", "t9")[0].Params, &params)
+
+	if params.PaneID != "p1" {
+		t.Errorf("moved %q, want the focused pane", params.PaneID)
+	}
+	tab, ok := params.Destination.(herdr.PaneMoveDestinationTab)
+	if !ok {
+		t.Fatalf("destination is %T, want the tab that was picked", params.Destination)
+	}
+	if tab.TabID != "t9" {
+		t.Errorf("destination tab = %q, want the one that was picked", tab.TabID)
+	}
+}
+
+// herdr reads an insert index as a position in the list as it stands, so a
+// place on is two indexes ahead and a place back one behind.
+func TestMovingATabCountsItsPlaceInTheWorkspace(t *testing.T) {
+	for _, c := range []struct {
+		id     string
+		insert uint64
+	}{
+		{id: "herdr:tab.move.next", insert: 3},
+		{id: "herdr:tab.move.previous", insert: 0},
+	} {
+		t.Run(c.id, func(t *testing.T) {
+			calls := run(t, c.id, "")
+			if len(calls) != 2 || calls[1].Method != herdr.MethodTabMove {
+				t.Fatalf("made %v, want the snapshot and a move", calls)
+			}
+
+			var params herdr.TabMoveParams
+			decode(t, calls[1].Params, &params)
+			if params.TabID != "t1" || params.InsertIndex != c.insert {
+				t.Errorf("moved %+v, want tab t1 to insert index %d", params, c.insert)
+			}
+		})
+	}
+}
+
+// Past either end herdr refuses the index, so a tab already there stays put.
+func TestMovingATabPastTheEndDoesNothing(t *testing.T) {
+	for _, c := range []struct{ id, tab string }{
+		{id: "herdr:tab.move.next", tab: "t2"},
+		{id: "herdr:tab.move.previous", tab: "t0"},
+	} {
+		t.Run(c.id, func(t *testing.T) {
+			ctx := fullContext()
+			ctx.TabID = new(c.tab)
+
+			for _, call := range runIn(t, c.id, "", ctx) {
+				if call.Method == herdr.MethodTabMove {
+					t.Errorf("tab %s was moved although it is at the end it moved toward", c.tab)
+				}
+			}
+		})
+	}
+}
+
+func TestCyclingFocusWrapsRoundTheTab(t *testing.T) {
+	for _, c := range []struct{ id, want string }{
+		{id: "herdr:pane.cycle.next", want: "p2"},
+		{id: "herdr:pane.cycle.previous", want: "p3"},
+	} {
+		t.Run(c.id, func(t *testing.T) {
+			calls := run(t, c.id, "")
+			if len(calls) != 2 || calls[1].Method != herdr.MethodPaneFocus {
+				t.Fatalf("made %v, want the snapshot and a focus", calls)
+			}
+
+			var params herdr.PaneTarget
+			decode(t, calls[1].Params, &params)
+			if params.PaneID != c.want {
+				t.Errorf("focused %q, want %q", params.PaneID, c.want)
+			}
+		})
+	}
+}
+
+// A pane alone in its tab has nowhere to cycle to.
+func TestCyclingASinglePaneDoesNothing(t *testing.T) {
+	ctx := fullContext()
+	ctx.FocusedPaneID = new("p9")
+
+	for _, call := range runIn(t, "herdr:pane.cycle.next", "", ctx) {
+		if call.Method == herdr.MethodPaneFocus {
+			t.Error("focus was moved although the tab holds one pane")
+		}
 	}
 }

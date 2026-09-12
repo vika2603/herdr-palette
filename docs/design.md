@@ -94,9 +94,18 @@ actions. The cost is that a new built-in action does not appear on its own. The
 API method behind each entry is stable, so the list only needs revisiting when
 herdr adds commands worth offering.
 
-Two entries have no herdr action behind them: splitting left and up. herdr
+Three entries have no herdr action behind them. Splitting left and up: herdr
 splits right and down only, so those split in the direction it has and then
-`pane.swap` the new pane into place.
+`pane.swap` the new pane into place. Moving the pane to another tab: `pane.move`
+takes a destination herdr's keys have no binding for.
+
+Two of the built-in actions are reproduced from the session rather than by one
+call. `tab.move` takes an insert index counted in the list as it stands, and
+puts the tab in front of whatever is at it, so a place on is two indexes ahead
+and a place back one behind; a tab's number stays with it when it moves and is
+not its position, which leaves the snapshot's order as the only thing to count.
+The pane cycle has no method at all, so it focuses the pane before or after the
+focused one among the panes the snapshot lists for the tab.
 
 ## Running the command
 

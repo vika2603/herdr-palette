@@ -59,10 +59,11 @@ The namespace says where the row comes from.
 **`herdr:`** is a list this plugin maintains, because herdr publishes no
 equivalent of `plugin.action.list` for its built-in actions. Each one calls the
 socket API method with the same effect: workspace, tab, pane, worktree and
-agent commands, plus a config reload. Splitting left and up is there too, which
-herdr has no action for — it splits right or down and swaps the new pane into
-place. Built-in actions with no API equivalent — `settings`, `help`,
-`toggle_sidebar`, `resize_mode` — are not in the list.
+agent commands, plus a config reload. A few have no herdr action behind them at
+all — splitting left and up, which herdr splits right or down and then swaps
+the new pane into place, and moving the pane to another tab. Built-in actions
+with no API equivalent — `settings`, `help`, `toggle_sidebar`, `resize_mode` —
+are not in the list.
 
 **`command:`** is your own commands, the `[[keys.command]]` entries in
 `config.toml`. herdr offers no way to run one by name, so each type is

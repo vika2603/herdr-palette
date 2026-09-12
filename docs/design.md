@@ -1,13 +1,17 @@
 # Design
 
-## Five entrypoints, one binary
+## Seven entrypoints, one binary
 
-The manifest declares two actions, `open` and `exec`, and three panes,
-`palette`, `input` and `run`. All five run `bin/palette`; `plugin.Env` tells
-the process which entrypoint started it.
+The manifest declares four actions, `open`, `goto`, `back` and `exec`, and
+three panes, `palette`, `input` and `run`. All seven run `bin/palette`;
+`plugin.Env` tells the process which entrypoint started it.
 
 `open` does one thing: it calls `plugin.pane.open` for the `palette`
-entrypoint, which runs the TUI. `exec` runs a command the popup handed over,
+entrypoint, which runs the TUI. `goto` opens the same pane with `HERDR_PALETTE_GOES`
+set, which is the popup starting with the query that leaves the commands out —
+a key for reaching a pane by name, separate from the key for running a command.
+`back` goes to the last place the palette took you, with no popup at all.
+`exec` runs a command the popup handed over,
 `input` is the field that collects a value a command needs, and `run` is the
 pane a configured command runs in. All three are described below.
 
@@ -49,6 +53,15 @@ and pane becomes a row that focuses it — `workspace.focus`, `tab.focus`,
 `pane.focus`. What is already focused is left out, the palette having been
 opened from there. A plugin popup is not part of the session's panes, so the
 palette's own window never appears in its list.
+
+These rows sit in the command list rather than behind a command of their own:
+reaching a pane by name is what the palette is used for most, and a step in
+front of it costs more than the length of the list does. A session does hold
+far more panes than there are commands, so they carry `Goes`, and the `@`
+prefix ranks only those. The prefix is read where the query is ranked rather
+than as a mode of its own, so nothing else in the popup has to know about it,
+and deleting the character undoes it. The `goto` action opens the popup with
+that character already typed.
 
 A pane running an agent shows under `agent:` instead of `pane:`, with the agent
 and its status next to the row, coloured by the status. A pane is addressed by
@@ -137,6 +150,116 @@ an action entrypoint outside the popup, so the `exec` process survives the
 popup closing; it waits for the popup process to exit — the pid is in the file
 — and then runs the entry. A failure there has no popup left to show it, so it
 is reported with `notification.show`.
+
+## Answering a keystroke
+
+Three things can be true of the list while it is up, and each owns the line
+under it.
+
+`pending` is set from the keystroke that chose a row until the socket answers.
+It is what the line says while the answer is out, and it turns `choose` into a
+no-op: a second keystroke on a slow command would run it twice, which for
+anything that creates something leaves two of it.
+
+`confirming` holds a row that cannot be undone — closing a workspace, a tab or
+a pane, removing a worktree, forgetting a layout — between the keystroke that
+chose it and the one that answers. `enter` runs it and anything else puts the
+question away, so the answer cannot be typed into the query by mistake, and a
+click on the row answers the way `enter` does. The question names the row under
+the selection, so a rebuild that moves the selection off it — the pane it went
+to has closed — takes the question with it rather than leaving it standing over
+whatever row the selection landed on.
+
+`choosing` is the list of targets, which is described under picking a target.
+
+Moving the selection clears the first two, because the line they stand in is
+also where the selected row and the keys are, and neither should be held there
+for the rest of the popup's life.
+
+Leaving a screen has to reach what that screen asked for. `epoch` counts the
+screens walked out of; a request carries the one it was made in, and an answer
+from an earlier one is dropped. Without it, `esc` out of a list of targets
+whose rows were still on their way would be undone when they arrived, and `esc`
+out of one whose command was still running would close the popup instead, since
+the command finishing reads as a command finishing on the command list.
+
+## Fitting a row to the popup
+
+Every line the popup draws is measured in terminal cells rather than runes: a
+wide character costs two, and a line that overruns the popup wraps, which
+pushes every row below it down and puts a click on the wrong row — the list
+holds commands that close somebody's work, so that is worth the care.
+
+What a row spends its width on is ordered. What the row is comes first, then
+the detail that tells two rows of the same name apart, then the key. The key
+column is as wide as the widest key on show and is left out entirely below the
+width where the rows would have too little left: half a key names nothing, and
+what an agent is doing is worth more than the key beside a command. The line
+under the list carries the selected row in full, which is what a row that had
+to cut its title cannot; there the name gives way before the keys do, since the
+name is also on show above.
+
+## Handing an agent something to look at
+
+herdr carries the selection, reads a pane's output and prompts an agent, but
+has no path between them: text on screen reaches an agent by being copied
+there. The palette is where that path costs nothing to add — it is already the
+place that picks a target and collects a value.
+
+The selection travels in the invocation context, so the text is the one that
+was selected when the key opened the palette rather than whatever is selected
+by the time the command runs, which matters because the command runs after the
+popup has taken the keyboard. `NeedsSelection` keeps the row out of the list
+when there is none, and the entry checks again when it runs: the context it is
+handed is not the one the list was filtered against.
+
+A pane's output is read with `pane.read` at `recent_unwrapped`, so a line that
+ran past the pane's width is the one line it is, and with `strip_ansi`, since
+the colours are not what the agent is being asked about. The tail is bounded:
+enough for a stack trace, and the agent reads the pane itself if it needs more.
+
+The question goes in front of what was collected, because it is what the agent
+is being asked to do with what follows and what follows can run to hundreds of
+lines.
+
+Watching an agent is the one command whose work outlasts the popup by design.
+`agent.wait` blocks until the agent reaches a state that is not `working`, so
+it is marked `AlwaysRelay` and runs in the `exec` entrypoint, where there is no
+popup to hold open. That also means there is nowhere to report to, so the
+notification is the whole point rather than a report on the way out, and the
+wait carries a timeout: an agent left running overnight should not leave a
+process behind it.
+
+## Finding what a pane printed
+
+herdr searches the scrollback of the pane you are in. Which pane something was
+printed in has no answer, and that is the question worth asking when a session
+holds a dozen of them.
+
+`pane.read` on every pane, a row per non-blank line, each carrying the pane it
+came from as the value a match goes to. The panes are read one at a time: a
+socket client is not documented to take concurrent calls, and a session holds
+few enough that the wait is one the popup already says it is having. Both the
+tail per pane and the total number of rows are capped — the matcher is quick
+enough for a few hundred lines of each pane, and a query needing more than that
+is a query for the pane itself.
+
+## Bringing a layout back with its agents
+
+An exported tree carries a pane's directory but not what is running in it, so
+an arrangement applied again comes back as a row of shells. What each pane was
+running is read from the session when the layout is saved and written down
+beside the tree.
+
+Lining them up again relies on the tree being the same shape both times:
+`herdr.LayoutPanes` walks it first-before-second at every split, so the nth
+pane of the saved tree is the nth pane of the applied one, and `layout.apply`
+answers with the tree it opened, ids and all. A layout saved before there was
+anywhere to write the agents down has none, which reads as a layout of plain
+panes.
+
+The arrangement is open by the time the agents are started, so an agent that
+will not start is reported without taking the tab down with it.
 
 ## Borders
 
@@ -329,14 +452,42 @@ front of the row belong to the search text, and the row shows it next to the
 title, dimmed and highlighted the same way, in whatever width is left once the
 title and the key have theirs.
 
+An empty query scores every row the same, so the order is then whatever else
+the sort has to go on: recency first, then the commands, then the rows that go
+somewhere. Without the second of those the palette would open on however many
+panes the session happens to hold rather than on what it is for, and a session
+holds as many of those rows as it has panes. A pane just left is a row just
+run, so recency still puts the way back at the top. The namespace is folded
+before it is compared, since it is a name a plugin gave itself and where it
+sits should not turn on how it capitalised it.
+
+`@` in front of the query ranks only the rows that carry `Goes`, which is
+every row the session put in the list. It is read where the query is ranked
+rather than kept as a mode, so nothing else in the popup has to know about it
+and deleting the character undoes it.
+
 ## Mouse
 
 The program runs with `tea.WithMouseCellMotion`, which reports clicks and the
-wheel. herdr captures the mouse for its own UI but forwards events to a pane
-app that asks for them, so the popup receives them.
+wheel, and the pointer only while a button is down. The bare pointer is not
+wanted: the selection belongs to the keyboard, and all motion mode would let a
+touch of the trackpad carry it to whatever row the pointer came to rest on, so
+the next `enter` would run that row rather than the one being read. A click
+names its own row, so following the pointer buys nothing. herdr captures the
+mouse for its own UI but forwards events to a pane app that asks for them, so
+the popup receives them.
 
 A click's row is `offset + Y - headerRows`, where `headerRows` is the query
-line and the rule under it. A click outside the rendered rows does nothing.
+line and the rule under it. Two things have to hold for that to name the row
+under the pointer. No line the popup draws may wrap, or every row below the
+wrap moves out from under the arithmetic. And `Y` has to fall inside the rows
+that were drawn: the rule under the list and the line below it are inside the
+popup as well, and the arithmetic alone reads them as the rows that would have
+been there had the window been taller — a click on the line under the list
+would run a command that is not on screen.
+
+A click off the rows puts away a question waiting to be answered rather than
+doing nothing, the way a key other than `enter` does.
 
 ## State
 

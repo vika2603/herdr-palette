@@ -16,6 +16,7 @@ import (
 
 	"github.com/vika2603/herdr-client/herdr"
 
+	"github.com/vika2603/herdr-palette/internal/keys"
 	"github.com/vika2603/herdr-palette/internal/layout"
 	"github.com/vika2603/herdr-palette/internal/palette"
 )
@@ -545,6 +546,17 @@ func Entries() []palette.Entry {
 			Run: togglePlugin,
 		},
 
+		{
+			ID:    "herdr:config.edit",
+			Title: "edit herdr config",
+			Type:  groupHerdr,
+			// herdr reads config.toml and offers nothing over the API to show
+			// or change it, so the palette opens the same file it reads the
+			// keys and the configured commands from.
+			Run: func(ctx context.Context, e palette.Exec) error {
+				return palette.EditFile(ctx, e, "herdr config", keys.ConfigPath())
+			},
+		},
 		{
 			ID:      "herdr:server.reload_config",
 			Binding: "reload_config",

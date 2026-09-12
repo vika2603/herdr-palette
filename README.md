@@ -103,6 +103,10 @@ narrows the list to them. Panes also carry the workspace they sit in and their
 working directory, so typing a project name finds the panes inside it. Where
 the palette was opened from is left out.
 
+Editing herdr's configuration is a command too: it opens `config.toml` in the
+editor `$VISUAL` or `$EDITOR` names, in a popup, falling back to `vi`. herdr
+reads that file on `reload config`, which is the row below it.
+
 Saving a tab's layout is the palette's own. herdr exports an arrangement and
 applies one back but keeps none, so the palette writes them down in its state
 directory under the name you give. Opening one puts it in a new tab of the

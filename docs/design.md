@@ -225,6 +225,16 @@ the text. The target and the value are separate all the way through — `Chosen`
 beside `Input` in what is handed over, and in what an entry runs with — because
 the field collects one of them and has nothing to say about the other.
 
+## Opening the configuration
+
+herdr's `config.toml` has no API behind it at all — the palette reads it for
+the key column, the configured commands and the theme tokens — so editing it is
+the editor run over the file, in the plugin's own popup, the way a configured
+popup command runs. The editor is named by the shell that runs the line, from
+the environment herdr passed the plugin, rather than resolved here: that is
+where `$EDITOR` is set for herdr's own editing too. The path is the one thing
+composed rather than read, so it is quoted for that shell.
+
 ## Saving a tab's layout
 
 `layout.export` answers with a tab's arrangement and `layout.apply` opens one,

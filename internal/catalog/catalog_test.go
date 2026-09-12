@@ -120,6 +120,7 @@ func server(t *testing.T) *plugintest.Server {
 		}}).
 		Reply(herdr.MethodPluginEnable, herdr.PluginEnabledResponse{}).
 		Reply(herdr.MethodPluginDisable, herdr.PluginDisabledResponse{}).
+		Reply(herdr.MethodPluginPaneOpen, herdr.PluginPaneOpenedResponse{}).
 		Reply(herdr.MethodServerReloadConfig, herdr.ConfigReloadResponse{})
 }
 
@@ -251,6 +252,7 @@ func TestEachEntryCallsItsMethod(t *testing.T) {
 		{id: "herdr:agent.rename", collected: step{input: "reviewer"}, method: herdr.MethodAgentRename},
 		{id: "herdr:agent.prompt", collected: step{input: "go on"}, method: herdr.MethodAgentPrompt},
 		{id: "herdr:agent.prompt.any", collected: step{chosen: "p9", input: "go on"}, method: herdr.MethodAgentPrompt},
+		{id: "herdr:config.edit", method: herdr.MethodPluginPaneOpen},
 		{id: "herdr:server.reload_config", method: herdr.MethodServerReloadConfig},
 	}
 
@@ -778,5 +780,18 @@ func TestTurningAPluginOverGoesByWhatItIsNow(t *testing.T) {
 				t.Errorf("called %q, want %q", calls[1].Method, c.method)
 			}
 		})
+	}
+}
+
+// The file is the one herdr reads, which is also where the palette reads the
+// keys and the configured commands from.
+func TestEditingTheConfigOpensTheFileHerdrReads(t *testing.T) {
+	t.Setenv("HERDR_CONFIG_PATH", "/tmp/herdr-config.toml")
+
+	var params herdr.PluginPaneOpenParams
+	decode(t, run(t, "herdr:config.edit", step{})[0].Params, &params)
+
+	if !strings.HasSuffix(params.Env[palette.RunEnv], "'/tmp/herdr-config.toml'") {
+		t.Errorf("opened %q, want herdr's own configuration file", params.Env[palette.RunEnv])
 	}
 }

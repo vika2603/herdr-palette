@@ -128,6 +128,33 @@ func run(own string, command configured) func(context.Context, Exec) error {
 	}
 }
 
+// editorWindow is how much of the pane area an editor opens over. A file is
+// read down the page, and herdr's default popup is smaller than that.
+var editorWindow = manifest.PopupSize{Percent: 90}
+
+// EditFile opens a file in the user's editor, in a popup of the plugin's own,
+// which is where a configured popup command runs too. The editor is named by
+// the shell that runs it, from the environment herdr passed the plugin, so it
+// is the one that is set there rather than one this plugin decides on.
+func EditFile(ctx context.Context, e Exec, title, path string) error {
+	if path == "" {
+		return fmt.Errorf("%s: there is no file to edit", title)
+	}
+	return run(e.Env.PluginID, configured{
+		title:  title,
+		line:   "${VISUAL:-${EDITOR:-vi}} " + shellQuote(path),
+		window: herdr.PluginPanePlacementPopup,
+		width:  editorWindow,
+		height: editorWindow,
+	})(ctx, e)
+}
+
+// shellQuote wraps a path for the shell that runs the command line, which is
+// the one thing about it this plugin composes rather than reads.
+func shellQuote(path string) string {
+	return "'" + strings.ReplaceAll(path, "'", `'\''`) + "'"
+}
+
 // Shell is what a configured command line runs under, matching herdr, which
 // hands the string to a shell rather than splitting it itself.
 func Shell() string {

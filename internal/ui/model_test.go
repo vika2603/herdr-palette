@@ -737,3 +737,61 @@ func TestPickingATargetForAnEntryThatAlsoAsksForAValue(t *testing.T) {
 		t.Errorf("pending = %+v, want the picked target and the field to collect the value", pending)
 	}
 }
+
+// A list that stays is a screen the command is used from: running a row leaves
+// it up, with the rows saying what they are now.
+func TestAListThatStaysIsAskedForAgainAfterARowRuns(t *testing.T) {
+	var picked string
+	state := map[string]string{"a": "enabled", "b": "disabled"}
+	list := func(context.Context, palette.Exec) ([]palette.Choice, error) {
+		return []palette.Choice{
+			{Value: "a", Title: "Auto Title", Detail: state["a"]},
+			{Value: "b", Title: "Machine Manager", Detail: state["b"]},
+		}, nil
+	}
+
+	m := chooserModel(t, &picked, list)
+	m.commands[1].Choices.Stays = true
+	m.commands[1].Run = func(_ context.Context, e palette.Exec) error {
+		state[e.Chosen] = "disabled"
+		picked = e.Chosen
+		return nil
+	}
+	m.collect()
+	m.rank()
+
+	m = choose(t, m, "worktree")
+	if m.cursor != 0 || m.ranked[0].Detail != "enabled" {
+		t.Fatalf("the list starts at %+v, want the first row as it is now", m.ranked[0])
+	}
+
+	_, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	msg := cmd()
+	if ran, ok := msg.(ranMsg); !ok || ran.err != nil {
+		t.Fatalf("running the row returned %v", msg)
+	}
+	if picked != "a" {
+		t.Fatalf("ran with %q, want the row that was selected", picked)
+	}
+
+	// The popup asks for the list again instead of quitting.
+	next, cmd := send(t, m, ranMsg{})
+	if cmd == nil {
+		t.Fatal("the list was not asked for again")
+	}
+	again, ok := cmd().(choicesMsg)
+	if !ok {
+		t.Fatalf("asking again returned %T, want the rebuilt list", cmd())
+	}
+
+	next, _ = send(t, next, again)
+	if next.choosing == nil {
+		t.Fatal("the popup left the list after running a row")
+	}
+	if next.ranked[0].Detail != "disabled" {
+		t.Errorf("the row still says %q, want what it is now", next.ranked[0].Detail)
+	}
+	if next.cursor != 0 {
+		t.Errorf("cursor = %d, want the row that was just run", next.cursor)
+	}
+}

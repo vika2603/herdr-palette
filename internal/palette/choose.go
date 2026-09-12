@@ -17,9 +17,15 @@ type Choice struct {
 // answers with, rather than a value the user types. The palette shows the
 // list in its own window, under Label, and runs the entry with what was
 // picked. Empty is what it says when there is nothing to pick.
+//
+// Stays keeps the list up afterwards, asked for again so the rows say what
+// they are now. It is for a command that is a screen rather than one act —
+// turning plugins on and off, where the point is to see the state and change
+// more than one — and the popup closes on esc instead.
 type Choices struct {
 	Label string
 	Empty string
+	Stays bool
 	List  func(context.Context, Exec) ([]Choice, error)
 }
 

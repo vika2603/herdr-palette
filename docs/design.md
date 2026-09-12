@@ -207,6 +207,12 @@ The list is asked for off the update loop, like a command, and the rows the
 session pushes in the meantime are kept for the way back rather than drawn over
 the targets.
 
+A list may also stay up after a row of it runs, which is what makes managing
+plugins a screen rather than a pair of commands: the rows carry the state, so
+running one and closing over it would hide what it did. The list is asked for
+again instead, and the rows are replaced under the query and the selection they
+were picked with, so the next keystroke lands where the last one did.
+
 An entry may ask for both, which is what prompting an agent by name does: the
 row carries the entry's field with it, so picking the agent opens the field for
 the text. The target and the value are separate all the way through — `Chosen`

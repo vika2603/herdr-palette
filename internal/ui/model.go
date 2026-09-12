@@ -111,6 +111,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ranMsg:
 		if msg.err == nil {
+			// A list that stays is a screen the command is used from, so it
+			// is asked for again rather than closing over what just changed.
+			if m.staying() {
+				return m, m.list(m.choosing.entry)
+			}
 			return m, tea.Quit
 		}
 		// A command that failed leaves the popup open with the reason, so the
@@ -230,22 +235,44 @@ func (m model) list(entry palette.Entry) tea.Cmd {
 	}
 }
 
+// staying reports whether the list on show is one the commands are run from
+// rather than picked out of.
+func (m model) staying() bool {
+	return m.choosing != nil && m.choosing.entry.Choices.Stays
+}
+
 // choices shows what the entry can act on, or says why there is nothing to
 // show. Either way the popup stays open: the keystroke that asked for the list
 // is answered where it was made.
+//
+// A list asked for again, after a row of it ran, replaces the rows under the
+// query and the selection they were picked with, so the screen does not move
+// out from under the next keystroke.
 func (m *model) choices(msg choicesMsg) {
 	switch {
 	case msg.err != nil:
 		m.failure = msg.err.Error()
 	case len(msg.choices) == 0:
+		if m.choosing != nil {
+			m.abandon()
+		}
 		m.failure = msg.entry.Choices.Empty
 	default:
-		m.choosing = &chooser{entry: msg.entry, query: m.query.Value()}
+		again := m.choosing != nil && m.choosing.entry.ID == msg.entry.ID
+		if !again {
+			m.choosing = &chooser{entry: msg.entry, query: m.query.Value()}
+			m.query.SetValue("")
+			m.query.Placeholder = msg.entry.Choices.Label
+		}
+
+		cursor := m.cursor
 		m.entries = palette.ChoiceEntries(msg.entry, msg.choices)
-		m.query.SetValue("")
-		m.query.Placeholder = msg.entry.Choices.Label
 		m.failure = ""
 		m.rank()
+		if again {
+			m.cursor = clamp(cursor, len(m.ranked))
+			m.offset = scroll(m.offset, m.cursor, m.rows())
+		}
 	}
 }
 

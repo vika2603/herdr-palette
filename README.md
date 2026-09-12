@@ -72,9 +72,12 @@ pane over the layout, and `popup` a session-modal terminal, both running the
 configured command line. Sizes are accepted in either spelling herdr takes, a
 percentage such as `"70%"` or a cell count such as `80`.
 
-Enabling and disabling an installed plugin are commands too; the palette
-leaves itself out of what can be disabled, since that is the popup the choice
-is being made in.
+Managing plugins is one command rather than a pair: it lists every installed
+plugin with what it is, `enabled` or `disabled`, and running a row turns that
+one over. The list stays up with the row saying what it is now, so several can
+be changed in a row, and `esc` leaves it. The palette is not in the list —
+turning it off would take away the popup the row is being run from, with no row
+left to turn it back on.
 
 **A plugin's own name**, such as `machine manager:`, is every action it
 registered, read from `plugin.action.list` at open time. Installing a plugin
@@ -111,7 +114,9 @@ the tab to move the pane to — lists them in the palette's own window instead o
 asking for a value. Typing filters them the way it filters the commands,
 `enter` runs the command on the row, and `esc` goes back to the command list
 with the query it was filtered by. A command with nothing to act on says so on
-the line under the list and stays where it is. A command that needs both, such
+the line under the list and stays where it is. A few commands are screens
+rather than one act — managing plugins is one — and their list stays up after a
+row runs, rebuilt so the rows say what they are now. A command that needs both, such
 as prompting an agent by name, takes the target from the list and then opens
 the field for the value.
 

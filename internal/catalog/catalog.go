@@ -12,6 +12,7 @@ package catalog
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/vika2603/herdr-client/herdr"
 
@@ -529,32 +530,19 @@ func Entries() []palette.Entry {
 		},
 
 		{
-			ID:    "herdr:plugin.enable",
-			Title: "enable a plugin",
+			ID:    "herdr:plugin.manage",
+			Title: "manage plugins",
 			Type:  groupHerdr,
+			// The list says what each plugin is and turning one over leaves it
+			// up: what this command is for is the state of all of them, and
+			// more than one is usually changed at a time.
 			Choices: &palette.Choices{
-				Label: "Plugin to enable",
-				Empty: "no installed plugin is disabled",
-				List:  plugins(false),
+				Label: "Plugin to turn on or off",
+				Empty: "no other plugin is installed",
+				Stays: true,
+				List:  installedPlugins,
 			},
-			Run: func(ctx context.Context, e palette.Exec) error {
-				_, err := e.Client.PluginEnable(ctx, herdr.PluginSetEnabledParams{PluginID: e.Chosen})
-				return err
-			},
-		},
-		{
-			ID:    "herdr:plugin.disable",
-			Title: "disable a plugin",
-			Type:  groupHerdr,
-			Choices: &palette.Choices{
-				Label: "Plugin to disable",
-				Empty: "no other plugin is enabled",
-				List:  plugins(true),
-			},
-			Run: func(ctx context.Context, e palette.Exec) error {
-				_, err := e.Client.PluginDisable(ctx, herdr.PluginSetEnabledParams{PluginID: e.Chosen})
-				return err
-			},
+			Run: togglePlugin,
 		},
 
 		{
@@ -760,32 +748,70 @@ func savedLayouts(_ context.Context, e palette.Exec) ([]palette.Choice, error) {
 	return choices, nil
 }
 
-// plugins is every installed plugin that is enabled, or every one that is
-// not. The palette leaves itself out of what can be disabled: it would be
-// taking away the popup the choice is being made in, and the list of plugin
-// actions leaves its own out for the same reason.
-func plugins(enabled bool) func(context.Context, palette.Exec) ([]palette.Choice, error) {
-	return func(ctx context.Context, e palette.Exec) ([]palette.Choice, error) {
-		installed, err := e.Client.PluginList(ctx, herdr.PluginListParams{})
-		if err != nil {
-			return nil, err
-		}
+// Words for what a plugin is, which the row shows and the query matches.
+const (
+	pluginEnabled  = "enabled"
+	pluginDisabled = "disabled"
+)
 
-		choices := make([]palette.Choice, 0, len(installed.Plugins))
-		for _, plugin := range installed.Plugins {
-			if plugin.Enabled != enabled || (enabled && plugin.PluginID == e.Env.PluginID) {
-				continue
-			}
-			choices = append(choices, palette.Choice{
-				Value: plugin.PluginID,
-				Title: plugin.Name,
-				// The row shows the name, and the id is how a plugin is
-				// spelt everywhere else, so typing it finds the row too.
-				Search: plugin.PluginID,
-			})
-		}
-		return choices, nil
+// installedPlugins is every plugin herdr has installed, saying which are on.
+// The palette leaves itself out: turning it off would take away the popup the
+// row is being run from, with no row left to turn it back on, and the list of
+// plugin actions leaves its own out for the same reason.
+func installedPlugins(ctx context.Context, e palette.Exec) ([]palette.Choice, error) {
+	installed, err := e.Client.PluginList(ctx, herdr.PluginListParams{})
+	if err != nil {
+		return nil, err
 	}
+
+	choices := make([]palette.Choice, 0, len(installed.Plugins))
+	for _, plugin := range installed.Plugins {
+		if plugin.PluginID == e.Env.PluginID {
+			continue
+		}
+		choices = append(choices, palette.Choice{
+			Value:  plugin.PluginID,
+			Title:  plugin.Name,
+			Detail: pluginState(plugin.Enabled),
+			// The row shows the name, and the id is how a plugin is spelt
+			// everywhere else, so typing it finds the row too.
+			Search: plugin.PluginID,
+		})
+	}
+	return choices, nil
+}
+
+// togglePlugin turns the picked plugin over. What it is now is read again
+// rather than taken from the row: the list is a screen, and herdr is where the
+// state lives.
+func togglePlugin(ctx context.Context, e palette.Exec) error {
+	installed, err := e.Client.PluginList(ctx, herdr.PluginListParams{PluginID: &e.Chosen})
+	if err != nil {
+		return err
+	}
+
+	// The id is asked for and looked for: what comes back is a list either
+	// way, and the plugin to turn over is the one it names.
+	for _, plugin := range installed.Plugins {
+		if plugin.PluginID != e.Chosen {
+			continue
+		}
+		params := herdr.PluginSetEnabledParams{PluginID: e.Chosen}
+		if plugin.Enabled {
+			_, err = e.Client.PluginDisable(ctx, params)
+		} else {
+			_, err = e.Client.PluginEnable(ctx, params)
+		}
+		return err
+	}
+	return fmt.Errorf("no plugin with id %q is installed", e.Chosen)
+}
+
+func pluginState(enabled bool) string {
+	if enabled {
+		return pluginEnabled
+	}
+	return pluginDisabled
 }
 
 // sessionAgents is every pane in the session running an agent, as targets to

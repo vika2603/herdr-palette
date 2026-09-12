@@ -251,8 +251,6 @@ func TestEachEntryCallsItsMethod(t *testing.T) {
 		{id: "herdr:agent.rename", collected: step{input: "reviewer"}, method: herdr.MethodAgentRename},
 		{id: "herdr:agent.prompt", collected: step{input: "go on"}, method: herdr.MethodAgentPrompt},
 		{id: "herdr:agent.prompt.any", collected: step{chosen: "p9", input: "go on"}, method: herdr.MethodAgentPrompt},
-		{id: "herdr:plugin.enable", collected: step{chosen: "herdr.auto-title"}, method: herdr.MethodPluginEnable},
-		{id: "herdr:plugin.disable", collected: step{chosen: "herdr.machine-manager"}, method: herdr.MethodPluginDisable},
 		{id: "herdr:server.reload_config", method: herdr.MethodServerReloadConfig},
 	}
 
@@ -746,23 +744,39 @@ func TestPromptingAnAgentSendsTheTextToThePickedPane(t *testing.T) {
 	}
 }
 
-// Disabling the palette would take away the popup the choice is being made in,
-// so it is not among the plugins that can be disabled.
-func TestDisablingAPluginLeavesThePaletteOut(t *testing.T) {
-	got := values(choices(t, "herdr:plugin.disable"))
+// Turning the palette off would take away the popup the row is being run from,
+// with no row left to turn it back on, so it is not one of them.
+func TestManagingPluginsListsTheOthersAndWhatTheyAre(t *testing.T) {
+	list := choices(t, "herdr:plugin.manage")
 
-	if len(got) != 1 || got[0] != "herdr.machine-manager" {
-		t.Errorf("offered %v, want the enabled plugins but this one", got)
+	want := []string{"herdr.machine-manager", "herdr.auto-title"}
+	got := values(list)
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("offered %v, want %v: every installed plugin but this one", got, want)
+	}
+	if list[0].Title != "Machine Manager" || list[0].Detail != "enabled" {
+		t.Errorf("row = %+v, want the plugin's name and that it is on", list[0])
+	}
+	if list[1].Detail != "disabled" || list[1].Search != "herdr.auto-title" {
+		t.Errorf("row = %+v, want that it is off, found by its id too", list[1])
 	}
 }
 
-func TestEnablingAPluginOffersTheDisabledOnes(t *testing.T) {
-	list := choices(t, "herdr:plugin.enable")
-
-	if got := values(list); len(got) != 1 || got[0] != "herdr.auto-title" {
-		t.Fatalf("offered %v, want the plugin that is disabled", got)
-	}
-	if list[0].Title != "Auto Title" || list[0].Search != "herdr.auto-title" {
-		t.Errorf("row = %+v, want the plugin's name, found by its id too", list[0])
+// The list is a screen, so what a plugin is now is read again rather than
+// taken from the row it was drawn on.
+func TestTurningAPluginOverGoesByWhatItIsNow(t *testing.T) {
+	for _, c := range []struct{ plugin, method string }{
+		{plugin: "herdr.machine-manager", method: herdr.MethodPluginDisable},
+		{plugin: "herdr.auto-title", method: herdr.MethodPluginEnable},
+	} {
+		t.Run(c.plugin, func(t *testing.T) {
+			calls := run(t, "herdr:plugin.manage", step{chosen: c.plugin})
+			if len(calls) != 2 {
+				t.Fatalf("made %v, want the list and the change", calls)
+			}
+			if calls[1].Method != c.method {
+				t.Errorf("called %q, want %q", calls[1].Method, c.method)
+			}
+		})
 	}
 }

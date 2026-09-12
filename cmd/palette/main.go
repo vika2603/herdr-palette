@@ -89,7 +89,7 @@ func onExec(ctx context.Context, env *plugin.Env) error {
 	// An unreachable action list still leaves the catalog and the configured
 	// commands, and the handed-over entry may well be one of them.
 	list, _ := entries(ctx, env, keys.Commands())
-	return palette.RunPending(ctx, env.Client(), list.All(), pending)
+	return palette.RunPending(ctx, env, list.All(), pending)
 }
 
 // onInput collects the value an entry is missing and hands the entry back to

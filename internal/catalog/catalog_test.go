@@ -8,8 +8,10 @@ import (
 	"testing"
 
 	"github.com/vika2603/herdr-client/herdr"
+	"github.com/vika2603/herdr-client/plugin"
 	"github.com/vika2603/herdr-client/plugin/plugintest"
 
+	"github.com/vika2603/herdr-palette/internal/layout"
 	"github.com/vika2603/herdr-palette/internal/palette"
 )
 
@@ -62,6 +64,17 @@ func worktreeList() herdr.WorktreeListResponse {
 	}}
 }
 
+// exportedLayout is what herdr answers layout.export with: the arrangement of
+// the tab, whose leaves name the panes it holds.
+func exportedLayout() herdr.LayoutNode {
+	return herdr.LayoutNodeSplit{
+		Direction: herdr.SplitDirectionRight,
+		Ratio:     0.5,
+		First:     herdr.LayoutNodePane{PaneID: new("p1"), Cwd: new("/repo")},
+		Second:    herdr.LayoutNodePane{PaneID: new("p2"), Cwd: new("/repo")},
+	}
+}
+
 // server answers every method the catalog can call, so one script serves the
 // whole table.
 func server(t *testing.T) *plugintest.Server {
@@ -95,6 +108,8 @@ func server(t *testing.T) *plugintest.Server {
 		Reply(herdr.MethodServerAgentManifests, herdr.AgentManifestStatusResponse{
 			Manifests: []herdr.AgentManifestInfo{{Agent: "claude"}, {Agent: "codex"}},
 		}).
+		Reply(herdr.MethodLayoutExport, herdr.LayoutExportResponse{Layout: herdr.LayoutDescription{Root: exportedLayout()}}).
+		Reply(herdr.MethodLayoutApply, herdr.LayoutApplyResponse{}).
 		Reply(herdr.MethodServerReloadConfig, herdr.ConfigReloadResponse{})
 }
 
@@ -132,14 +147,22 @@ func run(t *testing.T, id, input string) []plugintest.Call {
 func runIn(t *testing.T, id, input string, ctx *herdr.PluginInvocationContext) []plugintest.Call {
 	t.Helper()
 	s := server(t)
-	if err := entry(t, id).Run(context.Background(), palette.Exec{
-		Client: s.Env().Client(),
-		Ctx:    ctx,
-		Input:  input,
-	}); err != nil {
+	if err := execute(t, s.Env(plugintest.StateDir(t.TempDir())), id, input, ctx); err != nil {
 		t.Fatalf("%s: Run() = %v", id, err)
 	}
 	return s.Calls()
+}
+
+// execute runs one entry against an environment the caller keeps, which is
+// what the entries that save something of their own need.
+func execute(t *testing.T, env *plugin.Env, id, input string, ctx *herdr.PluginInvocationContext) error {
+	t.Helper()
+	return entry(t, id).Run(context.Background(), palette.Exec{
+		Client: env.Client(),
+		Ctx:    ctx,
+		Input:  input,
+		Env:    env,
+	})
 }
 
 // choices is the list an entry offers against the scripted server.
@@ -150,9 +173,11 @@ func choices(t *testing.T, id string) []palette.Choice {
 		t.Fatalf("%s offers no list to pick from", id)
 	}
 	s := server(t)
+	env := s.Env(plugintest.StateDir(t.TempDir()))
 	list, err := e.Choices.List(context.Background(), palette.Exec{
-		Client: s.Env().Client(),
+		Client: env.Client(),
 		Ctx:    fullContext(),
+		Env:    env,
 	})
 	if err != nil {
 		t.Fatalf("%s: List() = %v", id, err)
@@ -608,5 +633,68 @@ func TestRenamingAnAgentRefusesAPaneWithoutOne(t *testing.T) {
 func TestRenamingAnAgentStartsFromWhatItIs(t *testing.T) {
 	if got := entry(t, "herdr:agent.rename").Initial(fullContext()); got != "claude" {
 		t.Errorf("initial value = %q, want the agent running in the focused pane", got)
+	}
+}
+
+// Saving, opening and forgetting a layout work on the palette's own store, so
+// one environment serves the three of them.
+func TestALayoutIsSavedOpenedAndForgotten(t *testing.T) {
+	s := server(t)
+	env := s.Env(plugintest.StateDir(t.TempDir()))
+
+	if err := execute(t, env, "herdr:layout.save", "work", fullContext()); err != nil {
+		t.Fatalf("saving the layout: %v", err)
+	}
+	var export herdr.LayoutExportParams
+	decode(t, s.Calls()[0].Params, &export)
+	if export.TabID == nil || *export.TabID != "t1" {
+		t.Errorf("exported %+v, want the focused tab", export)
+	}
+
+	e := entry(t, "herdr:layout.apply")
+	list, err := e.Choices.List(context.Background(), palette.Exec{Client: env.Client(), Ctx: fullContext(), Env: env})
+	if err != nil {
+		t.Fatalf("listing the saved layouts: %v", err)
+	}
+	if got := values(list); len(got) != 1 || got[0] != "work" {
+		t.Fatalf("offered %v, want the layout that was just saved", got)
+	}
+
+	if err := execute(t, env, "herdr:layout.apply", "work", fullContext()); err != nil {
+		t.Fatalf("opening the layout: %v", err)
+	}
+	var apply herdr.LayoutApplyParams
+	decode(t, s.Calls()[1].Params, &apply)
+	if apply.TabLabel == nil || *apply.TabLabel != "work" {
+		t.Errorf("applied %+v, want a new tab named after the layout", apply)
+	}
+	if apply.WorkspaceID == nil || *apply.WorkspaceID != "w1" {
+		t.Error("the layout is not opened in the focused workspace")
+	}
+	for _, pane := range herdr.LayoutPanes(apply.Root) {
+		if pane.PaneID != nil {
+			t.Errorf("the applied layout names pane %q, which would be moved instead of opened", *pane.PaneID)
+		}
+	}
+
+	if err := execute(t, env, "herdr:layout.forget", "work", fullContext()); err != nil {
+		t.Fatalf("forgetting the layout: %v", err)
+	}
+	if left := layout.List(env); len(left) != 0 {
+		t.Errorf("%d layouts are still saved", len(left))
+	}
+}
+
+func TestOpeningALayoutThatIsNotSaved(t *testing.T) {
+	s := server(t)
+	env := s.Env(plugintest.StateDir(t.TempDir()))
+
+	if err := execute(t, env, "herdr:layout.apply", "work", fullContext()); err == nil {
+		t.Fatal("Run() reported no error for a layout that was never saved")
+	}
+	for _, call := range s.Calls() {
+		if call.Method == herdr.MethodLayoutApply {
+			t.Error("herdr was asked to apply a layout the palette does not have")
+		}
 	}
 }

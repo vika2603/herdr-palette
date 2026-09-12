@@ -15,6 +15,7 @@ import (
 
 	"github.com/vika2603/herdr-client/herdr"
 
+	"github.com/vika2603/herdr-palette/internal/layout"
 	"github.com/vika2603/herdr-palette/internal/palette"
 )
 
@@ -385,6 +386,62 @@ func Entries() []palette.Entry {
 		},
 
 		{
+			ID:    "herdr:layout.save",
+			Title: "save the tab's layout",
+			Type:  groupHerdr,
+			Input: &palette.Input{Label: "Layout name"},
+			Run: func(ctx context.Context, e palette.Exec) error {
+				id, err := need(e.Ctx.TabID, errNoTab)
+				if err != nil {
+					return err
+				}
+				exported, err := e.Client.LayoutExport(ctx, herdr.LayoutExportParams{TabID: &id})
+				if err != nil {
+					return err
+				}
+				return layout.Save(e.Env, e.Input, exported.Layout.Root)
+			},
+		},
+		{
+			ID:    "herdr:layout.apply",
+			Title: "open a saved layout in a new tab",
+			Type:  groupHerdr,
+			Choices: &palette.Choices{
+				Label: "Layout to open",
+				Empty: "no layout has been saved yet",
+				List:  savedLayouts,
+			},
+			// A new tab rather than this one: the arrangement opens panes of
+			// its own, and the panes already in a tab are somebody's work.
+			Run: func(ctx context.Context, e palette.Exec) error {
+				root, err := layout.Root(e.Env, e.Input)
+				if err != nil {
+					return err
+				}
+				_, err = e.Client.LayoutApply(ctx, herdr.LayoutApplyParams{
+					Root:        root,
+					WorkspaceID: e.Ctx.WorkspaceID,
+					TabLabel:    &e.Input,
+					Focus:       new(true),
+				})
+				return err
+			},
+		},
+		{
+			ID:    "herdr:layout.forget",
+			Title: "forget a saved layout",
+			Type:  groupHerdr,
+			Choices: &palette.Choices{
+				Label: "Layout to forget",
+				Empty: "no layout has been saved yet",
+				List:  savedLayouts,
+			},
+			Run: func(_ context.Context, e palette.Exec) error {
+				return layout.Remove(e.Env, e.Input)
+			},
+		},
+
+		{
 			ID:    "herdr:agent.start",
 			Title: "start an agent in the focused pane",
 			Type:  groupHerdr,
@@ -641,6 +698,17 @@ func otherTabs(ctx context.Context, e palette.Exec) ([]palette.Choice, error) {
 			Title:  palette.Label(tab.Label, "tab", tab.Number),
 			Detail: workspaces[tab.WorkspaceID],
 		})
+	}
+	return choices, nil
+}
+
+// savedLayouts is every arrangement the palette has been asked to keep. They
+// are the plugin's own, so herdr is not asked for them.
+func savedLayouts(_ context.Context, e palette.Exec) ([]palette.Choice, error) {
+	saved := layout.List(e.Env)
+	choices := make([]palette.Choice, 0, len(saved))
+	for _, one := range saved {
+		choices = append(choices, palette.Choice{Value: one.Name, Title: one.Name})
 	}
 	return choices, nil
 }

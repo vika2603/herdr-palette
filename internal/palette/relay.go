@@ -152,14 +152,15 @@ func ReadPending(env *plugin.Env) (Pending, bool) {
 }
 
 // RunPending runs the handed-over entry, after waiting for the popup to close.
-func RunPending(ctx context.Context, client *herdr.Client, entries []Entry, pending Pending) error {
+func RunPending(ctx context.Context, env *plugin.Env, entries []Entry, pending Pending) error {
 	waitForExit(ctx, pending.PID, waitForPopup)
 
+	client := env.Client()
 	for _, entry := range entries {
 		if entry.ID != pending.EntryID {
 			continue
 		}
-		err := entry.Run(ctx, Exec{Client: client, Ctx: pending.Context, Input: pending.Input})
+		err := entry.Run(ctx, Exec{Client: client, Ctx: pending.Context, Input: pending.Input, Env: env})
 		if err != nil {
 			// The popup that would have shown this is gone, so the reason has
 			// to reach the user some other way.

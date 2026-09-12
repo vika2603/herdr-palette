@@ -207,6 +207,32 @@ The list is asked for off the update loop, like a command, and the rows the
 session pushes in the meantime are kept for the way back rather than drawn over
 the targets.
 
+## Saving a tab's layout
+
+`layout.export` answers with a tab's arrangement and `layout.apply` opens one,
+but herdr keeps none: an arrangement lives as long as the tab does. So the
+palette keeps them itself, in `layouts.json` in its state directory, most
+recently saved first, replacing a layout of the same name.
+
+The pane ids are dropped on the way in. An exported tree names the panes it
+came from, and a saved layout outlives them: applying one with the ids left in
+would move those panes rather than open the arrangement again. What is left is
+the splits, their ratios and each pane's directory, which is what herdr needs
+to build it.
+
+It is opened in a new tab of the focused workspace rather than over the current
+one, whose panes are somebody's work, and the tab takes the layout's name.
+
+A layout node is a union herdr's client decodes by a type tag, and the decoder
+is reachable only through the apply parameters, so a saved tree is stored as it
+was written and handed back through those. That also leaves a tree this plugin
+does not understand listed and openable rather than lost.
+
+Reaching the state directory is why `Exec` carries the entrypoint's
+environment: it is what every other state the plugin keeps is read and written
+through, and the two paths that run an entry — the popup and the exec
+entrypoint — both have one.
+
 ## The palette's own configuration
 
 `internal/settings` reads one file in the plugin's config directory, in a

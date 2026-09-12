@@ -8,15 +8,18 @@ import (
 	"strings"
 
 	"github.com/vika2603/herdr-client/herdr"
+	"github.com/vika2603/herdr-client/plugin"
 )
 
 // Exec carries what an entry needs to run: the socket client, the context
-// herdr passed to the action, and the text the palette collected for an entry
-// that asks for input.
+// herdr passed to the action, the text the palette collected for an entry that
+// asks for input, and the entrypoint's own environment, which is how an entry
+// that keeps something of its own reaches the plugin's state directory.
 type Exec struct {
 	Client *herdr.Client
 	Ctx    *herdr.PluginInvocationContext
 	Input  string
+	Env    *plugin.Env
 }
 
 // Input describes the second step of an entry that cannot run on its own,

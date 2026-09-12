@@ -88,6 +88,13 @@ narrows the list to them. Panes also carry the workspace they sit in and their
 working directory, so typing a project name finds the panes inside it. Where
 the palette was opened from is left out.
 
+Saving a tab's layout is the palette's own. herdr exports an arrangement and
+applies one back but keeps none, so the palette writes them down in its state
+directory under the name you give. Opening one puts it in a new tab of the
+focused workspace, named after the layout, and the panes start in the
+directories they were saved with — the panes already in a tab are somebody's
+work, which is why it is a new one.
+
 A command that needs a value, such as a rename or a prompt, opens a small field
 of its own once the palette closes. Renames start from the current label. The
 field keeps the terminal's own cursor on the insertion point, which is what

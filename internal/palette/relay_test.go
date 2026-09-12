@@ -72,7 +72,7 @@ func TestRunPendingRunsTheEntryAndClearsTheFile(t *testing.T) {
 	if _, err := os.Stat(env.StatePath(PendingFile)); !errors.Is(err, os.ErrNotExist) {
 		t.Error("the pending file is still there, so the command would run again")
 	}
-	if err := RunPending(context.Background(), env.Client(), entries, pending); err != nil {
+	if err := RunPending(context.Background(), env, entries, pending); err != nil {
 		t.Fatalf("RunPending() = %v", err)
 	}
 	if got != "value" {
@@ -103,7 +103,7 @@ func TestRunPendingReportsAFailure(t *testing.T) {
 		Run:   func(context.Context, Exec) error { return errors.New("ui_busy") },
 	}}
 	pending, _ := ReadPending(env)
-	if err := RunPending(context.Background(), env.Client(), entries, pending); err == nil {
+	if err := RunPending(context.Background(), env, entries, pending); err == nil {
 		t.Fatal("RunPending() reported no error although the entry failed")
 	}
 	if len(server.Calls()) == 0 || server.Calls()[0].Method != herdr.MethodNotificationShow {

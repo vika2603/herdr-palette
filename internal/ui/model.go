@@ -225,7 +225,7 @@ func (m model) choose() (tea.Model, tea.Cmd) {
 // command does, so a slow socket does not hold up a keystroke.
 func (m model) list(entry palette.Entry) tea.Cmd {
 	return func() tea.Msg {
-		choices, err := entry.Choices.List(m.ctx, palette.Exec{Client: m.env.Client(), Ctx: m.invocation})
+		choices, err := entry.Choices.List(m.ctx, palette.Exec{Client: m.env.Client(), Ctx: m.invocation, Env: m.env})
 		return choicesMsg{entry: entry, choices: choices, err: err}
 	}
 }
@@ -290,7 +290,7 @@ func (m model) execute(entry palette.Entry) error {
 		return relay()
 	}
 
-	err := entry.Run(m.ctx, palette.Exec{Client: client, Ctx: m.invocation, Input: entry.Chosen})
+	err := entry.Run(m.ctx, palette.Exec{Client: client, Ctx: m.invocation, Input: entry.Chosen, Env: m.env})
 	if herdr.IsCode(err, herdr.ErrCodeUIBusy) {
 		return relay()
 	}

@@ -29,6 +29,21 @@ func agentSnapshot() herdr.SessionSnapshot {
 	}
 }
 
+// The name an agent was given is in the snapshot's agents, not on the pane,
+// so a renamed agent is what the row has to show.
+func TestARenamedAgentShowsTheNameItWasGiven(t *testing.T) {
+	snapshot := agentSnapshot()
+	snapshot.Agents = []herdr.AgentInfo{{PaneID: "w1:p1", Agent: new("claude"), Name: new("reviewer")}}
+
+	agent, ok := find(sessionEntries(snapshot), "pane:w1:p1")
+	if !ok {
+		t.Fatal("the agent's pane is not in the list")
+	}
+	if agent.Detail != "reviewer · working" {
+		t.Errorf("detail = %q, want the name the agent was given and its status", agent.Detail)
+	}
+}
+
 func TestAPaneRunningAnAgentSaysWhatItIsDoing(t *testing.T) {
 	entries := sessionEntries(agentSnapshot())
 

@@ -45,6 +45,13 @@ func sessionEntries(snapshot herdr.SessionSnapshot) []Entry {
 		workspaces[workspace.WorkspaceID] = workspace.Label
 	}
 
+	// A pane carries the agent it runs, but the name the agent was given is
+	// only in the snapshot's agents, so a renamed agent is looked up there.
+	agents := make(map[string]string, len(snapshot.Agents))
+	for _, agent := range snapshot.Agents {
+		agents[agent.PaneID] = herdr.Value(agent.Name)
+	}
+
 	entries := make([]Entry, 0, len(snapshot.Workspaces)+len(snapshot.Tabs)+len(snapshot.Panes))
 	for _, workspace := range snapshot.Workspaces {
 		if workspace.Focused {
@@ -88,7 +95,7 @@ func sessionEntries(snapshot herdr.SessionSnapshot) []Entry {
 			ID:     "pane:" + id,
 			Title:  goTo + paneLabel(pane),
 			Type:   paneType(pane),
-			Detail: paneDetail(pane, workspaces[pane.WorkspaceID]),
+			Detail: paneDetail(pane, agents[pane.PaneID], workspaces[pane.WorkspaceID]),
 			Status: paneStatus(pane),
 			// The row says where it goes, not where it is, so the directory is
 			// searchable and shown when that is what the query matched.
@@ -111,13 +118,17 @@ func paneType(pane herdr.PaneInfo) string {
 	return TypePane
 }
 
-// paneDetail is what the row shows next to the title: for an agent the agent
-// and its status, which the palette keeps current while it is open, and for
-// any other pane the workspace it sits in.
-func paneDetail(pane herdr.PaneInfo, workspace string) string {
+// paneDetail is what the row shows next to the title: for an agent the name it
+// goes by and its status, which the palette keeps current while it is open,
+// and for any other pane the workspace it sits in. The name is the agent's own
+// unless it was renamed, so an unnamed agent reads as what it is.
+func paneDetail(pane herdr.PaneInfo, name, workspace string) string {
 	agent := herdr.Value(pane.Agent)
 	if agent == "" {
 		return workspace
+	}
+	if name != "" {
+		agent = name
 	}
 	if pane.AgentStatus == "" || pane.AgentStatus == herdr.AgentStatusUnknown {
 		return agent

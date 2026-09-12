@@ -82,7 +82,8 @@ seen from a key. Typing the plugin's id finds them as well.
 and running one goes there. A pane running an agent shows what it is doing —
 `claude · working`, `codex · blocked` — in a colour per status, kept current
 while the popup is open, so the palette doubles as a way to reach the agent
-that needs you. They all read "go to …", so typing `go to` or `goto`
+that needs you. An agent that was renamed shows the name it was given there
+instead of what it is, and is found by it. They all read "go to …", so typing `go to` or `goto`
 narrows the list to them. Panes also carry the workspace they sit in and their
 working directory, so typing a project name finds the panes inside it. Where
 the palette was opened from is left out.

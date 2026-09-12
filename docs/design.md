@@ -55,6 +55,11 @@ and its status next to the row, coloured by the status. A pane is addressed by
 its id rather than through `agent.focus`, which takes a name the snapshot does
 not carry.
 
+The name an agent was given is not on the pane either — only the agent it runs
+is — so it comes from the snapshot's agents, keyed by pane. It stands where the
+agent would otherwise be, and is what the row is found by once an agent has
+been renamed.
+
 ## Following the session
 
 These rows are rebuilt while the popup is open, so a status is the one the

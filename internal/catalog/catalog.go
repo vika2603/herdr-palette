@@ -385,6 +385,54 @@ func Entries() []palette.Entry {
 		},
 
 		{
+			ID:    "herdr:agent.start",
+			Title: "start an agent in the focused pane",
+			Type:  groupHerdr,
+			Choices: &palette.Choices{
+				Label: "Agent to start",
+				Empty: "herdr keeps no agent manifest to start from",
+				List:  agentKinds,
+			},
+			// herdr answers as soon as the command is running, with the agent
+			// still pending detection, so the popup is not held open for it.
+			// An agent whose command is not installed says so in the pane.
+			Run: func(ctx context.Context, e palette.Exec) error {
+				id, err := need(e.Ctx.FocusedPaneID, errNoPane)
+				if err != nil {
+					return err
+				}
+				_, err = e.Client.AgentStart(ctx, herdr.AgentStartParams{
+					Kind:   e.Input,
+					Name:   e.Input,
+					PaneID: id,
+				})
+				return err
+			},
+		},
+		{
+			ID:    "herdr:agent.rename",
+			Title: "rename the focused agent",
+			Type:  groupHerdr,
+			Input: &palette.Input{
+				Label:   "Agent name",
+				Initial: func(c *herdr.PluginInvocationContext) string { return herdr.Value(c.FocusedPaneAgent) },
+			},
+			Run: func(ctx context.Context, e palette.Exec) error {
+				if e.Ctx.FocusedPaneAgent == nil {
+					return errNoAgent
+				}
+				id, err := need(e.Ctx.FocusedPaneID, errNoPane)
+				if err != nil {
+					return err
+				}
+				_, err = e.Client.AgentRename(ctx, herdr.AgentRenameParams{
+					Target: id,
+					Name:   &e.Input,
+				})
+				return err
+			},
+		},
+		{
 			ID:    "herdr:agent.prompt",
 			Title: "prompt the focused agent",
 			Type:  groupHerdr,
@@ -593,6 +641,22 @@ func otherTabs(ctx context.Context, e palette.Exec) ([]palette.Choice, error) {
 			Title:  palette.Label(tab.Label, "tab", tab.Number),
 			Detail: workspaces[tab.WorkspaceID],
 		})
+	}
+	return choices, nil
+}
+
+// agentKinds is every agent herdr keeps a manifest for. It is not what is
+// installed: herdr runs the command the manifest names, and a pane where that
+// command is missing says so itself, which is the same set herdr starts from.
+func agentKinds(ctx context.Context, e palette.Exec) ([]palette.Choice, error) {
+	manifests, err := e.Client.ServerAgentManifests(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	choices := make([]palette.Choice, 0, len(manifests.Manifests))
+	for _, manifest := range manifests.Manifests {
+		choices = append(choices, palette.Choice{Value: manifest.Agent, Title: manifest.Agent})
 	}
 	return choices, nil
 }

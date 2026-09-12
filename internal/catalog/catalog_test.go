@@ -90,6 +90,11 @@ func server(t *testing.T) *plugintest.Server {
 		Reply(herdr.MethodPaneEditScrollback, herdr.OKResponse{}).
 		Reply(herdr.MethodPaneFocusDirection, herdr.PaneFocusDirectionResponse{}).
 		Reply(herdr.MethodAgentPrompt, herdr.AgentPromptedResponse{}).
+		Reply(herdr.MethodAgentStart, herdr.AgentStartedResponse{}).
+		Reply(herdr.MethodAgentRename, herdr.AgentInfoResponse{}).
+		Reply(herdr.MethodServerAgentManifests, herdr.AgentManifestStatusResponse{
+			Manifests: []herdr.AgentManifestInfo{{Agent: "claude"}, {Agent: "codex"}},
+		}).
 		Reply(herdr.MethodServerReloadConfig, herdr.ConfigReloadResponse{})
 }
 
@@ -196,6 +201,8 @@ func TestEachEntryCallsItsMethod(t *testing.T) {
 		{id: "herdr:pane.resize.up", method: herdr.MethodPaneResize},
 		{id: "herdr:pane.resize.right", method: herdr.MethodPaneResize},
 		{id: "herdr:pane.move", input: "t9", method: herdr.MethodPaneMove},
+		{id: "herdr:agent.start", input: "codex", method: herdr.MethodAgentStart},
+		{id: "herdr:agent.rename", input: "reviewer", method: herdr.MethodAgentRename},
 		{id: "herdr:agent.prompt", input: "go on", method: herdr.MethodAgentPrompt},
 		{id: "herdr:server.reload_config", method: herdr.MethodServerReloadConfig},
 	}
@@ -296,6 +303,8 @@ func TestEntriesThatNeedContextFailWithoutIt(t *testing.T) {
 		"herdr:pane.rename",
 		"herdr:pane.close",
 		"herdr:pane.edit_scrollback",
+		"herdr:agent.start",
+		"herdr:agent.rename",
 		"herdr:agent.prompt",
 	} {
 		t.Run(id, func(t *testing.T) {
@@ -558,5 +567,46 @@ func TestCyclingASinglePaneDoesNothing(t *testing.T) {
 		if call.Method == herdr.MethodPaneFocus {
 			t.Error("focus was moved although the tab holds one pane")
 		}
+	}
+}
+
+// herdr names an agent after the kind it started, which is what its own UI
+// shows until the agent is renamed.
+func TestStartingAnAgentNamesItAfterTheKindInTheFocusedPane(t *testing.T) {
+	var params herdr.AgentStartParams
+	decode(t, run(t, "herdr:agent.start", "codex")[0].Params, &params)
+
+	if params.Kind != "codex" || params.Name != "codex" {
+		t.Errorf("started %+v, want the agent that was picked", params)
+	}
+	if params.PaneID != "p1" {
+		t.Errorf("pane = %q, want the one that was focused", params.PaneID)
+	}
+}
+
+func TestStartingAnAgentOffersEveryManifest(t *testing.T) {
+	if got := values(choices(t, "herdr:agent.start")); len(got) != 2 || got[1] != "codex" {
+		t.Errorf("offered %v, want the agents herdr keeps a manifest for", got)
+	}
+}
+
+func TestRenamingAnAgentRefusesAPaneWithoutOne(t *testing.T) {
+	s := server(t)
+	ctx := fullContext()
+	ctx.FocusedPaneAgent = nil
+
+	err := entry(t, "herdr:agent.rename").Run(context.Background(), palette.Exec{
+		Client: s.Env().Client(),
+		Ctx:    ctx,
+		Input:  "reviewer",
+	})
+	if err == nil {
+		t.Fatal("Run() renamed the agent of a pane that runs none")
+	}
+}
+
+func TestRenamingAnAgentStartsFromWhatItIs(t *testing.T) {
+	if got := entry(t, "herdr:agent.rename").Initial(fullContext()); got != "claude" {
+		t.Errorf("initial value = %q, want the agent running in the focused pane", got)
 	}
 }

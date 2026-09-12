@@ -88,7 +88,6 @@ func server(t *testing.T) *plugintest.Server {
 		Reply(herdr.MethodWorktreeRemove, herdr.WorktreeRemovedResponse{}).
 		Reply(herdr.MethodTabMove, herdr.TabListResponse{}).
 		Reply(herdr.MethodPaneMove, herdr.PaneMoveResponse{}).
-		Reply(herdr.MethodPaneResize, herdr.PaneResizeResponse{}).
 		Reply(herdr.MethodPaneFocus, herdr.PaneInfoResponse{}).
 		Reply(herdr.MethodWorkspaceCreate, herdr.WorkspaceCreatedResponse{}).
 		Reply(herdr.MethodWorkspaceRename, herdr.WorkspaceInfoResponse{}).
@@ -243,10 +242,6 @@ func TestEachEntryCallsItsMethod(t *testing.T) {
 		{id: "herdr:pane.focus.down", method: herdr.MethodPaneFocusDirection},
 		{id: "herdr:pane.focus.up", method: herdr.MethodPaneFocusDirection},
 		{id: "herdr:pane.focus.right", method: herdr.MethodPaneFocusDirection},
-		{id: "herdr:pane.resize.left", method: herdr.MethodPaneResize},
-		{id: "herdr:pane.resize.down", method: herdr.MethodPaneResize},
-		{id: "herdr:pane.resize.up", method: herdr.MethodPaneResize},
-		{id: "herdr:pane.resize.right", method: herdr.MethodPaneResize},
 		{id: "herdr:pane.move", collected: step{chosen: "t9"}, method: herdr.MethodPaneMove},
 		{id: "herdr:agent.start", collected: step{chosen: "codex"}, method: herdr.MethodAgentStart},
 		{id: "herdr:agent.rename", collected: step{input: "reviewer"}, method: herdr.MethodAgentRename},

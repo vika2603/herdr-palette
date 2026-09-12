@@ -338,34 +338,6 @@ func Entries() []palette.Entry {
 			Run:     cycle(-1),
 		},
 		{
-			ID:      "herdr:pane.resize.left",
-			Binding: "resize_pane_left",
-			Title:   "resize pane left",
-			Type:    groupHerdr,
-			Run:     resize(herdr.PaneDirectionLeft),
-		},
-		{
-			ID:      "herdr:pane.resize.down",
-			Binding: "resize_pane_down",
-			Title:   "resize pane down",
-			Type:    groupHerdr,
-			Run:     resize(herdr.PaneDirectionDown),
-		},
-		{
-			ID:      "herdr:pane.resize.up",
-			Binding: "resize_pane_up",
-			Title:   "resize pane up",
-			Type:    groupHerdr,
-			Run:     resize(herdr.PaneDirectionUp),
-		},
-		{
-			ID:      "herdr:pane.resize.right",
-			Binding: "resize_pane_right",
-			Title:   "resize pane right",
-			Type:    groupHerdr,
-			Run:     resize(herdr.PaneDirectionRight),
-		},
-		{
 			ID:    "herdr:pane.move",
 			Title: "move pane to another tab",
 			Type:  groupHerdr,
@@ -592,19 +564,6 @@ func split(direction herdr.SplitDirection, swapWith herdr.PaneDirection) func(co
 		_, err = e.Client.PaneSwap(ctx, herdr.PaneSwapParams{
 			PaneID:    &pane.Pane.PaneID,
 			Direction: &swapWith,
-		})
-		return err
-	}
-}
-
-// resize moves the border the focused pane shares with its neighbour in the
-// direction asked for. The amount is left to herdr, which is the step its own
-// resize keys take.
-func resize(direction herdr.PaneDirection) func(context.Context, palette.Exec) error {
-	return func(ctx context.Context, e palette.Exec) error {
-		_, err := e.Client.PaneResize(ctx, herdr.PaneResizeParams{
-			Direction: direction,
-			PaneID:    e.Ctx.FocusedPaneID,
 		})
 		return err
 	}

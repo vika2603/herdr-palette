@@ -60,10 +60,40 @@ func TestAHandoverCarriesWhatWasPicked(t *testing.T) {
 	if err := env.ReadStateJSON(PendingFile, &pending); err != nil {
 		t.Fatalf("reading the pending entry: %v", err)
 	}
-	if pending.EntryID != "herdr:worktree.open" || pending.Input != "/trees/spike" {
+	if pending.EntryID != "herdr:worktree.open" || pending.Chosen != "/trees/spike" {
 		t.Errorf("pending = %+v, want the command and the worktree that was picked", pending)
 	}
 	if pending.PID != os.Getpid() {
 		t.Errorf("pending pid = %d, want this process", pending.PID)
+	}
+}
+
+// An entry that picks a target and then asks for a value keeps the field on
+// the row, so the value is collected once the target is known.
+func TestARowOfAnEntryThatAlsoAsksForAValueKeepsTheField(t *testing.T) {
+	entry := choiceEntry()
+	entry.Input = &Input{Label: "Prompt"}
+
+	rows := ChoiceEntries(entry, []Choice{{Value: "w1:p2", Title: "reviewer"}})
+	if rows[0].Input == nil || rows[0].Input.Label != "Prompt" {
+		t.Fatalf("row = %+v, want the field the entry asks for", rows[0])
+	}
+
+	server := plugintest.NewServer(t).
+		Reply(herdr.MethodPluginActionInvoke, herdr.PluginActionInvokedResponse{})
+	env := server.Env(plugintest.StateDir(t.TempDir()))
+	if err := RelayPrompt(context.Background(), env.Client(), env, rows[0], &herdr.PluginInvocationContext{}); err != nil {
+		t.Fatalf("RelayPrompt() = %v", err)
+	}
+
+	var pending Pending
+	if err := env.ReadStateJSON(PendingFile, &pending); err != nil {
+		t.Fatalf("reading the pending entry: %v", err)
+	}
+	if pending.Chosen != "w1:p2" {
+		t.Errorf("pending = %+v, want the target to outlive the list it was picked from", pending)
+	}
+	if pending.Prompt == nil || pending.Prompt.Label != "Prompt" {
+		t.Errorf("pending = %+v, want the field to be opened for the value", pending)
 	}
 }

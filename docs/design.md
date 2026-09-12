@@ -207,6 +207,12 @@ The list is asked for off the update loop, like a command, and the rows the
 session pushes in the meantime are kept for the way back rather than drawn over
 the targets.
 
+An entry may ask for both, which is what prompting an agent by name does: the
+row carries the entry's field with it, so picking the agent opens the field for
+the text. The target and the value are separate all the way through — `Chosen`
+beside `Input` in what is handed over, and in what an entry runs with — because
+the field collects one of them and has nothing to say about the other.
+
 ## Saving a tab's layout
 
 `layout.export` answers with a tab's arrangement and `layout.apply` opens one,

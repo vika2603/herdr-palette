@@ -19,6 +19,10 @@ type Exec struct {
 	Client *herdr.Client
 	Ctx    *herdr.PluginInvocationContext
 	Input  string
+	// Chosen is the target picked from the entry's list, empty for an entry
+	// that has none. It is separate from Input so an entry can ask for both,
+	// as prompting a named agent does.
+	Chosen string
 	Env    *plugin.Env
 }
 
@@ -51,7 +55,7 @@ type Entry struct {
 	// Run as Exec.Input, the way a collected value does.
 	Choices *Choices
 	// Chosen is the value a row picked from that list carries: the palette
-	// runs the entry with it, and a handover writes it down as the input.
+	// runs the entry with it, and a handover writes it down beside the input.
 	Chosen string
 	Run    func(context.Context, Exec) error
 	// NeedsSelection keeps the entry out of the list when no pane text is

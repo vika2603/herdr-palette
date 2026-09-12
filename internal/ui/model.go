@@ -290,7 +290,7 @@ func (m model) execute(entry palette.Entry) error {
 		return relay()
 	}
 
-	err := entry.Run(m.ctx, palette.Exec{Client: client, Ctx: m.invocation, Input: entry.Chosen, Env: m.env})
+	err := entry.Run(m.ctx, palette.Exec{Client: client, Ctx: m.invocation, Chosen: entry.Chosen, Env: m.env})
 	if herdr.IsCode(err, herdr.ErrCodeUIBusy) {
 		return relay()
 	}

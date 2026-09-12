@@ -239,3 +239,32 @@ func TestReadPromptWithNothingToCollect(t *testing.T) {
 		t.Error("ReadPrompt() reported a field although the pane was opened by hand")
 	}
 }
+
+// The field hands the entry back with the value it collected, and the target
+// picked before it has to survive that hop: the entry needs both.
+func TestRelayValueKeepsThePickedTarget(t *testing.T) {
+	server := plugintest.NewServer(t).
+		Reply(herdr.MethodPluginActionInvoke, herdr.PluginActionInvokedResponse{})
+	env := server.Env(plugintest.StateDir(t.TempDir()))
+
+	pending := Pending{
+		EntryID: "herdr:agent.prompt.any",
+		Chosen:  "w1:p2",
+		Context: &herdr.PluginInvocationContext{},
+		Prompt:  &Prompt{Label: "Prompt"},
+	}
+	if err := RelayValue(context.Background(), env.Client(), env, pending, "go on"); err != nil {
+		t.Fatalf("RelayValue() = %v", err)
+	}
+
+	var handed Pending
+	if err := env.ReadStateJSON(PendingFile, &handed); err != nil {
+		t.Fatalf("reading the pending entry: %v", err)
+	}
+	if handed.Chosen != "w1:p2" || handed.Input != "go on" {
+		t.Errorf("pending = %+v, want the picked agent and the text typed for it", handed)
+	}
+	if handed.Prompt != nil {
+		t.Error("the field is still pending, so it would be opened again")
+	}
+}

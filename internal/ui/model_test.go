@@ -556,7 +556,7 @@ func chooserModel(t *testing.T, picked *string, list func(context.Context, palet
 				List:  list,
 			},
 			Run: func(_ context.Context, e palette.Exec) error {
-				*picked = e.Input
+				*picked = e.Chosen
 				return nil
 			},
 		},
@@ -704,4 +704,36 @@ func lists(entries []palette.Entry, id string) bool {
 		}
 	}
 	return false
+}
+
+// An entry that asks for a value as well is handed over once its target is
+// picked: the field is a popup, which cannot open while the palette's is up.
+func TestPickingATargetForAnEntryThatAlsoAsksForAValue(t *testing.T) {
+	var picked string
+	server := plugintest.NewServer(t).
+		Reply(herdr.MethodPluginActionInvoke, herdr.PluginActionInvokedResponse{})
+	env := server.Env(plugintest.StateDir(t.TempDir()))
+
+	m := chooserModel(t, &picked, worktreeChoices)
+	m.env = env
+	m.commands[1].Input = &palette.Input{Label: "Prompt"}
+	m.collect()
+	m.rank()
+
+	m = choose(t, m, "worktree")
+	_, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	if msg, ok := cmd().(ranMsg); !ok || msg.err != nil {
+		t.Fatalf("handing the entry over returned %v", cmd())
+	}
+	if picked != "" {
+		t.Errorf("the command ran with %q before its value was collected", picked)
+	}
+
+	var pending palette.Pending
+	if err := env.ReadStateJSON(palette.PendingFile, &pending); err != nil {
+		t.Fatalf("reading the pending entry: %v", err)
+	}
+	if pending.Chosen != "/trees/fix" || pending.Prompt == nil {
+		t.Errorf("pending = %+v, want the picked target and the field to collect the value", pending)
+	}
 }

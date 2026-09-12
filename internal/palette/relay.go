@@ -30,8 +30,11 @@ const waitForPopup = 3 * time.Second
 
 // Pending is the entry the exec entrypoint runs once the popup is gone.
 type Pending struct {
-	EntryID string                         `json:"entry_id"`
-	Input   string                         `json:"input"`
+	EntryID string `json:"entry_id"`
+	Input   string `json:"input"`
+	// Chosen is the target picked before the popup closed, which outlives the
+	// list it was picked from.
+	Chosen  string                         `json:"chosen,omitempty"`
 	Context *herdr.PluginInvocationContext `json:"context"`
 	// PID is the process holding the popup. herdr closes a popup pane when
 	// the process in it exits.
@@ -57,11 +60,11 @@ type Prompt struct {
 // quits.
 //
 // A row picked from an entry's list of targets carries what was picked, which
-// travels as the entry's input: the list is gone by the time the entry runs.
+// travels with it: the list is gone by the time the entry runs.
 func Relay(ctx context.Context, client *herdr.Client, env *plugin.Env, entry Entry, invocation *herdr.PluginInvocationContext) error {
 	return handOver(ctx, client, env, Pending{
 		EntryID: entry.ID,
-		Input:   entry.Chosen,
+		Chosen:  entry.Chosen,
 		Context: invocation,
 	})
 }
@@ -72,6 +75,7 @@ func Relay(ctx context.Context, client *herdr.Client, env *plugin.Env, entry Ent
 func RelayPrompt(ctx context.Context, client *herdr.Client, env *plugin.Env, entry Entry, invocation *herdr.PluginInvocationContext) error {
 	return handOver(ctx, client, env, Pending{
 		EntryID: entry.ID,
+		Chosen:  entry.Chosen,
 		Context: invocation,
 		Prompt: &Prompt{
 			Title:   entry.Name(),
@@ -160,7 +164,13 @@ func RunPending(ctx context.Context, env *plugin.Env, entries []Entry, pending P
 		if entry.ID != pending.EntryID {
 			continue
 		}
-		err := entry.Run(ctx, Exec{Client: client, Ctx: pending.Context, Input: pending.Input, Env: env})
+		err := entry.Run(ctx, Exec{
+			Client: client,
+			Ctx:    pending.Context,
+			Input:  pending.Input,
+			Chosen: pending.Chosen,
+			Env:    env,
+		})
 		if err != nil {
 			// The popup that would have shown this is gone, so the reason has
 			// to reach the user some other way.

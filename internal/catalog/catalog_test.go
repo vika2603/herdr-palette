@@ -45,6 +45,9 @@ func snapshot() herdr.SessionSnapshot {
 			{TabID: "t2", WorkspaceID: "w1", Label: "last", Number: 9},
 			{TabID: "t9", WorkspaceID: "w2", Label: "elsewhere", Number: 1},
 		},
+		Agents: []herdr.AgentInfo{
+			{PaneID: "p9", TabID: "t9", WorkspaceID: "w2", Agent: new("codex"), Name: new("reviewer"), AgentStatus: herdr.AgentStatusWorking, Cwd: new("/repo")},
+		},
 		Panes: []herdr.PaneInfo{
 			{PaneID: "p1", TabID: "t1", WorkspaceID: "w1"},
 			{PaneID: "p2", TabID: "t1", WorkspaceID: "w1"},
@@ -131,11 +134,18 @@ func decode(t *testing.T, raw json.RawMessage, into any) {
 	}
 }
 
+// step is what the palette collected for an entry before running it: the
+// target picked from its list, the value typed into its field, or neither.
+type step struct {
+	chosen string
+	input  string
+}
+
 // run executes one entry against the scripted server and returns the calls it
 // made.
-func run(t *testing.T, id, input string) []plugintest.Call {
+func run(t *testing.T, id string, collected step) []plugintest.Call {
 	t.Helper()
-	calls := runIn(t, id, input, fullContext())
+	calls := runIn(t, id, collected, fullContext())
 	if len(calls) == 0 {
 		t.Fatalf("%s made no calls", id)
 	}
@@ -144,10 +154,10 @@ func run(t *testing.T, id, input string) []plugintest.Call {
 
 // runIn executes one entry against a context of its own, for the entries whose
 // outcome depends on where the palette was opened.
-func runIn(t *testing.T, id, input string, ctx *herdr.PluginInvocationContext) []plugintest.Call {
+func runIn(t *testing.T, id string, collected step, ctx *herdr.PluginInvocationContext) []plugintest.Call {
 	t.Helper()
 	s := server(t)
-	if err := execute(t, s.Env(plugintest.StateDir(t.TempDir())), id, input, ctx); err != nil {
+	if err := execute(t, s.Env(plugintest.StateDir(t.TempDir())), id, collected, ctx); err != nil {
 		t.Fatalf("%s: Run() = %v", id, err)
 	}
 	return s.Calls()
@@ -155,12 +165,13 @@ func runIn(t *testing.T, id, input string, ctx *herdr.PluginInvocationContext) [
 
 // execute runs one entry against an environment the caller keeps, which is
 // what the entries that save something of their own need.
-func execute(t *testing.T, env *plugin.Env, id, input string, ctx *herdr.PluginInvocationContext) error {
+func execute(t *testing.T, env *plugin.Env, id string, collected step, ctx *herdr.PluginInvocationContext) error {
 	t.Helper()
 	return entry(t, id).Run(context.Background(), palette.Exec{
 		Client: env.Client(),
 		Ctx:    ctx,
-		Input:  input,
+		Input:  collected.input,
+		Chosen: collected.chosen,
 		Env:    env,
 	})
 }
@@ -196,25 +207,25 @@ func values(list []palette.Choice) []string {
 
 func TestEachEntryCallsItsMethod(t *testing.T) {
 	cases := []struct {
-		id     string
-		input  string
-		method string
+		id        string
+		collected step
+		method    string
 	}{
 		{id: "herdr:workspace.new", method: herdr.MethodWorkspaceCreate},
-		{id: "herdr:workspace.rename", input: "renamed", method: herdr.MethodWorkspaceRename},
+		{id: "herdr:workspace.rename", collected: step{input: "renamed"}, method: herdr.MethodWorkspaceRename},
 		{id: "herdr:workspace.close", method: herdr.MethodWorkspaceClose},
-		{id: "herdr:worktree.new", input: "feature", method: herdr.MethodWorktreeCreate},
-		{id: "herdr:worktree.open", input: "/trees/spike", method: herdr.MethodWorktreeOpen},
-		{id: "herdr:worktree.remove", input: "w2", method: herdr.MethodWorktreeRemove},
+		{id: "herdr:worktree.new", collected: step{input: "feature"}, method: herdr.MethodWorktreeCreate},
+		{id: "herdr:worktree.open", collected: step{chosen: "/trees/spike"}, method: herdr.MethodWorktreeOpen},
+		{id: "herdr:worktree.remove", collected: step{chosen: "w2"}, method: herdr.MethodWorktreeRemove},
 		{id: "herdr:tab.new", method: herdr.MethodTabCreate},
-		{id: "herdr:tab.rename", input: "renamed", method: herdr.MethodTabRename},
+		{id: "herdr:tab.rename", collected: step{input: "renamed"}, method: herdr.MethodTabRename},
 		{id: "herdr:tab.close", method: herdr.MethodTabClose},
 		{id: "herdr:pane.split.right", method: herdr.MethodPaneSplit},
 		{id: "herdr:pane.split.down", method: herdr.MethodPaneSplit},
 		{id: "herdr:pane.split.left", method: herdr.MethodPaneSplit},
 		{id: "herdr:pane.split.up", method: herdr.MethodPaneSplit},
 		{id: "herdr:pane.zoom", method: herdr.MethodPaneZoom},
-		{id: "herdr:pane.rename", input: "renamed", method: herdr.MethodPaneRename},
+		{id: "herdr:pane.rename", collected: step{input: "renamed"}, method: herdr.MethodPaneRename},
 		{id: "herdr:pane.close", method: herdr.MethodPaneClose},
 		{id: "herdr:pane.edit_scrollback", method: herdr.MethodPaneEditScrollback},
 		{id: "herdr:pane.focus.left", method: herdr.MethodPaneFocusDirection},
@@ -225,16 +236,17 @@ func TestEachEntryCallsItsMethod(t *testing.T) {
 		{id: "herdr:pane.resize.down", method: herdr.MethodPaneResize},
 		{id: "herdr:pane.resize.up", method: herdr.MethodPaneResize},
 		{id: "herdr:pane.resize.right", method: herdr.MethodPaneResize},
-		{id: "herdr:pane.move", input: "t9", method: herdr.MethodPaneMove},
-		{id: "herdr:agent.start", input: "codex", method: herdr.MethodAgentStart},
-		{id: "herdr:agent.rename", input: "reviewer", method: herdr.MethodAgentRename},
-		{id: "herdr:agent.prompt", input: "go on", method: herdr.MethodAgentPrompt},
+		{id: "herdr:pane.move", collected: step{chosen: "t9"}, method: herdr.MethodPaneMove},
+		{id: "herdr:agent.start", collected: step{chosen: "codex"}, method: herdr.MethodAgentStart},
+		{id: "herdr:agent.rename", collected: step{input: "reviewer"}, method: herdr.MethodAgentRename},
+		{id: "herdr:agent.prompt", collected: step{input: "go on"}, method: herdr.MethodAgentPrompt},
+		{id: "herdr:agent.prompt.any", collected: step{chosen: "p9", input: "go on"}, method: herdr.MethodAgentPrompt},
 		{id: "herdr:server.reload_config", method: herdr.MethodServerReloadConfig},
 	}
 
 	for _, c := range cases {
 		t.Run(c.id, func(t *testing.T) {
-			if got := run(t, c.id, c.input)[0].Method; got != c.method {
+			if got := run(t, c.id, c.collected)[0].Method; got != c.method {
 				t.Errorf("called %q, want %q", got, c.method)
 			}
 		})
@@ -243,7 +255,7 @@ func TestEachEntryCallsItsMethod(t *testing.T) {
 
 func TestNewWorkspaceFollowsTheFocusedWorkspace(t *testing.T) {
 	var params herdr.WorkspaceCreateParams
-	decode(t, run(t, "herdr:workspace.new", "")[0].Params, &params)
+	decode(t, run(t, "herdr:workspace.new", step{})[0].Params, &params)
 
 	if params.SourceWorkspaceID == nil || *params.SourceWorkspaceID != "w1" {
 		t.Error("source_workspace_id was not sent, so the new workspace loses the cwd policy")
@@ -255,7 +267,7 @@ func TestNewWorkspaceFollowsTheFocusedWorkspace(t *testing.T) {
 
 func TestRenameSendsTheTypedValue(t *testing.T) {
 	var params herdr.WorkspaceRenameParams
-	decode(t, run(t, "herdr:workspace.rename", "renamed")[0].Params, &params)
+	decode(t, run(t, "herdr:workspace.rename", step{input: "renamed"})[0].Params, &params)
 
 	if params.WorkspaceID != "w1" || params.Label != "renamed" {
 		t.Errorf("renamed %+v, want w1 to become \"renamed\"", params)
@@ -273,7 +285,7 @@ func TestRenameStartsFromTheCurrentLabel(t *testing.T) {
 
 func TestNewTabOpensInTheFocusedPaneCwd(t *testing.T) {
 	var params herdr.TabCreateParams
-	decode(t, run(t, "herdr:tab.new", "")[0].Params, &params)
+	decode(t, run(t, "herdr:tab.new", step{})[0].Params, &params)
 
 	if params.WorkspaceID == nil || *params.WorkspaceID != "w1" {
 		t.Error("the tab was not created in the focused workspace")
@@ -285,7 +297,7 @@ func TestNewTabOpensInTheFocusedPaneCwd(t *testing.T) {
 
 func TestSplitTargetsTheFocusedPane(t *testing.T) {
 	var params herdr.PaneSplitParams
-	decode(t, run(t, "herdr:pane.split.down", "")[0].Params, &params)
+	decode(t, run(t, "herdr:pane.split.down", step{})[0].Params, &params)
 
 	if params.Direction != herdr.SplitDirectionDown {
 		t.Errorf("direction = %q, want down", params.Direction)
@@ -297,7 +309,7 @@ func TestSplitTargetsTheFocusedPane(t *testing.T) {
 
 func TestPromptTargetsTheFocusedPane(t *testing.T) {
 	var params herdr.AgentPromptParams
-	decode(t, run(t, "herdr:agent.prompt", "go on")[0].Params, &params)
+	decode(t, run(t, "herdr:agent.prompt", step{input: "go on"})[0].Params, &params)
 
 	if params.Target != "p1" || params.Text != "go on" {
 		t.Errorf("prompted %+v, want the focused pane to receive the text", params)
@@ -306,7 +318,7 @@ func TestPromptTargetsTheFocusedPane(t *testing.T) {
 
 func TestWorktreeTakesTheBranchAndTheWorkspaceCwd(t *testing.T) {
 	var params herdr.WorktreeCreateParams
-	decode(t, run(t, "herdr:worktree.new", "feature")[0].Params, &params)
+	decode(t, run(t, "herdr:worktree.new", step{input: "feature"})[0].Params, &params)
 
 	if params.Branch == nil || *params.Branch != "feature" {
 		t.Error("the branch name was not sent")
@@ -378,8 +390,6 @@ func TestEntriesAreWellFormed(t *testing.T) {
 			t.Errorf("%s has no command", e.ID)
 		case seen[e.ID]:
 			t.Errorf("%s is listed twice, so the recent order would key both", e.ID)
-		case e.Input != nil && e.Choices != nil:
-			t.Errorf("%s both types a value and picks one, and only one of them is collected", e.ID)
 		case e.Choices != nil && (e.Choices.Label == "" || e.Choices.Empty == "" || e.Choices.List == nil):
 			t.Errorf("%s picks from a list that is missing its label, its empty line or its source", e.ID)
 		}
@@ -409,7 +419,7 @@ func TestBindingsNameRealHerdrActions(t *testing.T) {
 // herdr splits right and down only, so the palette's left and up entries split
 // and then swap the new pane into place.
 func TestSplittingLeftSwapsTheNewPaneIntoPlace(t *testing.T) {
-	calls := run(t, "herdr:pane.split.left", "")
+	calls := run(t, "herdr:pane.split.left", step{})
 	if len(calls) != 2 {
 		t.Fatalf("made %d calls, want a split and a swap", len(calls))
 	}
@@ -434,7 +444,7 @@ func TestSplittingLeftSwapsTheNewPaneIntoPlace(t *testing.T) {
 }
 
 func TestSplittingRightDoesNotSwap(t *testing.T) {
-	if calls := run(t, "herdr:pane.split.right", ""); len(calls) != 1 {
+	if calls := run(t, "herdr:pane.split.right", step{}); len(calls) != 1 {
 		t.Errorf("made %d calls, want the split alone", len(calls))
 	}
 }
@@ -456,7 +466,7 @@ func TestOpeningAWorktreeOffersTheOnesNoWorkspaceIsOn(t *testing.T) {
 // The path identifies a worktree whether or not it is on a branch.
 func TestOpeningAWorktreeSendsThePath(t *testing.T) {
 	var params herdr.WorktreeOpenParams
-	decode(t, run(t, "herdr:worktree.open", "/trees/spike")[0].Params, &params)
+	decode(t, run(t, "herdr:worktree.open", step{chosen: "/trees/spike"})[0].Params, &params)
 
 	if params.Path == nil || *params.Path != "/trees/spike" {
 		t.Errorf("opened %+v, want the chosen checkout", params)
@@ -481,7 +491,7 @@ func TestRemovingAWorktreeOffersTheWorkspacesOnOne(t *testing.T) {
 // keeps a checkout with work in it.
 func TestRemovingAWorktreeNamesTheWorkspaceAndDoesNotForce(t *testing.T) {
 	var params herdr.WorktreeRemoveParams
-	decode(t, run(t, "herdr:worktree.remove", "w2")[0].Params, &params)
+	decode(t, run(t, "herdr:worktree.remove", step{chosen: "w2"})[0].Params, &params)
 
 	if params.WorkspaceID != "w2" {
 		t.Errorf("removed %q, want the chosen workspace", params.WorkspaceID)
@@ -505,7 +515,7 @@ func TestMovingAPaneOffersEveryOtherTab(t *testing.T) {
 
 func TestMovingAPaneTargetsTheChosenTab(t *testing.T) {
 	var params herdr.PaneMoveParams
-	decode(t, run(t, "herdr:pane.move", "t9")[0].Params, &params)
+	decode(t, run(t, "herdr:pane.move", step{chosen: "t9"})[0].Params, &params)
 
 	if params.PaneID != "p1" {
 		t.Errorf("moved %q, want the focused pane", params.PaneID)
@@ -530,7 +540,7 @@ func TestMovingATabCountsItsPlaceInTheWorkspace(t *testing.T) {
 		{id: "herdr:tab.move.previous", insert: 0},
 	} {
 		t.Run(c.id, func(t *testing.T) {
-			calls := run(t, c.id, "")
+			calls := run(t, c.id, step{})
 			if len(calls) != 2 || calls[1].Method != herdr.MethodTabMove {
 				t.Fatalf("made %v, want the snapshot and a move", calls)
 			}
@@ -554,7 +564,7 @@ func TestMovingATabPastTheEndDoesNothing(t *testing.T) {
 			ctx := fullContext()
 			ctx.TabID = new(c.tab)
 
-			for _, call := range runIn(t, c.id, "", ctx) {
+			for _, call := range runIn(t, c.id, step{}, ctx) {
 				if call.Method == herdr.MethodTabMove {
 					t.Errorf("tab %s was moved although it is at the end it moved toward", c.tab)
 				}
@@ -569,7 +579,7 @@ func TestCyclingFocusWrapsRoundTheTab(t *testing.T) {
 		{id: "herdr:pane.cycle.previous", want: "p3"},
 	} {
 		t.Run(c.id, func(t *testing.T) {
-			calls := run(t, c.id, "")
+			calls := run(t, c.id, step{})
 			if len(calls) != 2 || calls[1].Method != herdr.MethodPaneFocus {
 				t.Fatalf("made %v, want the snapshot and a focus", calls)
 			}
@@ -588,7 +598,7 @@ func TestCyclingASinglePaneDoesNothing(t *testing.T) {
 	ctx := fullContext()
 	ctx.FocusedPaneID = new("p9")
 
-	for _, call := range runIn(t, "herdr:pane.cycle.next", "", ctx) {
+	for _, call := range runIn(t, "herdr:pane.cycle.next", step{}, ctx) {
 		if call.Method == herdr.MethodPaneFocus {
 			t.Error("focus was moved although the tab holds one pane")
 		}
@@ -599,7 +609,7 @@ func TestCyclingASinglePaneDoesNothing(t *testing.T) {
 // shows until the agent is renamed.
 func TestStartingAnAgentNamesItAfterTheKindInTheFocusedPane(t *testing.T) {
 	var params herdr.AgentStartParams
-	decode(t, run(t, "herdr:agent.start", "codex")[0].Params, &params)
+	decode(t, run(t, "herdr:agent.start", step{chosen: "codex"})[0].Params, &params)
 
 	if params.Kind != "codex" || params.Name != "codex" {
 		t.Errorf("started %+v, want the agent that was picked", params)
@@ -642,7 +652,7 @@ func TestALayoutIsSavedOpenedAndForgotten(t *testing.T) {
 	s := server(t)
 	env := s.Env(plugintest.StateDir(t.TempDir()))
 
-	if err := execute(t, env, "herdr:layout.save", "work", fullContext()); err != nil {
+	if err := execute(t, env, "herdr:layout.save", step{input: "work"}, fullContext()); err != nil {
 		t.Fatalf("saving the layout: %v", err)
 	}
 	var export herdr.LayoutExportParams
@@ -660,7 +670,7 @@ func TestALayoutIsSavedOpenedAndForgotten(t *testing.T) {
 		t.Fatalf("offered %v, want the layout that was just saved", got)
 	}
 
-	if err := execute(t, env, "herdr:layout.apply", "work", fullContext()); err != nil {
+	if err := execute(t, env, "herdr:layout.apply", step{chosen: "work"}, fullContext()); err != nil {
 		t.Fatalf("opening the layout: %v", err)
 	}
 	var apply herdr.LayoutApplyParams
@@ -677,7 +687,7 @@ func TestALayoutIsSavedOpenedAndForgotten(t *testing.T) {
 		}
 	}
 
-	if err := execute(t, env, "herdr:layout.forget", "work", fullContext()); err != nil {
+	if err := execute(t, env, "herdr:layout.forget", step{chosen: "work"}, fullContext()); err != nil {
 		t.Fatalf("forgetting the layout: %v", err)
 	}
 	if left := layout.List(env); len(left) != 0 {
@@ -689,12 +699,37 @@ func TestOpeningALayoutThatIsNotSaved(t *testing.T) {
 	s := server(t)
 	env := s.Env(plugintest.StateDir(t.TempDir()))
 
-	if err := execute(t, env, "herdr:layout.apply", "work", fullContext()); err == nil {
+	if err := execute(t, env, "herdr:layout.apply", step{chosen: "work"}, fullContext()); err == nil {
 		t.Fatal("Run() reported no error for a layout that was never saved")
 	}
 	for _, call := range s.Calls() {
 		if call.Method == herdr.MethodLayoutApply {
 			t.Error("herdr was asked to apply a layout the palette does not have")
 		}
+	}
+}
+
+func TestPromptingAnAgentOffersEveryOneInTheSession(t *testing.T) {
+	list := choices(t, "herdr:agent.prompt.any")
+
+	if got := values(list); len(got) != 1 || got[0] != "p9" {
+		t.Fatalf("offered %v, want the pane running an agent", got)
+	}
+	if list[0].Title != "reviewer" || list[0].Detail != "working" {
+		t.Errorf("row = %+v, want the name the agent goes by and what it is doing", list[0])
+	}
+	if !strings.Contains(list[0].Search, "notes") {
+		t.Errorf("search text = %q, want the workspace the agent sits in", list[0].Search)
+	}
+}
+
+// The target is picked from the list and the text typed afterwards, so the
+// entry runs on both.
+func TestPromptingAnAgentSendsTheTextToThePickedPane(t *testing.T) {
+	var params herdr.AgentPromptParams
+	decode(t, run(t, "herdr:agent.prompt.any", step{chosen: "p9", input: "go on"})[0].Params, &params)
+
+	if params.Target != "p9" || params.Text != "go on" {
+		t.Errorf("prompted %+v, want the agent that was picked to receive the text", params)
 	}
 }

@@ -83,7 +83,9 @@ and running one goes there. A pane running an agent shows what it is doing —
 `claude · working`, `codex · blocked` — in a colour per status, kept current
 while the popup is open, so the palette doubles as a way to reach the agent
 that needs you. An agent that was renamed shows the name it was given there
-instead of what it is, and is found by it. They all read "go to …", so typing `go to` or `goto`
+instead of what it is, and is found by it. Prompting one is a command of its
+own: it asks which agent and then what to say, so an answer reaches an agent in
+another workspace without going there first. They all read "go to …", so typing `go to` or `goto`
 narrows the list to them. Panes also carry the workspace they sit in and their
 working directory, so typing a project name finds the panes inside it. Where
 the palette was opened from is left out.
@@ -105,7 +107,9 @@ the tab to move the pane to — lists them in the palette's own window instead o
 asking for a value. Typing filters them the way it filters the commands,
 `enter` runs the command on the row, and `esc` goes back to the command list
 with the query it was filtered by. A command with nothing to act on says so on
-the line under the list and stays where it is.
+the line under the list and stays where it is. A command that needs both, such
+as prompting an agent by name, takes the target from the list and then opens
+the field for the value.
 
 ## The palette's own window
 

@@ -36,7 +36,10 @@ func ChoiceEntries(entry Entry, choices []Choice) []Entry {
 			Search:      choice.Search,
 			Chosen:      choice.Value,
 			AlwaysRelay: entry.AlwaysRelay,
-			Run:         entry.Run,
+			// An entry that asks for a value as well collects it once its
+			// target is picked, so the row carries the field with it.
+			Input: entry.Input,
+			Run:   entry.Run,
 		})
 	}
 	return entries

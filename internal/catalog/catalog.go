@@ -120,7 +120,7 @@ func Entries() []palette.Entry {
 			// which a detached one is not.
 			Run: func(ctx context.Context, e palette.Exec) error {
 				_, err := e.Client.WorktreeOpen(ctx, herdr.WorktreeOpenParams{
-					Path:  &e.Input,
+					Path:  &e.Chosen,
 					Cwd:   e.Ctx.WorkspaceCwd,
 					Focus: new(true),
 				})
@@ -141,7 +141,7 @@ func Entries() []palette.Entry {
 			// and the reason reaches the popup. Picking the worktree from the
 			// list is the step herdr's own binding asks a confirmation for.
 			Run: func(ctx context.Context, e palette.Exec) error {
-				_, err := e.Client.WorktreeRemove(ctx, herdr.WorktreeRemoveParams{WorkspaceID: e.Input})
+				_, err := e.Client.WorktreeRemove(ctx, herdr.WorktreeRemoveParams{WorkspaceID: e.Chosen})
 				return err
 			},
 		},
@@ -376,7 +376,7 @@ func Entries() []palette.Entry {
 				_, err = e.Client.PaneMove(ctx, herdr.PaneMoveParams{
 					PaneID: id,
 					Destination: herdr.PaneMoveDestinationTab{
-						TabID: e.Input,
+						TabID: e.Chosen,
 						Split: herdr.SplitDirectionRight,
 					},
 					Focus: new(true),
@@ -414,14 +414,14 @@ func Entries() []palette.Entry {
 			// A new tab rather than this one: the arrangement opens panes of
 			// its own, and the panes already in a tab are somebody's work.
 			Run: func(ctx context.Context, e palette.Exec) error {
-				root, err := layout.Root(e.Env, e.Input)
+				root, err := layout.Root(e.Env, e.Chosen)
 				if err != nil {
 					return err
 				}
 				_, err = e.Client.LayoutApply(ctx, herdr.LayoutApplyParams{
 					Root:        root,
 					WorkspaceID: e.Ctx.WorkspaceID,
-					TabLabel:    &e.Input,
+					TabLabel:    &e.Chosen,
 					Focus:       new(true),
 				})
 				return err
@@ -437,7 +437,7 @@ func Entries() []palette.Entry {
 				List:  savedLayouts,
 			},
 			Run: func(_ context.Context, e palette.Exec) error {
-				return layout.Remove(e.Env, e.Input)
+				return layout.Remove(e.Env, e.Chosen)
 			},
 		},
 
@@ -459,8 +459,8 @@ func Entries() []palette.Entry {
 					return err
 				}
 				_, err = e.Client.AgentStart(ctx, herdr.AgentStartParams{
-					Kind:   e.Input,
-					Name:   e.Input,
+					Kind:   e.Chosen,
+					Name:   e.Chosen,
 					PaneID: id,
 				})
 				return err
@@ -485,6 +485,24 @@ func Entries() []palette.Entry {
 				_, err = e.Client.AgentRename(ctx, herdr.AgentRenameParams{
 					Target: id,
 					Name:   &e.Input,
+				})
+				return err
+			},
+		},
+		{
+			ID:    "herdr:agent.prompt.any",
+			Title: "prompt an agent",
+			Type:  groupHerdr,
+			Choices: &palette.Choices{
+				Label: "Agent to prompt",
+				Empty: "no pane in the session runs an agent",
+				List:  sessionAgents,
+			},
+			Input: &palette.Input{Label: "Prompt"},
+			Run: func(ctx context.Context, e palette.Exec) error {
+				_, err := e.Client.AgentPrompt(ctx, herdr.AgentPromptParams{
+					Target: e.Chosen,
+					Text:   e.Input,
 				})
 				return err
 			},
@@ -709,6 +727,36 @@ func savedLayouts(_ context.Context, e palette.Exec) ([]palette.Choice, error) {
 	choices := make([]palette.Choice, 0, len(saved))
 	for _, one := range saved {
 		choices = append(choices, palette.Choice{Value: one.Name, Title: one.Name})
+	}
+	return choices, nil
+}
+
+// sessionAgents is every pane in the session running an agent, as targets to
+// prompt. A pane is addressed by its id, the way the rows that go to one are,
+// and reads as the name the agent goes by.
+func sessionAgents(ctx context.Context, e palette.Exec) ([]palette.Choice, error) {
+	snapshot, err := e.Client.SessionSnapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	workspaces := make(map[string]string, len(snapshot.Snapshot.Workspaces))
+	for _, workspace := range snapshot.Snapshot.Workspaces {
+		workspaces[workspace.WorkspaceID] = workspace.Label
+	}
+
+	choices := make([]palette.Choice, 0, len(snapshot.Snapshot.Agents))
+	for _, agent := range snapshot.Snapshot.Agents {
+		name := herdr.Value(agent.Name)
+		if name == "" {
+			name = herdr.Value(agent.Agent)
+		}
+		choices = append(choices, palette.Choice{
+			Value:  agent.PaneID,
+			Title:  name,
+			Detail: string(agent.AgentStatus),
+			Search: workspaces[agent.WorkspaceID] + " " + herdr.Value(agent.Cwd),
+		})
 	}
 	return choices, nil
 }

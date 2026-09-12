@@ -795,3 +795,45 @@ func TestAListThatStaysIsAskedForAgainAfterARowRuns(t *testing.T) {
 		t.Errorf("cursor = %d, want the row that was just run", next.cursor)
 	}
 }
+
+// On a screen of states, tab is what turning one over reads as; the command
+// list has nothing for it to do.
+func TestTabTurnsARowOverOnlyOnAListThatStays(t *testing.T) {
+	var picked string
+	m := chooserModel(t, &picked, worktreeChoices)
+
+	if _, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyTab}); cmd != nil {
+		t.Error("tab did something in the command list")
+	}
+
+	m.commands[1].Choices.Stays = true
+	m.collect()
+	m.rank()
+	m = choose(t, m, "worktree")
+
+	_, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyTab})
+	if cmd == nil {
+		t.Fatal("tab did not run the selected row")
+	}
+	if msg, ok := cmd().(ranMsg); !ok || msg.err != nil {
+		t.Fatalf("running the row returned %v", cmd())
+	}
+	if picked != "/trees/fix" {
+		t.Errorf("ran with %q, want the row that was selected", picked)
+	}
+}
+
+func TestTheFooterSaysTabTurnsARowOver(t *testing.T) {
+	var picked string
+	m := chooserModel(t, &picked, worktreeChoices)
+	m.commands[1].Choices.Stays = true
+	m.collect()
+	m.rank()
+
+	if strings.Contains(m.footer(), "toggle") {
+		t.Error("the command list offers a toggle")
+	}
+	if got := choose(t, m, "worktree").footer(); !strings.Contains(got, "toggle ⇥") {
+		t.Errorf("footer = %q, want the key that turns a row over", got)
+	}
+}

@@ -27,15 +27,20 @@ func actionList() herdr.PluginActionListResponse {
 			Title:    "Clip the selection",
 			Contexts: []herdr.PluginActionContext{herdr.PluginActionContextSelection},
 		},
+		{PluginID: "herdr.clipboard", ActionID: "paste", Title: "Paste"},
 	}}
 }
 
 // plugins is what herdr reports about what is installed, which is where the
-// name in front of a plugin action comes from.
+// name in front of a plugin action comes from, and whether it is enabled.
+// herdr.clipboard is installed but off, and herdr lists its action all the
+// same.
 func plugins() herdr.PluginListResponse {
 	return herdr.PluginListResponse{Plugins: []herdr.InstalledPluginInfo{
-		{PluginID: "herdr.machine-manager", Name: "Machine Manager"},
-		{PluginID: own, Name: "Command Palette"},
+		{PluginID: "herdr.machine-manager", Name: "Machine Manager", Enabled: true},
+		{PluginID: "herdr.notes", Name: "Notes", Enabled: true},
+		{PluginID: "herdr.clipboard", Name: "Clipboard"},
+		{PluginID: own, Name: "Command Palette", Enabled: true},
 	}}
 }
 
@@ -140,6 +145,19 @@ func TestLoadMarksSelectionOnlyActions(t *testing.T) {
 	}
 	if !entry.NeedsSelection {
 		t.Error("a selection-only action was not marked, so it would show with nothing selected")
+	}
+}
+
+// herdr lists the actions of a disabled plugin and then refuses to invoke one
+// with plugin_disabled, so the palette would offer a row that cannot run.
+func TestLoadLeavesOutADisabledPluginsActions(t *testing.T) {
+	server := plugintest.NewServer(t).
+		Reply(herdr.MethodPluginActionList, actionList()).
+		Reply(herdr.MethodPluginList, plugins()).
+		Reply(herdr.MethodSessionSnapshot, snapshot())
+
+	if _, ok := find(load(t, server), "plugin:herdr.clipboard/paste"); ok {
+		t.Error("Load() offered an action of a disabled plugin, which herdr refuses to invoke")
 	}
 }
 

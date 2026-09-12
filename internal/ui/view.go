@@ -297,15 +297,18 @@ func (m model) footer() string {
 		return m.styles.fail.Render(truncate(m.failure, m.cols()))
 	}
 
-	left, back := fmt.Sprintf(" %d commands", len(m.ranked)), "close esc"
+	left, act, back := fmt.Sprintf(" %d commands", len(m.ranked)), "run ⏎", "close esc"
 	if m.choosing != nil {
 		// The command the targets belong to is no longer on the list, so the
 		// footer is where it stays legible.
 		left, back = " "+m.choosing.entry.Name(), "back esc"
 	}
+	if m.staying() {
+		act = "toggle ⇥"
+	}
 
 	rendered := m.styles.meta.Render(left)
-	right := m.styles.meta.Render("run ⏎") + m.styles.rule.Render("  ·  ") + m.styles.meta.Render(back)
+	right := m.styles.meta.Render(act) + m.styles.rule.Render("  ·  ") + m.styles.meta.Render(back)
 	gap := max(m.cols()-lipgloss.Width(rendered)-lipgloss.Width(right)-1, 1)
 
 	return rendered + strings.Repeat(" ", gap) + right + " "

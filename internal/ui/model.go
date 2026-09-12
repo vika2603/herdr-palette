@@ -200,6 +200,14 @@ func (m model) keyList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "enter":
 		return m.choose()
+	case "tab":
+		// A list that stays is a screen of states rather than of targets, and
+		// turning one over is what tab reads as. Elsewhere it types nothing
+		// and does nothing.
+		if m.staying() {
+			return m.choose()
+		}
+		return m, nil
 	}
 
 	var cmd tea.Cmd

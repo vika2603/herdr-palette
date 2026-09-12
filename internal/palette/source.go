@@ -49,12 +49,21 @@ func Load(
 	if actions, err := client.PluginActionList(ctx, herdr.PluginActionListParams{}); err != nil {
 		failures = append(failures, fmt.Errorf("plugin actions unavailable: %w", err))
 	} else {
-		names := pluginNames(ctx, client)
+		installed := installedPlugins(ctx, client)
 		for _, action := range actions.Actions {
 			if action.PluginID == own {
 				continue
 			}
-			entry := pluginEntry(action, names[action.PluginID])
+			// herdr lists the actions of a disabled plugin as well, and
+			// refuses to invoke one with plugin_disabled, so they are dropped
+			// here rather than offered and failed. An action whose plugin is
+			// not in the list — which is what an unreachable list leaves —
+			// stays, since nothing says it cannot run.
+			plugin, listed := installed[action.PluginID]
+			if listed && !plugin.Enabled {
+				continue
+			}
+			entry := pluginEntry(action, plugin.Name)
 			entry.Key = cfg.Plugin[keys.PluginBinding(action.PluginID, action.ActionID)]
 			commands = append(commands, entry)
 		}
@@ -67,19 +76,21 @@ func Load(
 	return List{Commands: commands, Open: open}, errors.Join(failures...)
 }
 
-// pluginNames maps each installed plugin to the name it gave itself, which is
-// the namespace its actions show under. An unreachable list is not worth
-// reporting: the id carries a usable name of its own.
-func pluginNames(ctx context.Context, client *herdr.Client) map[string]string {
+// installedPlugins maps each installed plugin to what herdr knows about it:
+// the name it gave itself, which is the namespace its actions show under, and
+// whether it is enabled. An unreachable list is not worth reporting — the id
+// carries a usable name of its own — and leaves the map empty, which rules out
+// no action.
+func installedPlugins(ctx context.Context, client *herdr.Client) map[string]herdr.InstalledPluginInfo {
 	plugins, err := client.PluginList(ctx, herdr.PluginListParams{})
 	if err != nil {
 		return nil
 	}
-	names := make(map[string]string, len(plugins.Plugins))
+	installed := make(map[string]herdr.InstalledPluginInfo, len(plugins.Plugins))
 	for _, plugin := range plugins.Plugins {
-		names[plugin.PluginID] = plugin.Name
+		installed[plugin.PluginID] = plugin
 	}
-	return names
+	return installed
 }
 
 // pluginNamespace is the plugin's own name, or the distinctive half of its id

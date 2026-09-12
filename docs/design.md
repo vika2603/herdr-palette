@@ -86,8 +86,12 @@ the panes inside it and the row says which one it matched.
 
 
 `plugin.action.list` covers plugin actions completely: id, title, description,
-contexts. herdr's built-in actions have no counterpart. They exist as config
-keys under `[keys]`, and the API exposes no method that runs one by name.
+contexts. It covers a disabled plugin's actions too, with nothing on them to
+say so, and `plugin.action.invoke` then refuses one with `plugin_disabled`, so
+what is installed is read alongside and those actions are left out.
+
+herdr's built-in actions have no counterpart. They exist as config keys under
+`[keys]`, and the API exposes no method that runs one by name.
 `command.invoke` takes a `command_id` that the schema documents as issued
 through the client-shell projection, which a plugin process does not receive;
 becoming a client shell would mean taking over pane presentation from the
@@ -211,7 +215,9 @@ A list may also stay up after a row of it runs, which is what makes managing
 plugins a screen rather than a pair of commands: the rows carry the state, so
 running one and closing over it would hide what it did. The list is asked for
 again instead, and the rows are replaced under the query and the selection they
-were picked with, so the next keystroke lands where the last one did.
+were picked with, so the next keystroke lands where the last one did. `tab`
+runs a row there, which is what turning one over reads as; it does nothing in
+the command list, where there is no state on a row to turn.
 
 An entry may ask for both, which is what prompting an agent by name does: the
 row carries the entry's field with it, so picking the agent opens the field for

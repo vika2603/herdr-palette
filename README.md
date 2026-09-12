@@ -73,11 +73,17 @@ configured command line. Sizes are accepted in either spelling herdr takes, a
 percentage such as `"70%"` or a cell count such as `80`.
 
 Managing plugins is one command rather than a pair: it lists every installed
-plugin with what it is, `enabled` or `disabled`, and running a row turns that
+plugin with what it is, `enabled` or `disabled`, and `tab` turns the selected
 one over. The list stays up with the row saying what it is now, so several can
 be changed in a row, and `esc` leaves it. The palette is not in the list —
 turning it off would take away the popup the row is being run from, with no row
 left to turn it back on.
+
+herdr enforces it: a disabled plugin's actions are refused with
+`plugin_disabled`, and the state outlives a restart. herdr lists those actions
+all the same, so the palette leaves them out itself. It reads what is installed
+when it opens, so a plugin turned off from inside the popup keeps its rows
+until the next time the palette is opened.
 
 **A plugin's own name**, such as `machine manager:`, is every action it
 registered, read from `plugin.action.list` at open time. Installing a plugin
@@ -157,6 +163,7 @@ commands.
 | `enter` | run the selection |
 | `up` / `down`, `ctrl+p` / `ctrl+n` | move the selection |
 | `pgup` / `pgdown` | move a page |
+| `tab` | turn the selected row over, on a screen that stays up |
 | `ctrl+u` | clear the query |
 | `esc` | close the popup, or leave a list of targets for the commands |
 | wheel | move the selection |

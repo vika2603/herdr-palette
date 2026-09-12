@@ -200,3 +200,42 @@ func TestAMatchInTheSearchTextIsReported(t *testing.T) {
 		t.Error("the row itself was highlighted, although the query is not in it")
 	}
 }
+
+// An empty query scores every row the same, so what decides the order is the
+// group: a session holds as many rows that go somewhere as it has panes, and
+// the palette opens on what it is for.
+func TestAnEmptyQueryLeadsWithTheCommands(t *testing.T) {
+	entries := []Entry{
+		{ID: "pane:p1", Title: "go to shell", Type: "Agent", Goes: true},
+		{ID: "herdr:tab.new", Title: "new tab", Type: "Herdr"},
+		{ID: "pane:p2", Title: "go to nvim", Type: "Pane", Goes: true},
+		{ID: "config:x", Title: "open git jump", Type: TypeCustom},
+	}
+
+	ranked := Rank(entries, "", nil)
+	if len(ranked) != len(entries) {
+		t.Fatalf("Rank() kept %d of %d rows on an empty query", len(ranked), len(entries))
+	}
+	for i, r := range ranked {
+		if r.Entry.Goes && i < 2 {
+			t.Errorf("row %d (%q) goes somewhere, want the commands first", i, r.Entry.Name())
+		}
+		if !r.Entry.Goes && i >= 2 {
+			t.Errorf("row %d (%q) runs a command, want it above the rows that go somewhere", i, r.Entry.Name())
+		}
+	}
+}
+
+// A row run recently scores above its group, so the way back to a pane just
+// left is still short.
+func TestARecentlyUsedRowOutranksItsGroup(t *testing.T) {
+	entries := []Entry{
+		{ID: "herdr:tab.new", Title: "new tab", Type: "Herdr"},
+		{ID: "pane:p1", Title: "go to shell", Type: "Agent", Goes: true},
+	}
+
+	ranked := Rank(entries, "", []string{"pane:p1"})
+	if ranked[0].Entry.ID != "pane:p1" {
+		t.Errorf("the list leads with %q, want the row just used", ranked[0].Entry.ID)
+	}
+}

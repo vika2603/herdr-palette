@@ -50,8 +50,11 @@ func Defaults() Theme {
 		Scrollbar: lipgloss.Color("8"),
 		Failure:   lipgloss.Color("1"),
 		Status: map[string]lipgloss.TerminalColor{
-			"working":  lipgloss.Color("3"),
-			"blocked":  lipgloss.Color("1"),
+			"working": lipgloss.Color("3"),
+			// Bright rather than plain red, which Failure has: an agent
+			// waiting on you is the popup's own news, not a command that
+			// would not run, and the two share the line under the list.
+			"blocked":  lipgloss.Color("9"),
 			"done":     lipgloss.Color("2"),
 			"idle":     lipgloss.Color("8"),
 			"enabled":  lipgloss.Color("2"),

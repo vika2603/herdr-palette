@@ -86,12 +86,29 @@ func Rank(entries []Entry, text string, recent []string) []Ranked {
 		if ranked[i].Score != ranked[j].Score {
 			return ranked[i].Score > ranked[j].Score
 		}
-		if ranked[i].Entry.Type != ranked[j].Entry.Type {
-			return ranked[i].Entry.Type < ranked[j].Entry.Type
+		if a, b := group(ranked[i].Entry), group(ranked[j].Entry); a != b {
+			return a < b
+		}
+		// Folded: a namespace is a name a plugin gave itself, and where it
+		// sits should not turn on whether it capitalised it.
+		if a, b := fold(ranked[i].Entry.Type), fold(ranked[j].Entry.Type); a != b {
+			return a < b
 		}
 		return ranked[i].Entry.Title < ranked[j].Entry.Title
 	})
 	return ranked
+}
+
+// group is what separates rows the query scored the same, which on an empty
+// query is all of them. The commands come first: a session holds as many rows
+// that go somewhere as it has panes, and the palette should open on what it is
+// for rather than on however many panes happen to be up. A row run recently
+// scores above both, so the way back to a pane just left is still short.
+func group(entry Entry) int {
+	if entry.Goes {
+		return 1
+	}
+	return 0
 }
 
 func rankOne(entry Entry, q query) (Ranked, bool) {

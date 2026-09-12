@@ -83,6 +83,7 @@ func Entries() []palette.Entry {
 			ID:      "herdr:workspace.close",
 			Binding: "close_workspace",
 			Title:   "close workspace",
+			Confirm: true,
 			Type:    groupHerdr,
 			Run: func(ctx context.Context, e palette.Exec) error {
 				id, err := need(e.Ctx.WorkspaceID, errNoWorkspace)
@@ -133,6 +134,7 @@ func Entries() []palette.Entry {
 			ID:      "herdr:worktree.remove",
 			Binding: "remove_worktree",
 			Title:   "remove worktree workspace",
+			Confirm: true,
 			Type:    groupHerdr,
 			Choices: &palette.Choices{
 				Label: "Worktree to remove",
@@ -184,6 +186,7 @@ func Entries() []palette.Entry {
 			ID:      "herdr:tab.close",
 			Binding: "close_tab",
 			Title:   "close tab",
+			Confirm: true,
 			Type:    groupHerdr,
 			Run: func(ctx context.Context, e palette.Exec) error {
 				id, err := need(e.Ctx.TabID, errNoTab)
@@ -267,6 +270,7 @@ func Entries() []palette.Entry {
 			ID:      "herdr:pane.close",
 			Binding: "close_pane",
 			Title:   "close pane",
+			Confirm: true,
 			Type:    groupHerdr,
 			Run: func(ctx context.Context, e palette.Exec) error {
 				id, err := need(e.Ctx.FocusedPaneID, errNoPane)

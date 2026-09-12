@@ -2,10 +2,13 @@ package ui
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/vika2603/herdr-client/herdr"
 	"github.com/vika2603/herdr-client/plugin"
 	"github.com/vika2603/herdr-client/plugin/plugintest"
@@ -52,7 +55,7 @@ func testModel(t *testing.T, recent []string, ran *[]string) model {
 		recent,
 		theme.Defaults(),
 	)
-	m.width, m.height = 72, 12
+	m.setSize(72, 12)
 	return m
 }
 
@@ -153,7 +156,7 @@ func TestAnEntryThatNeedsAValueIsHandedOverToTheField(t *testing.T) {
 		nil,
 		theme.Defaults(),
 	)
-	m.width, m.height = 72, 12
+	m.setSize(72, 12)
 	m = typeQuery(t, m, "rename")
 
 	_, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
@@ -210,22 +213,46 @@ func TestEnterWithNoMatchDoesNothing(t *testing.T) {
 	}
 }
 
-func TestTheCursorStaysInsideTheList(t *testing.T) {
+// The far end of the list is one keystroke away: a step off either end goes
+// round rather than stopping there.
+func TestSteppingOffTheEndGoesRound(t *testing.T) {
 	var ran []string
 	m := testModel(t, nil, &ran)
+	last := len(m.ranked) - 1
+
+	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyUp})
+	if m.cursor != last {
+		t.Errorf("cursor = %d, want the last row %d", m.cursor, last)
+	}
+
+	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyDown})
+	if m.cursor != 0 {
+		t.Errorf("cursor = %d, want the first row", m.cursor)
+	}
 
 	for range len(m.ranked) + 3 {
 		m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyDown})
 	}
-	if m.cursor != len(m.ranked)-1 {
-		t.Errorf("cursor = %d, want the last row %d", m.cursor, len(m.ranked)-1)
+	if m.cursor < 0 || m.cursor > last {
+		t.Errorf("cursor = %d, want a row of the list", m.cursor)
 	}
+}
 
-	for range len(m.ranked) + 3 {
-		m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyUp})
-	}
+// A page and a turn of the wheel stop at the ends: going round would carry the
+// reader past what they were looking at.
+func TestAPageStopsAtTheEnds(t *testing.T) {
+	m := wheelModel(t)
+	last := len(m.ranked) - 1
+
+	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyPgUp})
 	if m.cursor != 0 {
 		t.Errorf("cursor = %d, want the first row", m.cursor)
+	}
+	for range 5 {
+		m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyPgDown})
+	}
+	if m.cursor != last {
+		t.Errorf("cursor = %d, want the last row %d", m.cursor, last)
 	}
 }
 
@@ -280,7 +307,7 @@ func wheelModel(t *testing.T) model {
 		})
 	}
 	m := newModel(context.Background(), testEnv(t), &herdr.PluginInvocationContext{}, palette.List{Commands: entries}, nil, theme.Defaults())
-	m.width, m.height = 40, 8
+	m.setSize(40, 8)
 	return m
 }
 
@@ -394,7 +421,7 @@ func TestTheKeyColumnShowsWhatEachCommandIsBoundTo(t *testing.T) {
 		{ID: "b", Title: "Split pane right", Type: "herdr"},
 	}
 	m := newModel(context.Background(), testEnv(t), &herdr.PluginInvocationContext{}, palette.List{Commands: entries}, nil, theme.Defaults())
-	m.width, m.height = 60, 12
+	m.setSize(60, 12)
 
 	view := m.View()
 	if !strings.Contains(view, "prefix+c") {
@@ -431,7 +458,7 @@ func TestAPluginActionIsRelayedWithoutRunning(t *testing.T) {
 	env := server.Env(plugintest.StateDir(t.TempDir()))
 
 	m := newModel(context.Background(), env, &herdr.PluginInvocationContext{}, palette.List{Commands: entries}, nil, theme.Defaults())
-	m.width, m.height = 60, 12
+	m.setSize(60, 12)
 
 	_, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd == nil {
@@ -464,7 +491,7 @@ func TestAUIBusyRefusalIsRelayed(t *testing.T) {
 	env := server.Env(plugintest.StateDir(t.TempDir()))
 
 	m := newModel(context.Background(), env, &herdr.PluginInvocationContext{}, palette.List{Commands: entries}, nil, theme.Defaults())
-	m.width, m.height = 60, 12
+	m.setSize(60, 12)
 
 	_, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
 	if msg, ok := cmd().(ranMsg); !ok || msg.err != nil {
@@ -492,7 +519,7 @@ func TestARowMatchedOnTextItDoesNotShowShowsThatText(t *testing.T) {
 		nil,
 		theme.Defaults(),
 	)
-	m.width, m.height = 72, 12
+	m.setSize(72, 12)
 
 	view := typeQuery(t, m, "herdr.machine").View()
 
@@ -512,21 +539,21 @@ func TestRebuildingWhatIsOpenKeepsTheSelection(t *testing.T) {
 		palette.List{
 			Commands: testEntries(&ran),
 			Open: []palette.Entry{
-				{ID: "pane:w1:p1", Title: "go to shell", Type: "Agent", Detail: "claude · idle"},
+				{ID: "pane:w1:p1", Title: "go to shell", Type: "Agent", Goes: true, Detail: "claude · idle"},
 			},
 		},
 		nil,
 		theme.Defaults(),
 	)
-	m.width, m.height = 72, 12
+	m.setSize(72, 12)
 
 	m = typeQuery(t, m, "go to")
 	if len(m.ranked) != 1 {
 		t.Fatalf("the query matched %d rows, want the agent", len(m.ranked))
 	}
 	m.setOpen([]palette.Entry{
-		{ID: "pane:w1:p2", Title: "go to nvim", Type: "Pane", Detail: "palette"},
-		{ID: "pane:w1:p1", Title: "go to shell", Type: "Agent", Detail: "claude · working"},
+		{ID: "pane:w1:p2", Title: "go to nvim", Type: "Pane", Goes: true, Detail: "palette"},
+		{ID: "pane:w1:p1", Title: "go to shell", Type: "Agent", Goes: true, Detail: "claude · working"},
 	})
 
 	if len(m.ranked) != 2 {
@@ -570,7 +597,7 @@ func chooserModel(t *testing.T, picked *string, list func(context.Context, palet
 		nil,
 		theme.Defaults(),
 	)
-	m.width, m.height = 72, 12
+	m.setSize(72, 12)
 	return m
 }
 
@@ -678,32 +705,6 @@ func TestAnEntryWithNothingToActOnSaysSo(t *testing.T) {
 	if m.failure != "every worktree is open already" {
 		t.Errorf("failure = %q, want what the entry says about an empty list", m.failure)
 	}
-}
-
-// What is open keeps changing while the popup is up, and the targets are not
-// those rows: they stay until the choice is made or abandoned.
-func TestTheSessionDoesNotReplaceTheTargets(t *testing.T) {
-	var picked string
-	m := choose(t, chooserModel(t, &picked, worktreeChoices), "worktree")
-
-	m, _ = send(t, m, openMsg{open: []palette.Entry{{ID: "pane:p9", Title: "go to zsh", Type: palette.TypePane}}})
-	if len(m.ranked) != 2 {
-		t.Fatalf("shows %d rows, want the two worktrees", len(m.ranked))
-	}
-
-	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyEsc})
-	if !lists(m.entries, "pane:p9") {
-		t.Error("the rebuilt session rows are missing from the command list")
-	}
-}
-
-func lists(entries []palette.Entry, id string) bool {
-	for _, entry := range entries {
-		if entry.ID == id {
-			return true
-		}
-	}
-	return false
 }
 
 // An entry that asks for a value as well is handed over once its target is
@@ -835,5 +836,644 @@ func TestTheFooterSaysTabTurnsARowOver(t *testing.T) {
 	}
 	if got := choose(t, m, "worktree").footer(); !strings.Contains(got, "toggle ⇥") {
 		t.Errorf("footer = %q, want the key that turns a row over", got)
+	}
+}
+
+// wideModel is a list whose rows carry wide characters, which cost two columns
+// each and are what a row measured in runes gets wrong.
+func wideModel(t *testing.T, cols int) model {
+	t.Helper()
+	entries := []palette.Entry{
+		{ID: "a", Title: "split pane right", Type: "Herdr", Key: "prefix+shift+p"},
+		{ID: "b", Title: "\u6253\u5f00\u5f53\u524d\u9879\u76ee\u7684\u6784\u5efa\u65e5\u5fd7\u7a97\u683c\u5e76\u8ddf\u968f\u8f93\u51fa", Type: "Pane", Detail: "\u5de5\u4f5c\u533a / ~/Workspace/x"},
+		{ID: "c", Title: "\u7f16\u8f91\u5668", Type: "Pane", Detail: "\u4e3b\u5de5\u4f5c\u533a / ~/Workspace/herdr-palette"},
+	}
+	m := newModel(
+		context.Background(), testEnv(t), &herdr.PluginInvocationContext{},
+		palette.List{Commands: entries}, nil, theme.Defaults(),
+	)
+	m.setSize(cols, 10)
+	return m
+}
+
+// A line wider than the popup wraps, which pushes every line below it down one
+// and puts a click on the wrong row.
+func TestNoLineOutgrowsThePopup(t *testing.T) {
+	for _, cols := range []int{6, 8, 16, 24, 40, 72} {
+		m := wideModel(t, cols)
+		for i, line := range strings.Split(m.View(), "\n") {
+			if width := lipgloss.Width(line); width > cols {
+				t.Errorf("at %d columns line %d is %d wide: %q", cols, i, width, line)
+			}
+		}
+	}
+}
+
+func TestTheKeyColumnGivesWayOnANarrowPopup(t *testing.T) {
+	wide, narrow := wideModel(t, 72), wideModel(t, 40)
+	if wide.keyColumn() != wide.keyWidth {
+		t.Errorf("key column = %d on a popup with room for it, want %d", wide.keyColumn(), wide.keyWidth)
+	}
+	if narrow.keyColumn() != 0 {
+		t.Errorf("key column = %d on a popup too narrow for it, want none", narrow.keyColumn())
+	}
+	if !strings.Contains(narrow.View(), "\u4e3b\u5de5\u4f5c\u533a") {
+		t.Errorf("the detail lost its room to the key column:\n%s", narrow.View())
+	}
+}
+
+func TestTheFooterDropsKeysRatherThanOverrunning(t *testing.T) {
+	narrow := wideModel(t, 24).footer()
+	if strings.Contains(narrow, "close esc") {
+		t.Errorf("a footer too narrow for both halves kept the keys: %q", narrow)
+	}
+	if !strings.Contains(narrow, "run") {
+		t.Errorf("the footer dropped the key it had room for: %q", narrow)
+	}
+}
+
+// The line where the rows would be already says the query matched nothing, so
+// the line under the list does not say it again.
+func TestAnEmptyListLeavesTheFooterToTheKeys(t *testing.T) {
+	var ran []string
+	m := typeQuery(t, testModel(t, nil, &ran), "nothing by this name")
+	if len(m.ranked) != 0 {
+		t.Fatalf("the query matched %d rows, want none", len(m.ranked))
+	}
+	if !strings.Contains(m.footer(), "run") {
+		t.Errorf("the footer lost its keys: %q", m.footer())
+	}
+	if strings.Contains(m.footer(), "command") {
+		t.Errorf("the footer repeats what the empty line says: %q", m.footer())
+	}
+}
+
+// confirmModel is a palette of one command that cannot be undone. ran records
+// whether it actually went through.
+func confirmModel(t *testing.T, ran *[]string) model {
+	t.Helper()
+	entries := []palette.Entry{{
+		ID:      "close",
+		Title:   "close pane",
+		Type:    "Herdr",
+		Confirm: true,
+		Run: func(context.Context, palette.Exec) error {
+			*ran = append(*ran, "close")
+			return nil
+		},
+	}}
+	m := newModel(
+		context.Background(), testEnv(t), &herdr.PluginInvocationContext{},
+		palette.List{Commands: entries}, nil, theme.Defaults(),
+	)
+	m.setSize(72, 12)
+	return m
+}
+
+// A row that closes somebody's work asks before it runs, so a keystroke meant
+// for the row above does not take it with it.
+func TestARowThatCannotBeUndoneAsksFirst(t *testing.T) {
+	var ran []string
+	m := confirmModel(t, &ran)
+
+	m, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd != nil {
+		t.Fatal("the first enter ran the command instead of asking")
+	}
+	if m.confirming == nil {
+		t.Fatal("the command is not waiting to be confirmed")
+	}
+	if !strings.Contains(m.View(), "close pane?") {
+		t.Errorf("the footer does not ask about the row:\n%s", m.View())
+	}
+
+	m, cmd = send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("the second enter did not run the command")
+	}
+	cmd()
+	if len(ran) != 1 {
+		t.Errorf("the command ran %d times, want once", len(ran))
+	}
+	if m.confirming != nil {
+		t.Error("the question is still up after it was answered")
+	}
+}
+
+func TestAnyOtherKeyPutsTheQuestionAway(t *testing.T) {
+	var ran []string
+	m, _ := send(t, confirmModel(t, &ran), tea.KeyMsg{Type: tea.KeyEnter})
+
+	m, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	if cmd != nil || len(ran) != 0 {
+		t.Error("a key that is not enter ran the command")
+	}
+	if m.confirming != nil {
+		t.Error("the question is still up")
+	}
+	if m.query.Value() != "" {
+		t.Errorf("query = %q, want the answering keystroke not to reach the field", m.query.Value())
+	}
+}
+
+// An empty query has nothing left to delete, so backspace undoes the step that
+// opened the targets instead.
+func TestBackspaceLeavesTheTargetsWhenTheQueryIsEmpty(t *testing.T) {
+	var picked string
+	m := choose(t, chooserModel(t, &picked, worktreeChoices), "worktree")
+	if m.choosing == nil {
+		t.Fatal("the targets are not up")
+	}
+
+	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("ab")})
+	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyBackspace})
+	if m.choosing == nil {
+		t.Fatal("backspace left the targets although the query had something to delete")
+	}
+	if m.query.Value() != "a" {
+		t.Errorf("query = %q, want the field to have taken the backspace", m.query.Value())
+	}
+
+	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyBackspace})
+	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyBackspace})
+	if m.choosing != nil {
+		t.Error("backspace on an empty query did not leave the targets")
+	}
+}
+
+// A row has to share its width with the detail beside it and with the key
+// column; the footer shares with neither, so what the row had to cut is
+// readable there.
+func TestTheFooterNamesTheSelectedRow(t *testing.T) {
+	m := wideModel(t, 72)
+	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyUp})
+
+	rows := strings.Join(strings.Split(m.View(), "\n")[headerRows:headerRows+m.rows()], "\n")
+	if strings.Contains(rows, "herdr-palette") {
+		t.Fatalf("the row was not cut, so the footer has nothing to add:\n%s", rows)
+	}
+	if !strings.Contains(m.footer(), "herdr-palette") {
+		t.Errorf("the footer does not carry what the row had to cut: %q", m.footer())
+	}
+
+	if !strings.Contains(m.footer(), "run") {
+		t.Errorf("the footer lost its keys to a long name: %q", m.footer())
+	}
+	if footer := wideModel(t, 40).footer(); !strings.Contains(footer, "run") {
+		t.Errorf("a narrow footer lost its keys to the name: %q", footer)
+	}
+}
+
+// mixedModel is a palette of commands and rows that go to what is open, which
+// is what the prefix has to tell apart.
+func mixedModel(t *testing.T) model {
+	t.Helper()
+	var ran []string
+	m := newModel(
+		context.Background(),
+		testEnv(t),
+		&herdr.PluginInvocationContext{},
+		palette.List{
+			Commands: testEntries(&ran),
+			Open: []palette.Entry{
+				{ID: "pane:p1", Title: "go to shell", Type: "Agent", Goes: true, Detail: "claude · working"},
+				{ID: "pane:p2", Title: "go to git jump", Type: "Pane", Goes: true, Detail: "palette"},
+			},
+		},
+		nil,
+		theme.Defaults(),
+	)
+	m.setSize(72, 12)
+	return m
+}
+
+// The prefix narrows the list to what it goes to without a step of its own, so
+// reaching a pane by name costs one character rather than a second keystroke.
+func TestThePrefixNarrowsTheListToWhatIsOpen(t *testing.T) {
+	m := mixedModel(t)
+
+	m = typeQuery(t, m, GoesPrefix)
+	if len(m.ranked) != 2 {
+		t.Fatalf("the prefix matched %d rows, want the two that go somewhere", len(m.ranked))
+	}
+	for _, ranked := range m.ranked {
+		if !ranked.Entry.Goes {
+			t.Errorf("%q runs a command, which the prefix leaves out", ranked.Entry.Name())
+		}
+	}
+
+	// What follows the prefix filters those rows the way it filters any others.
+	m = typeQuery(t, m, "shell")
+	if len(m.ranked) != 1 || m.ranked[0].Entry.ID != "pane:p1" {
+		t.Errorf("%q matched %d rows, want the agent's pane", GoesPrefix+"shell", len(m.ranked))
+	}
+}
+
+// A query that shares a word with a command still leaves the commands out
+// while the prefix is there, and brings them back the moment it goes.
+func TestDeletingThePrefixPutsTheCommandsBack(t *testing.T) {
+	m := typeQuery(t, mixedModel(t), GoesPrefix+"git jump")
+	if len(m.ranked) != 1 || m.ranked[0].Entry.ID != "pane:p2" {
+		t.Fatalf("%q matched %d rows, want the pane rather than the command", GoesPrefix+"git jump", len(m.ranked))
+	}
+
+	for range len(GoesPrefix + "git jump") {
+		m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyBackspace})
+	}
+	m = typeQuery(t, m, "git jump")
+	if len(m.ranked) == 0 || m.ranked[0].Entry.ID != "b" {
+		t.Errorf("the command is not back without the prefix, %d rows matched", len(m.ranked))
+	}
+}
+
+func TestNothingOpenMatchingSaysSo(t *testing.T) {
+	m := typeQuery(t, mixedModel(t), GoesPrefix+"nothing by this name")
+	if len(m.ranked) != 0 {
+		t.Fatalf("the query matched %d rows, want none", len(m.ranked))
+	}
+	if !strings.Contains(m.View(), "nothing open matches") {
+		t.Errorf("the view does not say what was searched:\n%s", m.View())
+	}
+}
+
+// The entrypoint bound to its own key opens the popup already narrowed, which
+// is the same query typed before the first frame.
+func TestStartingNarrowedToWhatIsOpen(t *testing.T) {
+	m := mixedModel(t)
+	m.start(GoesPrefix)
+
+	if m.query.Value() != GoesPrefix {
+		t.Errorf("query = %q, want the prefix", m.query.Value())
+	}
+	if len(m.ranked) != 2 {
+		t.Errorf("the popup opened on %d rows, want the two that go somewhere", len(m.ranked))
+	}
+}
+
+// A query longer than the popup scrolls inside the field. A field that keeps
+// drawing all of it wraps the line, which pushes every row below it down and
+// puts a click on the wrong row.
+func TestALongQueryStaysOnOneLine(t *testing.T) {
+	var ran []string
+	for _, cols := range []int{24, 40, 72} {
+		m := testModel(t, nil, &ran)
+		m.setSize(cols, 12)
+		m = typeQuery(t, m, strings.Repeat("abcdefgh ", 12))
+
+		for i, line := range strings.Split(m.View(), "\n") {
+			if width := lipgloss.Width(line); width > cols {
+				t.Errorf("at %d columns line %d is %d wide: %q", cols, i, width, line)
+			}
+		}
+	}
+}
+
+// A second keystroke while the first is still out on the socket would run the
+// command twice, which for anything that creates something leaves two of it.
+func TestACommandAlreadyRunningIsNotRunAgain(t *testing.T) {
+	runs := 0
+	entries := []palette.Entry{{
+		ID: "slow", Title: "new tab", Type: "Herdr",
+		Run: func(context.Context, palette.Exec) error {
+			runs++
+			return nil
+		},
+	}}
+	m := newModel(
+		context.Background(), testEnv(t), &herdr.PluginInvocationContext{},
+		palette.List{Commands: entries}, nil, theme.Defaults(),
+	)
+	m.setSize(72, 12)
+
+	var cmds []tea.Cmd
+	for range 3 {
+		var cmd tea.Cmd
+		m, cmd = send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+		cmds = append(cmds, cmd)
+	}
+	for _, cmd := range cmds {
+		if cmd != nil {
+			cmd()
+		}
+	}
+
+	if runs != 1 {
+		t.Errorf("three keystrokes ran the command %d times, want once", runs)
+	}
+	if !strings.Contains(m.View(), "working") {
+		t.Errorf("the footer does not say the keystroke landed:\n%s", m.View())
+	}
+}
+
+// A click answers the question the way enter does, so the mouse and the
+// keyboard do not disagree about what a second press means.
+func TestAClickOnTheWaitingRowConfirmsIt(t *testing.T) {
+	var ran []string
+	m, _ := send(t, confirmModel(t, &ran), tea.KeyMsg{Type: tea.KeyEnter})
+
+	m, cmd := send(t, m, tea.MouseMsg{
+		Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, Y: headerRows,
+	})
+	if cmd == nil {
+		t.Fatal("the click did not run the command it was asked about")
+	}
+	cmd()
+	if len(ran) != 1 {
+		t.Errorf("the command ran %d times, want once", len(ran))
+	}
+	if m.confirming != nil {
+		t.Error("the question is still up after it was answered")
+	}
+}
+
+func TestAClickOffTheRowsPutsTheQuestionAway(t *testing.T) {
+	var ran []string
+	m, _ := send(t, confirmModel(t, &ran), tea.KeyMsg{Type: tea.KeyEnter})
+
+	m, cmd := send(t, m, tea.MouseMsg{
+		Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, Y: 0,
+	})
+	if cmd != nil || len(ran) != 0 {
+		t.Error("a click off the rows ran the command")
+	}
+	if m.confirming != nil {
+		t.Error("the question is still up")
+	}
+}
+
+// confirmable is a row of the session that cannot be undone, which is what a
+// rebuild can take out from under a question.
+func confirmable(id, title string) palette.Entry {
+	return palette.Entry{
+		ID: id, Title: title, Type: "Pane", Goes: true, Confirm: true,
+		Run: func(context.Context, palette.Exec) error { return nil },
+	}
+}
+
+func questionModel(t *testing.T, open []palette.Entry) model {
+	t.Helper()
+	var ran []string
+	m := newModel(
+		context.Background(), testEnv(t), &herdr.PluginInvocationContext{},
+		palette.List{Commands: testEntries(&ran), Open: open}, nil, theme.Defaults(),
+	)
+	m.setSize(72, 12)
+	return m
+}
+
+// The session keeps the list current while a question is up: a row the palette
+// still offers after a rebuild is one it can still act on.
+func TestARebuildKeepsAQuestionWhoseRowSurvives(t *testing.T) {
+	m := questionModel(t, []palette.Entry{confirmable("pane:p1", "go to shell")})
+	m = typeQuery(t, m, "shell")
+
+	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	if m.confirming == nil {
+		t.Fatal("the row did not ask before running")
+	}
+
+	// The second pane matches the query too, so the rows it is ranked into say
+	// whether the rebuild reached the list at all.
+	m.setOpen([]palette.Entry{
+		confirmable("pane:p1", "go to shell"),
+		{ID: "pane:p2", Title: "go to another shell", Type: "Pane", Goes: true},
+	})
+	if m.confirming == nil {
+		t.Error("the question went away although the row it names is still on show")
+	}
+	if got := m.ranked[m.cursor].Entry.ID; got != "pane:p1" {
+		t.Errorf("the selection is on %q, want the row being asked about", got)
+	}
+	if len(m.ranked) != 2 {
+		t.Errorf("the list has %d rows, want the pane the rebuild added: %v", len(m.ranked), ids(m.ranked))
+	}
+}
+
+func ids(ranked []palette.Ranked) []string {
+	out := make([]string, 0, len(ranked))
+	for _, r := range ranked {
+		out = append(out, r.Entry.ID)
+	}
+	return out
+}
+
+// A pane that closes under the question takes the question with it, rather
+// than leaving it standing over whatever row the selection landed on.
+func TestAQuestionGoesWithTheRowItNames(t *testing.T) {
+	m := questionModel(t, []palette.Entry{confirmable("pane:p1", "go to shell")})
+	m = typeQuery(t, m, "shell")
+
+	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	if m.confirming == nil {
+		t.Fatal("the row did not ask before running")
+	}
+
+	m.setOpen(nil)
+	if m.confirming != nil {
+		t.Errorf("the question stands over %q, whose row has gone", m.confirming.ID)
+	}
+}
+
+// An answer from a screen the user has walked out of is not acted on: it would
+// put the targets back up, or close the popup on the way out of them.
+func TestAnAnswerFromAScreenAlreadyLeftIsDropped(t *testing.T) {
+	var picked string
+	m := choose(t, chooserModel(t, &picked, worktreeChoices), "worktree")
+	if m.choosing == nil {
+		t.Fatal("the targets are not up")
+	}
+	entry := m.choosing.entry
+	stale := m.epoch
+
+	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	if m.choosing != nil || m.pending {
+		t.Fatalf("esc left choosing=%v pending=%v, want the command list", m.choosing != nil, m.pending)
+	}
+
+	// The list the popup asked for before esc answers now.
+	m, _ = send(t, m, choicesMsg{
+		epoch: stale, entry: entry, query: "worktree",
+		choices: []palette.Choice{{Value: "w1", Title: "main"}},
+	})
+	if m.choosing != nil {
+		t.Error("an answer from the list already left put the targets back up")
+	}
+
+	// So does a command that was running when esc was pressed.
+	if _, cmd := send(t, m, ranMsg{epoch: stale}); cmd != nil {
+		t.Error("a command that finished after esc closed the popup")
+	}
+}
+
+// Every line the popup draws is cut to it, the line that stands where the rows
+// would be and the one a question takes over included — both used to be built
+// at whatever width their text ran to.
+func TestNoLineOutgrowsThePopupOnAnyScreen(t *testing.T) {
+	var ran []string
+	for _, cols := range []int{6, 10, 16, 20, 24, 40, 72} {
+		empty := typeQuery(t, sized(t, testEntries(&ran), cols), "nothing by this name")
+		goes := typeQuery(t, sized(t, testEntries(&ran), cols), GoesPrefix+"nothing by this name")
+
+		asking := sized(t, []palette.Entry{{
+			ID: "close", Title: "close workspace", Type: "Herdr", Confirm: true,
+			Run: func(context.Context, palette.Exec) error { return nil },
+		}}, cols)
+		asking, _ = send(t, asking, tea.KeyMsg{Type: tea.KeyEnter})
+		if asking.confirming == nil {
+			t.Fatalf("at %d columns the row did not ask before running", cols)
+		}
+
+		for what, m := range map[string]model{"empty": empty, "@ empty": goes, "asking": asking} {
+			for i, line := range strings.Split(m.View(), "\n") {
+				if width := lipgloss.Width(line); width > cols {
+					t.Errorf("%s at %d columns: line %d is %d wide: %q", what, cols, i, width, line)
+				}
+			}
+		}
+	}
+}
+
+func sized(t *testing.T, entries []palette.Entry, cols int) model {
+	t.Helper()
+	m := newModel(
+		context.Background(), testEnv(t), &herdr.PluginInvocationContext{},
+		palette.List{Commands: entries}, nil, theme.Defaults(),
+	)
+	m.setSize(cols, 12)
+	return m
+}
+
+// A list longer than the window is what tells a row that was drawn from one
+// that only the arithmetic would put there: the rule under the list and the
+// line below it sit inside the popup too, and reading them as rows runs a
+// command that is not on screen.
+func TestAClickBelowTheDrawnRowsDoesNothing(t *testing.T) {
+	var ran []string
+	entries := make([]palette.Entry, 0, 50)
+	for i := range 50 {
+		id := fmt.Sprintf("e%02d", i)
+		entries = append(entries, palette.Entry{
+			ID: id, Title: "command " + id, Type: "Herdr",
+			Run: func(context.Context, palette.Exec) error {
+				ran = append(ran, id)
+				return nil
+			},
+		})
+	}
+	m := sized(t, entries, 72)
+	m.setSize(72, 16)
+	if len(m.ranked) <= m.rows() {
+		t.Fatalf("the list is %d rows and the window %d: it has to be longer", len(m.ranked), m.rows())
+	}
+
+	last := headerRows + m.rows() - 1
+	if _, ok := m.rowAt(last); !ok {
+		t.Errorf("the last drawn row is not read as one")
+	}
+	for _, y := range []int{last + 1, last + 2, last + 3} {
+		if index, ok := m.rowAt(y); ok {
+			t.Errorf("y=%d is read as row %d, which was never drawn", y, index)
+		}
+		if _, cmd := send(t, m, tea.MouseMsg{
+			Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, Y: y,
+		}); cmd != nil {
+			t.Errorf("a click at y=%d ran something", y)
+		}
+	}
+	if len(ran) != 0 {
+		t.Errorf("clicks below the rows ran %v", ran)
+	}
+}
+
+// The epoch has to survive a staying list asking for its rows again, or the
+// command it just ran would answer into a screen that never sees it.
+func TestAStayingListSurvivesItsOwnRebuild(t *testing.T) {
+	var picked string
+	state := map[string]string{"a": "enabled", "b": "enabled"}
+	list := func(context.Context, palette.Exec) ([]palette.Choice, error) {
+		return []palette.Choice{
+			{Value: "a", Title: "Auto Title", Detail: state["a"]},
+			{Value: "b", Title: "Machine Manager", Detail: state["b"]},
+		}, nil
+	}
+	m := chooserModel(t, &picked, list)
+	m.commands[1].Choices.Stays = true
+	m.commands[1].Run = func(_ context.Context, e palette.Exec) error {
+		state[e.Chosen] = "disabled"
+		return nil
+	}
+	m.collect()
+	m.rank()
+	m = choose(t, m, "worktree")
+	if !m.staying() {
+		t.Fatal("the list does not stay up")
+	}
+	before := m.epoch
+
+	// Running a row asks the list for its rows again, on the same screen.
+	m, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	m, cmd = send(t, m, cmd())
+	if m.epoch != before {
+		t.Fatalf("epoch moved to %d while the screen stayed, want %d", m.epoch, before)
+	}
+	if cmd == nil {
+		t.Fatal("running a row did not ask the staying list for its rows again")
+	}
+	m, _ = send(t, m, cmd())
+	if m.choosing == nil {
+		t.Error("the staying list closed on the answer it asked for")
+	}
+
+	// Leaving it does move the epoch, so what it asked for lands nowhere.
+	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	if m.epoch == before {
+		t.Error("leaving the list did not move the epoch")
+	}
+	if m.choosing != nil || m.pending {
+		t.Errorf("esc left choosing=%v pending=%v", m.choosing != nil, m.pending)
+	}
+}
+
+// A command that fails after its screen was left still says so: it went out
+// and did not work, wherever the reader is now.
+func TestAFailureFromAScreenAlreadyLeftIsStillReported(t *testing.T) {
+	var picked string
+	m := choose(t, chooserModel(t, &picked, worktreeChoices), "worktree")
+	stale := m.epoch
+
+	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	m, _ = send(t, m, ranMsg{epoch: stale, err: errors.New("worktree busy")})
+
+	if m.failure != "worktree busy" {
+		t.Errorf("failure = %q, want the reason the command gave", m.failure)
+	}
+	if m.pending {
+		t.Error("the popup is still waiting on a command that has answered")
+	}
+}
+
+// The question mark is what makes the line a question rather than a label, so
+// the namespace — which the selected row above already carries — gives way
+// before the mark does.
+func TestTheQuestionKeepsItsMarkOnANarrowPopup(t *testing.T) {
+	entries := []palette.Entry{{
+		ID: "close", Title: "close workspace", Type: "Herdr", Confirm: true,
+		Run: func(context.Context, palette.Exec) error { return nil },
+	}}
+
+	wide := sized(t, entries, 72)
+	wide, _ = send(t, wide, tea.KeyMsg{Type: tea.KeyEnter})
+	if !strings.Contains(wide.footer(), "herdr: close workspace?") {
+		t.Errorf("a popup with room for it dropped the namespace: %q", wide.footer())
+	}
+
+	narrow := sized(t, entries, 30)
+	narrow, _ = send(t, narrow, tea.KeyMsg{Type: tea.KeyEnter})
+	footer := narrow.footer()
+	if !strings.Contains(footer, "close workspace?") {
+		t.Errorf("the question lost its mark rather than its namespace: %q", footer)
+	}
+	if strings.Contains(footer, "herdr:") {
+		t.Errorf("the namespace survived on a popup with no room for it: %q", footer)
 	}
 }

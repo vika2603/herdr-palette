@@ -62,6 +62,7 @@ func sessionEntries(snapshot herdr.SessionSnapshot) []Entry {
 			ID:    "workspace:" + id,
 			Title: goTo + Label(workspace.Label, "workspace", workspace.Number),
 			Type:  TypeWorkspace,
+			Goes:  true,
 			Run: func(ctx context.Context, e Exec) error {
 				_, err := e.Client.WorkspaceFocus(ctx, herdr.WorkspaceTarget{WorkspaceID: id})
 				return err
@@ -78,6 +79,7 @@ func sessionEntries(snapshot herdr.SessionSnapshot) []Entry {
 			ID:     "tab:" + id,
 			Title:  goTo + Label(tab.Label, "tab", tab.Number),
 			Type:   TypeTab,
+			Goes:   true,
 			Detail: workspaces[tab.WorkspaceID],
 			Run: func(ctx context.Context, e Exec) error {
 				_, err := e.Client.TabFocus(ctx, herdr.TabTarget{TabID: id})
@@ -95,6 +97,7 @@ func sessionEntries(snapshot herdr.SessionSnapshot) []Entry {
 			ID:     "pane:" + id,
 			Title:  goTo + paneLabel(pane),
 			Type:   paneType(pane),
+			Goes:   true,
 			Detail: paneDetail(pane, agents[pane.PaneID], workspaces[pane.WorkspaceID]),
 			Status: paneStatus(pane),
 			// The row says where it goes, not where it is, so the directory is

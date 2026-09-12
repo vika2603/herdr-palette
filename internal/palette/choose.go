@@ -45,6 +45,7 @@ func ChoiceEntries(entry Entry, choices []Choice) []Entry {
 			Status:      choice.Status,
 			Search:      choice.Search,
 			Chosen:      choice.Value,
+			Confirm:     entry.Confirm,
 			AlwaysRelay: entry.AlwaysRelay,
 			// An entry that asks for a value as well collects it once its
 			// target is picked, so the row carries the field with it.

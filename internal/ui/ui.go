@@ -22,6 +22,9 @@ func Run(ctx context.Context, env *plugin.Env, list palette.List, loadErr error,
 	list.Commands = applicable(list.Commands, invocation)
 
 	m := newModel(ctx, env, invocation, list, palette.ReadRecent(env), colours)
+	if os.Getenv(palette.GoesEnv) != "" {
+		m.start(GoesPrefix)
+	}
 	if loadErr != nil {
 		m.failure = loadErr.Error()
 	}
@@ -30,9 +33,14 @@ func Run(ctx context.Context, env *plugin.Env, list palette.List, loadErr error,
 	// so there is no scrollback to protect, and staying on the main screen
 	// keeps the view readable to pane.read.
 	//
-	// Cell motion reports clicks and the wheel. herdr forwards mouse events to
-	// a pane app that asks for them, so the popup gets them even while herdr's
-	// own mouse capture is on.
+	// Cell motion reports clicks and the wheel, and the pointer only while a
+	// button is down. That is what the popup wants: the selection is the
+	// keyboard's, and a mode that reports the bare pointer would let a touch
+	// of the trackpad carry it to whatever row the pointer happens to rest
+	// on — the next enter would then run that row instead of the one being
+	// read. A click names its own row, so nothing is lost by not following
+	// the pointer. herdr forwards mouse events to a pane app that asks for
+	// them, so the popup gets them even while herdr's own mouse capture is on.
 	//
 	// The renderer writes a frame on its own ticker, so the first frame waits
 	// out one interval before the popup shows anything. The palette is up for

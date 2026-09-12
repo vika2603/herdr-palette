@@ -62,6 +62,14 @@ type Entry struct {
 	// selected, the way a plugin action declaring the selection context is
 	// only meaningful with one.
 	NeedsSelection bool
+	// Goes marks a row that focuses something already open rather than running
+	// a command. The query prefix that narrows the list to them is what reads
+	// it.
+	Goes bool
+	// Confirm marks an entry that cannot be undone: the palette asks before
+	// running it, so neither a keystroke meant for the row above nor a click
+	// on a row that moved closes somebody's work.
+	Confirm bool
 	// AlwaysRelay marks an entry whose refusal never reaches the palette, so
 	// it is handed to an entrypoint outside the popup without trying first.
 	// Everything else is tried, and relayed only if herdr answers ui_busy.
@@ -116,3 +124,9 @@ const TypeCustom = "Command"
 // ContextEnv is the environment variable the action entrypoint uses to pass
 // its invocation context to the popup pane it opens.
 const ContextEnv = "HERDR_PALETTE_CONTEXT"
+
+// GoesEnv is set on the popup opened by the action that goes straight to what
+// is open, which is the same popup with its query already narrowed to those
+// rows. A key bound to it reaches a pane by name without the commands in the
+// way; the palette's own key still opens everything.
+const GoesEnv = "HERDR_PALETTE_GOES"

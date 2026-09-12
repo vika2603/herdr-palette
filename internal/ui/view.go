@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/vika2603/herdr-palette/internal/palette"
 	"github.com/vika2603/herdr-palette/internal/theme"
@@ -14,12 +15,13 @@ import (
 // carry the background themselves: a style wrapped around text that already
 // contains escape sequences would be cut short by the first reset inside it.
 type styles struct {
-	title lipgloss.Style
-	meta  lipgloss.Style
-	match lipgloss.Style
-	rule  lipgloss.Style
-	thumb lipgloss.Style
-	fail  lipgloss.Style
+	title  lipgloss.Style
+	meta   lipgloss.Style
+	match  lipgloss.Style
+	rule   lipgloss.Style
+	thumb  lipgloss.Style
+	fail   lipgloss.Style
+	prompt lipgloss.Style
 
 	selected      lipgloss.Style
 	selectedMeta  lipgloss.Style
@@ -34,16 +36,20 @@ type styles struct {
 func newStyles(colours theme.Theme) styles {
 	selected := lipgloss.NewStyle().Background(colours.Selected)
 	return styles{
-		title: lipgloss.NewStyle(),
-		meta:  lipgloss.NewStyle().Foreground(colours.Meta),
-		match: lipgloss.NewStyle().Foreground(colours.Match).Bold(true),
-		rule:  lipgloss.NewStyle().Foreground(colours.Rule),
-		thumb: lipgloss.NewStyle().Foreground(colours.Scrollbar),
-		fail:  lipgloss.NewStyle().Foreground(colours.Failure),
+		title:  lipgloss.NewStyle(),
+		meta:   lipgloss.NewStyle().Foreground(colours.Meta),
+		match:  lipgloss.NewStyle().Foreground(colours.Match).Bold(true),
+		rule:   lipgloss.NewStyle().Foreground(colours.Rule),
+		thumb:  lipgloss.NewStyle().Foreground(colours.Scrollbar),
+		fail:   lipgloss.NewStyle().Foreground(colours.Failure),
+		prompt: lipgloss.NewStyle().Foreground(colours.Match),
 
-		selected:      selected.Bold(true),
-		selectedMeta:  selected.Foreground(colours.Meta),
-		selectedMatch: selected.Foreground(colours.Match).Bold(true),
+		selected:     selected.Bold(true),
+		selectedMeta: selected.Foreground(colours.Meta),
+		// Underlined as well as coloured: the band behind the selected row
+		// and the query's letters are separate colours that a terminal with
+		// no room for both may round to the same one.
+		selectedMatch: selected.Foreground(colours.Match).Bold(true).Underline(true),
 
 		status:         statusStyles(colours, lipgloss.NewStyle()),
 		selectedStatus: statusStyles(colours, selected),
@@ -77,6 +83,12 @@ const (
 	defaultRows = 12
 )
 
+// minCols is the narrowest a row can be drawn in: the marker, one column of
+// title, the padding on both sides and the scrollbar. Below it a row cannot be
+// built at all, so the rows are drawn to this width and the popup is the one
+// that does not fit them, rather than the arithmetic coming apart.
+const minCols = 6
+
 // searchPlaceholder stands in the empty query line. A list of targets says
 // what it is collecting there instead.
 const searchPlaceholder = "Search commands"
@@ -97,13 +109,25 @@ const (
 	// comes first, and a couple of letters of context explain nothing.
 	detailShare = 3
 	minDetail   = 10
+	// minContent is what a row keeps for what it is and the detail beside it
+	// before the key column is worth its width: a title of the length these
+	// commands run to, and the least detail worth drawing. Below it the key
+	// column is left out rather than shortened, since half a key names
+	// nothing, and what an agent is doing is worth more than the key beside
+	// a command.
+	minContent = 34
 )
+
+// selectionMarker stands in the leading column of the selected row. The band
+// behind the row says the same thing, but the marker survives a terminal or a
+// theme that draws no background.
+const selectionMarker = "\u258e"
 
 func (m model) cols() int {
 	if m.width <= 0 {
 		return defaultCols
 	}
-	return m.width
+	return max(m.width, minCols)
 }
 
 // rows is how many commands fit under the query line.
@@ -125,7 +149,7 @@ func (m model) listView() string {
 
 	rows := m.rows()
 	if len(m.ranked) == 0 {
-		lines = append(lines, m.styles.meta.Render(m.empty()))
+		lines = append(lines, m.styles.meta.Render(truncate(m.empty(), m.cols())))
 		rows--
 	}
 	for i := m.offset; i < len(m.ranked) && i < m.offset+rows; i++ {
@@ -144,16 +168,17 @@ func (m model) row(index int) string {
 	selected := index == m.cursor
 
 	text, meta := m.styles.title, m.styles.meta
+	marker := " "
 	if selected {
 		text, meta = m.styles.selected, m.styles.selectedMeta
+		marker = selectionMarker
 	}
 
 	// The key column is right-aligned, so the rows end on a straight edge
-	// whatever the keys are, and it is there at all only when something on
-	// show is bound to one.
+	// whatever the keys are.
 	key := ""
-	if m.keyWidth > 0 {
-		key = fmt.Sprintf("%*s", m.keyWidth, ranked.Entry.Key)
+	if width := m.keyColumn(); width > 0 {
+		key = fmt.Sprintf("%*s", width, ranked.Entry.Key)
 	}
 
 	// The row is what the query is answered with, so it is measured first and
@@ -167,9 +192,19 @@ func (m model) row(index int) string {
 	rendered := m.highlight(name, namespace, ranked.Matched, selected)
 	gap := max(m.cols()-margins-lipgloss.Width(rendered)-detailWidth-lipgloss.Width(key), 1)
 
-	row := text.Render(" ") + rendered + text.Render(strings.Repeat(" ", gap)) +
+	row := text.Render(marker) + rendered + text.Render(strings.Repeat(" ", gap)) +
 		detail + meta.Render(key) + text.Render(" ")
 	return row + " " + m.scrollbar(index-m.offset)
+}
+
+// keyColumn is how wide the key column is drawn, zero where it is left out:
+// nothing on show is bound to a key, or the widest key would leave the rows
+// too little for what they are and the detail beside them.
+func (m model) keyColumn() int {
+	if m.keyWidth == 0 || m.cols()-margins-2-m.keyWidth < minContent {
+		return 0
+	}
+	return m.keyWidth
 }
 
 // detail draws what a row carries beside its title: what an agent is doing,
@@ -283,8 +318,11 @@ func (m model) rule() string {
 // empty is the line that stands where the rows would be when the query leaves
 // none: what was searched is what it names.
 func (m model) empty() string {
-	if m.choosing != nil {
+	switch {
+	case m.choosing != nil:
 		return " no match"
+	case strings.HasPrefix(m.query.Value(), GoesPrefix):
+		return " nothing open matches"
 	}
 	return " no command matches"
 }
@@ -297,7 +335,37 @@ func (m model) footer() string {
 		return m.styles.fail.Render(truncate(m.failure, m.cols()))
 	}
 
-	left, act, back := fmt.Sprintf(" %d commands", len(m.ranked)), "run ⏎", "close esc"
+	// A row that cannot be undone takes the whole line: what it is about to do
+	// is the only thing the next keystroke decides.
+	if m.confirming != nil {
+		question := " " + m.confirming.Name() + "?"
+		if chosen := m.confirming.Chosen; chosen != "" {
+			question = " " + m.confirming.Title + "?"
+		}
+		// The keys give way the way the rest of the line's do, and the
+		// question is what is left the room: which row is being asked about is
+		// already the selected one above.
+		keys := m.styles.meta.Render("run ⏎") + m.styles.rule.Render("  ·  ") +
+			m.styles.meta.Render("cancel any key")
+		if !m.fits(keys) {
+			keys = m.styles.meta.Render("run ⏎")
+		}
+		if !m.fits(keys) {
+			keys = ""
+		}
+		room := max(m.cols()-lipgloss.Width(keys)-2, 1)
+		// The namespace repeats what the selected row above already says, and
+		// the question mark is what makes the line a question rather than a
+		// label, so the namespace goes before the mark does.
+		if lipgloss.Width(question) > room {
+			question = " " + m.confirming.Title + "?"
+		}
+		question = truncate(question, room)
+		gap := max(m.cols()-lipgloss.Width(question)-lipgloss.Width(keys)-1, 1)
+		return m.styles.fail.Render(question) + strings.Repeat(" ", gap) + keys + " "
+	}
+
+	left, act, back := m.selectedName(), "run ⏎", "close esc"
 	if m.choosing != nil {
 		// The command the targets belong to is no longer on the list, so the
 		// footer is where it stays legible.
@@ -306,24 +374,63 @@ func (m model) footer() string {
 	if m.staying() {
 		act = "toggle ⇥"
 	}
+	if m.pending {
+		// What the keystroke asked for is still out on the socket. Knowing it
+		// landed is worth more for the moment than what is selected.
+		left = " working…"
+	}
 
-	rendered := m.styles.meta.Render(left)
+	// What is on the left gives way first, since it is also on show in the
+	// list; the keys are dropped one at a time only once the line is too
+	// narrow to leave the left anything worth reading.
 	right := m.styles.meta.Render(act) + m.styles.rule.Render("  ·  ") + m.styles.meta.Render(back)
+	if !m.fits(right) {
+		right = m.styles.meta.Render(act)
+	}
+	if !m.fits(right) {
+		right = ""
+	}
+
+	left = truncate(left, max(m.cols()-lipgloss.Width(right)-2, 1))
+	rendered := m.styles.meta.Render(left)
 	gap := max(m.cols()-lipgloss.Width(rendered)-lipgloss.Width(right)-1, 1)
 
 	return rendered + strings.Repeat(" ", gap) + right + " "
 }
 
+// minName is what the left of the footer is worth keeping: enough for a row
+// count, or for the first word of what is selected.
+const minName = 10
+
+// fits reports whether the keys stand on the footer with room left for what is
+// on the left of it, a column between them and one at the right edge.
+func (m model) fits(right string) bool {
+	return lipgloss.Width(right)+minName+2 <= m.cols()
+}
+
+// selectedName is the selected row in full, which is what a row too narrow for
+// its own title cannot show. An empty list leaves it blank: the line where the
+// rows would be already says the query matched nothing.
+func (m model) selectedName() string {
+	if m.cursor >= len(m.ranked) {
+		return ""
+	}
+	ranked := m.ranked[m.cursor]
+	name := " " + ranked.Entry.Name()
+	if ranked.Detail != "" {
+		name += "  " + ranked.Detail
+	}
+	return name
+}
+
+// truncate cuts text to fit width columns. Width is counted in terminal cells
+// rather than in runes: the row's budget is the popup's own columns, and a
+// wide character such as a CJK ideograph or an emoji takes two of them. A row
+// measured in runes overruns the popup and wraps, which pushes every row below
+// it down a line.
 func truncate(text string, width int) string {
 	if width < 1 {
 		width = 1
 	}
-	runes := []rune(text)
-	if len(runes) <= width {
-		return text
-	}
-	if width == 1 {
-		return "…"
-	}
-	return string(runes[:width-1]) + "…"
+	return ansi.Truncate(text, width, "…")
 }

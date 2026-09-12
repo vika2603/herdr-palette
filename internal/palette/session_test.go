@@ -64,6 +64,17 @@ func TestAPaneRunningAnAgentSaysWhatItIsDoing(t *testing.T) {
 	}
 }
 
+// The query prefix that leaves the commands out ranks the rows that carry
+// Goes, so a row the session put in the list without it cannot be reached
+// that way.
+func TestEveryRowOfTheSessionGoesSomewhere(t *testing.T) {
+	for _, entry := range sessionEntries(agentSnapshot()) {
+		if !entry.Goes {
+			t.Errorf("%q does not say it goes somewhere", entry.Name())
+		}
+	}
+}
+
 // The status is drawn next to the row, so it is searched with it.
 func TestAnAgentIsFoundByItsStatus(t *testing.T) {
 	ranked := Rank(sessionEntries(agentSnapshot()), "working", nil)

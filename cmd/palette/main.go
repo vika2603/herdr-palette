@@ -23,13 +23,14 @@ import (
 
 // Entrypoint ids herdr-plugin.toml declares.
 const (
-	panePalette = "palette"
-	paneRun     = palette.RunEntrypoint
-	paneInput   = palette.InputEntrypoint
-	actionOpen  = "open"
-	actionGoto  = "goto"
-	actionBack  = "back"
-	actionExec  = palette.ExecAction
+	panePalette  = "palette"
+	paneRun      = palette.RunEntrypoint
+	paneInput    = palette.InputEntrypoint
+	actionOpen   = "open"
+	actionGoto   = "goto"
+	actionToggle = "toggle"
+	actionBack   = "back"
+	actionExec   = palette.ExecAction
 )
 
 func main() {
@@ -43,6 +44,10 @@ func newPlugin() *plugin.Plugin {
 	p := plugin.New()
 	p.Action(actionOpen, onOpen)
 	p.Action(actionGoto, onGoto)
+	// toggle opens the popup the way open does. herdr hands every key to a
+	// popup while one is up, so the closing half runs inside it: the popup
+	// quits when the key bound to toggle arrives there.
+	p.Action(actionToggle, onOpen)
 	p.Action(actionBack, onBack)
 	p.Action(actionExec, onExec)
 	p.Pane(panePalette, onPalette)
@@ -168,5 +173,9 @@ func onPalette(ctx context.Context, env *plugin.Env) error {
 	cfg := keys.Load(env.BinPath)
 	own := settings.Load(env)
 	list, loadErr := entries(ctx, env, cfg)
-	return ui.Run(ctx, env, list, loadErr, theme.Load(cfg.Theme, own.Theme))
+	toggle := ui.Toggle{
+		Binding: cfg.Plugin[keys.PluginBinding(env.PluginID, actionToggle)],
+		Prefix:  cfg.Prefix,
+	}
+	return ui.Run(ctx, env, list, loadErr, theme.Load(cfg.Theme, own.Theme), toggle)
 }

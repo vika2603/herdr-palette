@@ -54,6 +54,7 @@ func testModel(t *testing.T, recent []string, ran *[]string) model {
 		palette.List{Commands: testEntries(ran)},
 		recent,
 		theme.Defaults(),
+		Toggle{},
 	)
 	m.setSize(72, 12)
 	return m
@@ -155,6 +156,7 @@ func TestAnEntryThatNeedsAValueIsHandedOverToTheField(t *testing.T) {
 		palette.List{Commands: testEntries(&ran)},
 		nil,
 		theme.Defaults(),
+		Toggle{},
 	)
 	m.setSize(72, 12)
 	m = typeQuery(t, m, "rename")
@@ -265,6 +267,30 @@ func TestEscClosesThePopup(t *testing.T) {
 	}
 }
 
+func TestTheToggleKeyClosesThePopup(t *testing.T) {
+	var ran []string
+	m := testModel(t, nil, &ran)
+	m.closer = newCloser(Toggle{Binding: "alt+space"})
+
+	if _, cmd := send(t, m, tea.KeyMsg{Type: tea.KeySpace, Alt: true}); cmd == nil {
+		t.Error("the toggle key did not close the popup")
+	}
+}
+
+func TestAToggleChordClosesThePopup(t *testing.T) {
+	var ran []string
+	m := testModel(t, nil, &ran)
+	m.closer = newCloser(Toggle{Binding: "prefix+space", Prefix: "ctrl+b"})
+
+	m, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyCtrlB})
+	if cmd != nil {
+		t.Fatal("the prefix on its own closed the popup")
+	}
+	if _, cmd := send(t, m, tea.KeyMsg{Type: tea.KeySpace}); cmd == nil {
+		t.Error("the key after the prefix did not close the popup")
+	}
+}
+
 func TestTheViewShowsTheRowsAsTheyAreSearched(t *testing.T) {
 	var ran []string
 	view := testModel(t, nil, &ran).View()
@@ -306,7 +332,7 @@ func wheelModel(t *testing.T) model {
 			Run:   func(context.Context, palette.Exec) error { return nil },
 		})
 	}
-	m := newModel(context.Background(), testEnv(t), &herdr.PluginInvocationContext{}, palette.List{Commands: entries}, nil, theme.Defaults())
+	m := newModel(context.Background(), testEnv(t), &herdr.PluginInvocationContext{}, palette.List{Commands: entries}, nil, theme.Defaults(), Toggle{})
 	m.setSize(40, 8)
 	return m
 }
@@ -420,7 +446,7 @@ func TestTheKeyColumnShowsWhatEachCommandIsBoundTo(t *testing.T) {
 		{ID: "a", Title: "New tab", Type: "herdr", Key: "prefix+c"},
 		{ID: "b", Title: "Split pane right", Type: "herdr"},
 	}
-	m := newModel(context.Background(), testEnv(t), &herdr.PluginInvocationContext{}, palette.List{Commands: entries}, nil, theme.Defaults())
+	m := newModel(context.Background(), testEnv(t), &herdr.PluginInvocationContext{}, palette.List{Commands: entries}, nil, theme.Defaults(), Toggle{})
 	m.setSize(60, 12)
 
 	view := m.View()
@@ -457,7 +483,7 @@ func TestAPluginActionIsRelayedWithoutRunning(t *testing.T) {
 		Reply(herdr.MethodPluginActionInvoke, herdr.PluginActionInvokedResponse{})
 	env := server.Env(plugintest.StateDir(t.TempDir()))
 
-	m := newModel(context.Background(), env, &herdr.PluginInvocationContext{}, palette.List{Commands: entries}, nil, theme.Defaults())
+	m := newModel(context.Background(), env, &herdr.PluginInvocationContext{}, palette.List{Commands: entries}, nil, theme.Defaults(), Toggle{})
 	m.setSize(60, 12)
 
 	_, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
@@ -490,7 +516,7 @@ func TestAUIBusyRefusalIsRelayed(t *testing.T) {
 		Reply(herdr.MethodPluginActionInvoke, herdr.PluginActionInvokedResponse{})
 	env := server.Env(plugintest.StateDir(t.TempDir()))
 
-	m := newModel(context.Background(), env, &herdr.PluginInvocationContext{}, palette.List{Commands: entries}, nil, theme.Defaults())
+	m := newModel(context.Background(), env, &herdr.PluginInvocationContext{}, palette.List{Commands: entries}, nil, theme.Defaults(), Toggle{})
 	m.setSize(60, 12)
 
 	_, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
@@ -518,6 +544,7 @@ func TestARowMatchedOnTextItDoesNotShowShowsThatText(t *testing.T) {
 		palette.List{Commands: entries},
 		nil,
 		theme.Defaults(),
+		Toggle{},
 	)
 	m.setSize(72, 12)
 
@@ -544,6 +571,7 @@ func TestRebuildingWhatIsOpenKeepsTheSelection(t *testing.T) {
 		},
 		nil,
 		theme.Defaults(),
+		Toggle{},
 	)
 	m.setSize(72, 12)
 
@@ -596,6 +624,7 @@ func chooserModel(t *testing.T, picked *string, list func(context.Context, palet
 		palette.List{Commands: entries},
 		nil,
 		theme.Defaults(),
+		Toggle{},
 	)
 	m.setSize(72, 12)
 	return m
@@ -850,8 +879,8 @@ func wideModel(t *testing.T, cols int) model {
 	}
 	m := newModel(
 		context.Background(), testEnv(t), &herdr.PluginInvocationContext{},
-		palette.List{Commands: entries}, nil, theme.Defaults(),
-	)
+		palette.List{Commands: entries}, nil, theme.Defaults(), Toggle{})
+
 	m.setSize(cols, 10)
 	return m
 }
@@ -924,8 +953,8 @@ func confirmModel(t *testing.T, ran *[]string) model {
 	}}
 	m := newModel(
 		context.Background(), testEnv(t), &herdr.PluginInvocationContext{},
-		palette.List{Commands: entries}, nil, theme.Defaults(),
-	)
+		palette.List{Commands: entries}, nil, theme.Defaults(), Toggle{})
+
 	m.setSize(72, 12)
 	return m
 }
@@ -1042,6 +1071,7 @@ func mixedModel(t *testing.T) model {
 		},
 		nil,
 		theme.Defaults(),
+		Toggle{},
 	)
 	m.setSize(72, 12)
 	return m
@@ -1141,8 +1171,8 @@ func TestACommandAlreadyRunningIsNotRunAgain(t *testing.T) {
 	}}
 	m := newModel(
 		context.Background(), testEnv(t), &herdr.PluginInvocationContext{},
-		palette.List{Commands: entries}, nil, theme.Defaults(),
-	)
+		palette.List{Commands: entries}, nil, theme.Defaults(), Toggle{})
+
 	m.setSize(72, 12)
 
 	var cmds []tea.Cmd
@@ -1215,8 +1245,8 @@ func questionModel(t *testing.T, open []palette.Entry) model {
 	var ran []string
 	m := newModel(
 		context.Background(), testEnv(t), &herdr.PluginInvocationContext{},
-		palette.List{Commands: testEntries(&ran), Open: open}, nil, theme.Defaults(),
-	)
+		palette.List{Commands: testEntries(&ran), Open: open}, nil, theme.Defaults(), Toggle{})
+
 	m.setSize(72, 12)
 	return m
 }
@@ -1337,8 +1367,8 @@ func sized(t *testing.T, entries []palette.Entry, cols int) model {
 	t.Helper()
 	m := newModel(
 		context.Background(), testEnv(t), &herdr.PluginInvocationContext{},
-		palette.List{Commands: entries}, nil, theme.Defaults(),
-	)
+		palette.List{Commands: entries}, nil, theme.Defaults(), Toggle{})
+
 	m.setSize(cols, 12)
 	return m
 }

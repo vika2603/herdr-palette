@@ -41,6 +41,27 @@ type = "plugin_action"
 command = "herdr.palette.open"
 ```
 
+`herdr.palette.toggle` opens the same popup, and closes it when it is already
+up, so one key alternates between the two:
+
+```toml
+[[keys.command]]
+key = "alt+space"
+description = "Toggle command palette"
+type = "plugin_action"
+command = "herdr.palette.toggle"
+```
+
+herdr hands every key to a popup while one is up, before it looks at its own
+bindings, so the second press never reaches the action: it arrives inside the
+popup, which closes itself when the key is the one bound to `toggle`. The key
+is matched as the popup's terminal receives it, which loses what a terminal
+cannot pass on to a program: `shift` held with `ctrl` and a letter, so
+`ctrl+shift+p` and `ctrl+p` read the same inside the popup, and `cmd` or
+`super`, which never arrive at all. A `prefix+` chord works, the two keys
+reaching the popup in turn, and the prefix then starts the chord inside the
+popup as well.
+
 A second action, `herdr.palette.goto`, opens the same popup with its query
 already narrowed to what is open, for reaching a pane by name without the
 commands in the way:
@@ -243,6 +264,7 @@ half a key names nothing.
 | `backspace` | leave a list of targets, once the query is empty |
 | `esc` | close the popup, or leave a list of targets for the commands |
 | `ctrl+c` | close the popup, wherever you are in it |
+| the key bound to `toggle` | close the popup, wherever you are in it |
 | wheel | move the selection |
 | left click | run the row it lands on |
 

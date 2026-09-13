@@ -20,6 +20,8 @@ import (
 // Config is what herdr's configuration says about commands, their keys, and
 // the theme tokens the user overrode.
 type Config struct {
+	// Prefix is the key that starts a prefix chord, as [keys] spells it.
+	Prefix string
 	// Action maps a built-in action name, such as new_workspace, to its key.
 	Action map[string]string
 	// Plugin maps a plugin action, as PluginBinding spells it, to its key.
@@ -77,7 +79,12 @@ func newConfig(actions map[string]string) Config {
 	if actions == nil {
 		actions = map[string]string{}
 	}
-	return Config{Action: actions, Plugin: map[string]string{}, Theme: map[string]string{}}
+	cfg := Config{Action: actions, Plugin: map[string]string{}, Theme: map[string]string{}}
+	// The prefix shares the [keys] table with the action bindings, so the
+	// defaults carry it as one; it is a key of its own rather than an action's.
+	cfg.Prefix = actions[prefixKey]
+	delete(actions, prefixKey)
+	return cfg
 }
 
 // ConfigPath is the file herdr reads, honouring the override it documents.
@@ -164,13 +171,19 @@ func apply(cfg *Config, path string) {
 	configured := map[string]bool{}
 
 	for name, value := range parsed.Keys {
-		if name == commandsKey || name == "prefix" {
+		if name == commandsKey {
 			continue
 		}
 		var text string
 		// A value that is not a key assignment, such as [keys.indexed], is not
 		// an action binding.
 		if err := meta.PrimitiveDecode(value, &text); err != nil {
+			continue
+		}
+		if name == prefixKey {
+			if text != "" {
+				cfg.Prefix = text
+			}
 			continue
 		}
 		if text == "" {
@@ -210,6 +223,9 @@ func apply(cfg *Config, path string) {
 	}
 }
 
-// commandsKey is the [[keys.command]] array of tables, which shares the [keys]
-// table with the action bindings.
-const commandsKey = "command"
+// commandsKey is the [[keys.command]] array of tables and prefixKey the prefix
+// assignment, both of which share the [keys] table with the action bindings.
+const (
+	commandsKey = "command"
+	prefixKey   = "prefix"
+)

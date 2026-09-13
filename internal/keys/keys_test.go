@@ -2,6 +2,7 @@ package keys
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -11,9 +12,29 @@ func loadTestdata(t *testing.T) Config {
 	if err != nil {
 		t.Fatalf("reading the default config: %v", err)
 	}
-	cfg := Config{Action: parseDefaults(string(raw)), Plugin: map[string]string{}}
+	cfg := newConfig(parseDefaults(string(raw)))
 	apply(&cfg, "testdata/config.toml")
 	return cfg
+}
+
+func TestThePrefixIsReadWithTheBindings(t *testing.T) {
+	cfg := loadTestdata(t)
+
+	if cfg.Prefix != "ctrl+b" {
+		t.Errorf("prefix = %q, want ctrl+b", cfg.Prefix)
+	}
+	if got, ok := cfg.Action["prefix"]; ok {
+		t.Errorf("prefix = %q was listed as an action binding", got)
+	}
+
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte("[keys]\nprefix = \"ctrl+a\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	apply(&cfg, path)
+	if cfg.Prefix != "ctrl+a" {
+		t.Errorf("prefix = %q, want the value from config.toml", cfg.Prefix)
+	}
 }
 
 func TestDefaultsCoverTheBuiltInActions(t *testing.T) {

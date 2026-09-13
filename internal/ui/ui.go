@@ -16,12 +16,12 @@ import (
 
 // Run shows the command list and runs the TUI until the popup closes. loadErr
 // is what assembling the list ran into, which is worth showing next to the
-// half that survived.
-func Run(ctx context.Context, env *plugin.Env, list palette.List, loadErr error, colours theme.Theme) error {
+// half that survived. toggle is the key that closes the popup from inside.
+func Run(ctx context.Context, env *plugin.Env, list palette.List, loadErr error, colours theme.Theme, toggle Toggle) error {
 	invocation := invocationContext(env)
 	list.Commands = applicable(list.Commands, invocation)
 
-	m := newModel(ctx, env, invocation, list, palette.ReadRecent(env), colours)
+	m := newModel(ctx, env, invocation, list, palette.ReadRecent(env), colours, toggle)
 	if os.Getenv(palette.GoesEnv) != "" {
 		m.start(GoesPrefix)
 	}

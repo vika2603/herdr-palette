@@ -63,6 +63,16 @@ description = "Search the workspaces, tabs and panes of the session and go to on
 contexts = ["global", "workspace", "tab", "pane"]
 command = ["./bin/palette"]
 
+# The same popup, from a key that also closes it. herdr hands every key to a
+# popup while one is up, so the closing half is the popup's own: it quits when
+# the key bound to this action arrives inside it.
+[[actions]]
+id = "toggle"
+title = "Toggle command palette"
+description = "Open the command palette, or close it when it is open"
+contexts = ["global", "workspace", "tab", "pane"]
+command = ["./bin/palette"]
+
 # Goes straight to the last place the palette went to, with no popup in
 # between. What it returns to is whatever the recent order holds first, a
 # workspace, a tab or a pane.

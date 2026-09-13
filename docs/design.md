@@ -1,10 +1,10 @@
 # Design
 
-## Seven entrypoints, one binary
+## Eight entrypoints, one binary
 
-The manifest declares four actions, `open`, `goto`, `back` and `exec`, and
-three panes, `palette`, `input` and `run`. All seven run `bin/palette`;
-`plugin.Env` tells the process which entrypoint started it.
+The manifest declares five actions, `open`, `goto`, `toggle`, `back` and
+`exec`, and three panes, `palette`, `input` and `run`. All eight run
+`bin/palette`; `plugin.Env` tells the process which entrypoint started it.
 
 `open` does one thing: it calls `plugin.pane.open` for the `palette`
 entrypoint, which runs the TUI. `goto` opens the same pane with `HERDR_PALETTE_GOES`
@@ -18,6 +18,25 @@ pane a configured command runs in. All three are described below.
 `cmd/palette` assembles the command list for the two entrypoints that need one,
 so the popup and the handover work from the same list; `RunPending` resolves
 the handed-over entry by id against it.
+
+## Closing the popup with the key that opened it
+
+`toggle` opens the popup the way `open` does; what makes it a toggle is in the
+popup. herdr's client hands every key press to the popup while one is up,
+ahead of its own binding lookup — `route_key_press` in
+`src/client/shell/input.rs` of herdr 0.9.0 returns the popup as the target
+before direct bindings or the prefix are considered — so a second press of
+the key never invokes the action. It arrives inside the popup as terminal
+input, and the popup quits when it is the key bound to `toggle`.
+
+Which key that is comes from the same configuration the key column is read
+from. The popup asks for no keyboard protocol, so herdr encodes a key for it
+the way a legacy terminal does: alt is an escape in front, ctrl with a
+character is the control character, shift held with ctrl has no encoding and
+is lost, and cmd or super never arrive. The binding is translated to the name
+bubbletea gives that encoding and compared with what each keystroke reports.
+A `prefix+` chord arrives as two keys, so the popup holds the prefix and takes
+the key that follows, the way herdr's own prefix mode does.
 
 ## Passing the invocation context to the popup
 

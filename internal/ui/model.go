@@ -67,6 +67,9 @@ type model struct {
 	// waiting for the second keystroke that runs it.
 	choosing   *chooser
 	confirming *palette.Entry
+	// closer is the toggle key, which closes the popup from inside: herdr
+	// hands every key to a popup while one is up.
+	closer closer
 
 	query  textinput.Model
 	ranked []palette.Ranked
@@ -97,6 +100,7 @@ func newModel(
 	list palette.List,
 	recent []string,
 	colours theme.Theme,
+	toggle Toggle,
 ) model {
 	styles := newStyles(colours)
 
@@ -116,6 +120,7 @@ func newModel(
 		recent:     recent,
 		query:      query,
 		styles:     styles,
+		closer:     newCloser(toggle),
 	}
 	m.changes = watch(ctx, env)
 	m.collect()
@@ -259,6 +264,15 @@ func (m model) rowAt(y int) (int, bool) {
 func (m model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if msg.Type == tea.KeyCtrlC {
 		return m, tea.Quit
+	}
+	// The key that opened the palette closes it. It comes here rather than
+	// to the action, because herdr hands every key to a popup while one is up.
+	closes, taken := m.closer.press(msg)
+	if closes {
+		return m, tea.Quit
+	}
+	if taken {
+		return m, nil
 	}
 	return m.keyList(msg)
 }

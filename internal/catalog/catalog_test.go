@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os/exec"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -816,7 +817,7 @@ func TestEditingTheConfigOpensTheFileHerdrReads(t *testing.T) {
 	var params herdr.PluginPaneOpenParams
 	decode(t, run(t, "herdr:config.edit", step{})[0].Params, &params)
 
-	if !strings.HasSuffix(params.Env[palette.RunEnv], "'/tmp/herdr-config.toml'") {
+	if !strings.HasSuffix(params.Env[palette.RunEnv], map[bool]string{true: `"/tmp/herdr-config.toml"`, false: "'/tmp/herdr-config.toml'"}[runtime.GOOS == "windows"]) {
 		t.Errorf("opened %q, want herdr's own configuration file", params.Env[palette.RunEnv])
 	}
 }

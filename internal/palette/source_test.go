@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -327,7 +328,7 @@ func TestAShellCommandRunsWithoutTheAPI(t *testing.T) {
 
 	client := server.Env().Client()
 	cfg := config()
-	cfg.Custom = []keys.Custom{{Key: "prefix+t", Description: "Touch a file", Type: keys.TypeShell, Command: "true"}}
+	cfg.Custom = []keys.Custom{{Key: "prefix+t", Description: "Touch a file", Type: keys.TypeShell, Command: map[bool]string{true: "exit 0", false: "true"}[runtime.GOOS == "windows"]}}
 	list, _ := Load(context.Background(), client, own, nil, cfg)
 	entry, ok := find(list.All(), "config:prefix+t")
 	if !ok {
@@ -475,7 +476,7 @@ func TestABackgroundCommandRunsInTheFocusedPanesDirectory(t *testing.T) {
 
 	dir := t.TempDir()
 	cfg := keys.Config{Custom: []keys.Custom{
-		{Key: "prefix+m", Description: "Mark the directory", Type: keys.TypeShell, Command: "touch marker"},
+		{Key: "prefix+m", Description: "Mark the directory", Type: keys.TypeShell, Command: map[bool]string{true: "type nul > marker", false: "touch marker"}[runtime.GOOS == "windows"]},
 	}}
 	list, _ := Load(context.Background(), server.Env().Client(), "herdr.palette", nil, cfg)
 	entry, _ := find(list.All(), "config:prefix+m")

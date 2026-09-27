@@ -156,7 +156,7 @@ func onRun(ctx context.Context, env *plugin.Env) error {
 		return errors.New("the pane was opened without a command to run")
 	}
 
-	cmd := exec.CommandContext(ctx, palette.Shell(), "-c", command)
+	cmd := palette.ShellCommand(ctx, command)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	err := cmd.Run()
 

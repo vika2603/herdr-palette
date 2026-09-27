@@ -2,6 +2,7 @@ package palette
 
 import (
 	"context"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -28,6 +29,9 @@ func editFile(t *testing.T, path string) herdr.PluginPaneOpenParams {
 // The editor is the one the environment herdr passed the plugin names, which
 // the shell that runs the command line resolves.
 func TestEditFileOpensThePathInTheEnvironmentsEditor(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("posix editor line")
+	}
 	params := editFile(t, "/home/vika/.config/herdr/config.toml")
 
 	line := params.Env[RunEnv]
@@ -47,6 +51,9 @@ func TestEditFileOpensThePathInTheEnvironmentsEditor(t *testing.T) {
 
 // The path is the one thing about the command line this plugin composes.
 func TestEditFileQuotesThePath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("posix quoting")
+	}
 	line := editFile(t, "/tmp/it's here/config.toml").Env[RunEnv]
 
 	if !strings.HasSuffix(line, `'/tmp/it'\''s here/config.toml'`) {

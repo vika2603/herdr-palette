@@ -3,8 +3,6 @@ package palette
 import (
 	"context"
 	"fmt"
-	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/vika2603/herdr-client/herdr"
@@ -142,26 +140,11 @@ func EditFile(ctx context.Context, e Exec, title, path string) error {
 	}
 	return run(e.Env.PluginID, configured{
 		title:  title,
-		line:   "${VISUAL:-${EDITOR:-vi}} " + shellQuote(path),
+		line:   editorLine(path),
 		window: herdr.PluginPanePlacementPopup,
 		width:  editorWindow,
 		height: editorWindow,
 	})(ctx, e)
-}
-
-// shellQuote wraps a path for the shell that runs the command line, which is
-// the one thing about it this plugin composes rather than reads.
-func shellQuote(path string) string {
-	return "'" + strings.ReplaceAll(path, "'", `'\''`) + "'"
-}
-
-// Shell is what a configured command line runs under, matching herdr, which
-// hands the string to a shell rather than splitting it itself.
-func Shell() string {
-	if shell := os.Getenv("SHELL"); shell != "" {
-		return shell
-	}
-	return "/bin/sh"
 }
 
 // PopupSize carries a configured size over to the API, reporting whether one
@@ -179,7 +162,7 @@ func PopupSize(size manifest.PopupSize) (herdr.PopupSize, bool) {
 // what herdr's own shell type does with it. It runs where the focused pane is,
 // as a command that opens a window does.
 func startDetached(command, dir string) error {
-	cmd := exec.Command(Shell(), "-c", command)
+	cmd := ShellCommand(context.Background(), command)
 	cmd.Dir = dir
 	detach(cmd)
 	if err := cmd.Start(); err != nil {

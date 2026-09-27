@@ -7,10 +7,15 @@ name = "Command Palette"
 version = "0.1.0"
 min_herdr_version = "0.9.0"
 description = "Search and run herdr actions and plugin actions from one popup"
-platforms = ["linux", "macos"]
+platforms = ["linux", "macos", "windows"]
 
 [[build]]
+platforms = ["linux", "macos"]
 command = ["./scripts/build.sh"]
+
+[[build]]
+platforms = ["windows"]
+command = ["go", "build", "-o", "bin/palette.exe", "./cmd/palette"]
 
 # herdr draws a pane's title on the border and its manifest requires one, so
 # every pane here carries a zero-width space: it passes the check and leaves

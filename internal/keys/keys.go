@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -92,6 +93,14 @@ func ConfigPath() string {
 	if path := os.Getenv("HERDR_CONFIG_PATH"); path != "" {
 		return path
 	}
+	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
+		return filepath.Join(dir, "herdr", "config.toml")
+	}
+	if runtime.GOOS == "windows" {
+		if dir := os.Getenv("APPDATA"); dir != "" {
+			return filepath.Join(dir, "herdr", "config.toml")
+		}
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
@@ -114,6 +123,11 @@ func defaults(herdrBin string) map[string]string {
 		herdrBin = "herdr"
 	}
 	out, err := exec.Command(herdrBin, "--default-config").Output()
+	if err != nil && herdrBin != "herdr" {
+		// herdr-ext hands panes a runtime binary that refuses to run on its own,
+		// so fall back to the launcher on PATH.
+		out, err = exec.Command("herdr", "--default-config").Output()
+	}
 	if err != nil {
 		return nil
 	}

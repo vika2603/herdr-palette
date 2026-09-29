@@ -26,10 +26,10 @@ const (
 	panePalette  = "palette"
 	paneRun      = palette.RunEntrypoint
 	paneInput    = palette.InputEntrypoint
-	actionOpen   = "open"
 	actionGoto   = "goto"
 	actionToggle = "toggle"
 	actionBack   = "back"
+	actionAttend = "attend"
 	actionExec   = palette.ExecAction
 )
 
@@ -42,13 +42,13 @@ func main() {
 
 func newPlugin() *plugin.Plugin {
 	p := plugin.New()
-	p.Action(actionOpen, onOpen)
-	p.Action(actionGoto, onGoto)
-	// toggle opens the popup the way open does. herdr hands every key to a
-	// popup while one is up, so the closing half runs inside it: the popup
-	// quits when the key bound to toggle arrives there.
+	// herdr hands every key to a popup while one is up, so the closing half
+	// of toggle runs inside it: the popup quits when the key bound to toggle
+	// arrives there.
 	p.Action(actionToggle, onOpen)
+	p.Action(actionGoto, onGoto)
 	p.Action(actionBack, onBack)
+	p.Action(actionAttend, onAttend)
 	p.Action(actionExec, onExec)
 	p.Pane(panePalette, onPalette)
 	p.Pane(paneRun, onRun)
@@ -72,6 +72,12 @@ func onGoto(ctx context.Context, env *plugin.Env) error {
 // between: the recent order already says where that was.
 func onBack(ctx context.Context, env *plugin.Env) error {
 	return palette.Back(ctx, env.Client(), env)
+}
+
+// onAttend goes to an agent that needs you, with no popup in between, and on
+// to the next one waiting when pressed again.
+func onAttend(ctx context.Context, env *plugin.Env) error {
+	return palette.Attend(ctx, env.Client(), env)
 }
 
 func open(ctx context.Context, env *plugin.Env, extra map[string]string) error {

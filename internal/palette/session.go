@@ -18,20 +18,42 @@ const (
 	TypeAgent     = "Agent"
 )
 
-// goTo is in front of every row that focuses something rather than running a
+// GoTo is in front of every row that focuses something rather than running a
 // command, so the query narrows the list to them. The spelling without the
 // space finds them too: the matcher reads a query as a subsequence.
-const goTo = "go to "
+const GoTo = "go to "
 
-// OpenEntries is what the session holds right now, as rows that go there. The
-// palette rebuilds them while it is open, so an agent's status is the one it
-// has at that moment.
-func OpenEntries(ctx context.Context, client *herdr.Client) ([]Entry, error) {
+// Session is what is open right now: the rows that go there, and what every
+// agent in the session is doing — the one in the focused pane too, which no
+// row stands for.
+type Session struct {
+	Entries  []Entry
+	Statuses []string
+}
+
+// OpenSession reads what the session holds. The palette reads it again while
+// it is open, so an agent's status is the one it has at that moment.
+func OpenSession(ctx context.Context, client *herdr.Client) (Session, error) {
 	snapshot, err := client.SessionSnapshot(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("open panes unavailable: %w", err)
+		return Session{}, fmt.Errorf("open panes unavailable: %w", err)
 	}
-	return sessionEntries(snapshot.Snapshot), nil
+	return Session{
+		Entries:  sessionEntries(snapshot.Snapshot),
+		Statuses: agentStatuses(snapshot.Snapshot),
+	}, nil
+}
+
+// agentStatuses is the status of every pane running an agent whose status
+// herdr knows.
+func agentStatuses(snapshot herdr.SessionSnapshot) []string {
+	var statuses []string
+	for _, pane := range snapshot.Panes {
+		if status := paneStatus(pane); status != "" {
+			statuses = append(statuses, status)
+		}
+	}
+	return statuses
 }
 
 // sessionEntries turns what is open into rows that focus it. What is already
@@ -52,6 +74,16 @@ func sessionEntries(snapshot herdr.SessionSnapshot) []Entry {
 		agents[agent.PaneID] = herdr.Value(agent.Name)
 	}
 
+	// A tab is previewed through one of its panes. The snapshot marks only the
+	// pane focused in the whole session, not the one each tab would show, so
+	// it is the tab's first pane unless the focused one is in it.
+	tabPanes := make(map[string]string, len(snapshot.Tabs))
+	for _, pane := range snapshot.Panes {
+		if _, seen := tabPanes[pane.TabID]; !seen || pane.Focused {
+			tabPanes[pane.TabID] = pane.PaneID
+		}
+	}
+
 	entries := make([]Entry, 0, len(snapshot.Workspaces)+len(snapshot.Tabs)+len(snapshot.Panes))
 	for _, workspace := range snapshot.Workspaces {
 		if workspace.Focused {
@@ -60,11 +92,16 @@ func sessionEntries(snapshot herdr.SessionSnapshot) []Entry {
 		id := workspace.WorkspaceID
 		entries = append(entries, Entry{
 			ID:    "workspace:" + id,
-			Title: goTo + Label(workspace.Label, "workspace", workspace.Number),
+			Title: GoTo + Label(workspace.Label, "workspace", workspace.Number),
 			Type:  TypeWorkspace,
 			Goes:  true,
+			Pane:  tabPanes[workspace.ActiveTabID],
 			Run: func(ctx context.Context, e Exec) error {
 				_, err := e.Client.WorkspaceFocus(ctx, herdr.WorkspaceTarget{WorkspaceID: id})
+				return err
+			},
+			Close: func(ctx context.Context, e Exec) error {
+				_, err := e.Client.WorkspaceClose(ctx, herdr.WorkspaceCloseParams{WorkspaceID: id})
 				return err
 			},
 		})
@@ -77,12 +114,17 @@ func sessionEntries(snapshot herdr.SessionSnapshot) []Entry {
 		id := tab.TabID
 		entries = append(entries, Entry{
 			ID:     "tab:" + id,
-			Title:  goTo + Label(tab.Label, "tab", tab.Number),
+			Title:  GoTo + Label(tab.Label, "tab", tab.Number),
 			Type:   TypeTab,
 			Goes:   true,
 			Detail: workspaces[tab.WorkspaceID],
+			Pane:   tabPanes[tab.TabID],
 			Run: func(ctx context.Context, e Exec) error {
 				_, err := e.Client.TabFocus(ctx, herdr.TabTarget{TabID: id})
+				return err
+			},
+			Close: func(ctx context.Context, e Exec) error {
+				_, err := e.Client.TabClose(ctx, herdr.TabTarget{TabID: id})
 				return err
 			},
 		})
@@ -95,11 +137,12 @@ func sessionEntries(snapshot herdr.SessionSnapshot) []Entry {
 		id := pane.PaneID
 		entries = append(entries, Entry{
 			ID:     "pane:" + id,
-			Title:  goTo + paneLabel(pane),
+			Title:  GoTo + paneLabel(pane),
 			Type:   paneType(pane),
 			Goes:   true,
 			Detail: paneDetail(pane, agents[pane.PaneID], workspaces[pane.WorkspaceID]),
 			Status: paneStatus(pane),
+			Pane:   id,
 			// The row says where it goes, not where it is, so the directory is
 			// searchable and shown when that is what the query matched.
 			Search: herdr.Value(pane.Cwd),
@@ -107,9 +150,45 @@ func sessionEntries(snapshot herdr.SessionSnapshot) []Entry {
 				_, err := e.Client.PaneFocus(ctx, herdr.PaneTarget{PaneID: id})
 				return err
 			},
+			Close: func(ctx context.Context, e Exec) error {
+				_, err := e.Client.PaneClose(ctx, herdr.PaneTarget{PaneID: id})
+				return err
+			},
 		})
 	}
 	return entries
+}
+
+// TabPanes is the other panes of the tab the pane is in, as targets of a
+// command that acts on one of them. Each reads the way its row in the list
+// does, with its directory in place of the workspace every one of them shares.
+func TabPanes(snapshot herdr.SessionSnapshot, paneID string) []Choice {
+	tab := ""
+	for _, pane := range snapshot.Panes {
+		if pane.PaneID == paneID {
+			tab = pane.TabID
+		}
+	}
+	agents := make(map[string]string, len(snapshot.Agents))
+	for _, agent := range snapshot.Agents {
+		agents[agent.PaneID] = herdr.Value(agent.Name)
+	}
+
+	var choices []Choice
+	for _, pane := range snapshot.Panes {
+		if pane.TabID != tab || pane.PaneID == paneID {
+			continue
+		}
+		choices = append(choices, Choice{
+			Value:  pane.PaneID,
+			Title:  paneLabel(pane),
+			Detail: paneDetail(pane, agents[pane.PaneID], herdr.Value(pane.Cwd)),
+			Status: paneStatus(pane),
+			Search: herdr.Value(pane.Cwd),
+			Pane:   pane.PaneID,
+		})
+	}
+	return choices
 }
 
 // paneType separates the panes running an agent from the rest: their rows are
@@ -121,10 +200,12 @@ func paneType(pane herdr.PaneInfo) string {
 	return TypePane
 }
 
-// paneDetail is what the row shows next to the title: for an agent the name it
-// goes by and its status, which the palette keeps current while it is open,
-// and for any other pane the workspace it sits in. The name is the agent's own
-// unless it was renamed, so an unnamed agent reads as what it is.
+// paneDetail is what the row shows next to the title: for an agent its status
+// and the name it goes by, and for any other pane the workspace it sits in.
+// The status comes first because it is what a narrow row keeps when the
+// detail has to be cut, and the palette keeps it current while it is open.
+// The name is the agent's own unless it was renamed, so an unnamed agent reads
+// as what it is.
 func paneDetail(pane herdr.PaneInfo, name, workspace string) string {
 	agent := herdr.Value(pane.Agent)
 	if agent == "" {
@@ -136,7 +217,7 @@ func paneDetail(pane herdr.PaneInfo, name, workspace string) string {
 	if pane.AgentStatus == "" || pane.AgentStatus == herdr.AgentStatusUnknown {
 		return agent
 	}
-	return agent + " · " + string(pane.AgentStatus)
+	return string(pane.AgentStatus) + " · " + agent
 }
 
 // paneStatus is the state the row's detail describes, which only a pane

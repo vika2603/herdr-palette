@@ -20,8 +20,7 @@ type Exec struct {
 	Ctx    *herdr.PluginInvocationContext
 	Input  string
 	// Chosen is the target picked from the entry's list, empty for an entry
-	// that has none. It is separate from Input so an entry can ask for both,
-	// as prompting a named agent does.
+	// that has none. It is separate from Input so an entry can ask for both.
 	Chosen string
 	Env    *plugin.Env
 }
@@ -58,6 +57,9 @@ type Entry struct {
 	// runs the entry with it, and a handover writes it down beside the input.
 	Chosen string
 	Run    func(context.Context, Exec) error
+	// Close closes what a row that goes somewhere goes to, so it can be
+	// closed from the list without going there first. Nil on every other row.
+	Close func(context.Context, Exec) error
 	// NeedsSelection keeps the entry out of the list when no pane text is
 	// selected, the way a plugin action declaring the selection context is
 	// only meaningful with one.
@@ -84,6 +86,13 @@ type Entry struct {
 	// Status is what herdr calls the state the detail describes, which gives
 	// it a colour of its own. Empty for a detail that is not a state.
 	Status string
+	// Pane is the pane the row is about, whose screen the popup previews
+	// beside the list. Empty for a row that is not about one pane.
+	Pane string
+	// Description is what the entry does as its source puts it: the text a
+	// plugin gave its action, or the command line a configured command runs.
+	// The preview shows it on the entry's card.
+	Description string
 }
 
 // Namespace is where the entry comes from, drawn in front of the title and

@@ -46,3 +46,14 @@ func TestTheWindowSizeIsRead(t *testing.T) {
 		t.Errorf("height = %v, want the configured cell count", own.Window.Height)
 	}
 }
+
+func TestTheSchemeAndAccentAreRead(t *testing.T) {
+	own := configured(t, "scheme = \"terminal\"\naccent = \"#f5c2e7\"\nfaint = \"8\"\n")
+
+	if own.Theme.Scheme != "terminal" {
+		t.Errorf("scheme = %q, want the configured one", own.Theme.Scheme)
+	}
+	if own.Theme.Colours["accent"] != "#f5c2e7" || own.Theme.Colours["faint"] != "8" {
+		t.Errorf("colours = %v, want the accent and faint colours read", own.Theme.Colours)
+	}
+}

@@ -73,6 +73,7 @@ func paneLines(ctx context.Context, e palette.Exec) ([]palette.Choice, error) {
 				Value:  pane.PaneID,
 				Title:  line,
 				Detail: where,
+				Pane:   pane.PaneID,
 			})
 			if len(choices) == searchRows {
 				return choices, nil
@@ -101,4 +102,23 @@ func whichPane(pane herdr.PaneInfo, workspace string) string {
 		return name
 	}
 	return workspace + " / " + name
+}
+
+// recentOutput is the tail of what a pane has printed, unwrapped so a line
+// that ran past the pane's width reads as the one line it is, and without the
+// escape sequences that colour it.
+func recentOutput(ctx context.Context, client *herdr.Client, paneID string, tail uint32) (string, error) {
+	lines := tail
+	strip := true
+	read, err := client.PaneRead(ctx, herdr.PaneReadParams{
+		PaneID:    paneID,
+		Source:    herdr.ReadSourceRecentUnwrapped,
+		Format:    herdr.ReadFormatText,
+		Lines:     &lines,
+		StripANSI: &strip,
+	})
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimRight(read.Read.Text, "\n \t"), nil
 }

@@ -12,12 +12,12 @@ package catalog
 import (
 	"context"
 	"errors"
-	"fmt"
+	"math"
+	"slices"
 
 	"github.com/vika2603/herdr-client/herdr"
 
 	"github.com/vika2603/herdr-palette/internal/keys"
-	"github.com/vika2603/herdr-palette/internal/layout"
 	"github.com/vika2603/herdr-palette/internal/palette"
 )
 
@@ -42,7 +42,7 @@ var (
 
 // Entries returns the catalog. The ids are stable: they key the recent order.
 func Entries() []palette.Entry {
-	return append(append(herdrEntries(), askEntries()...), searchEntries()...)
+	return append(herdrEntries(), searchEntries()...)
 }
 
 // herdrEntries are the commands that mirror one of herdr's own actions, each
@@ -258,6 +258,32 @@ func herdrEntries() []palette.Entry {
 			},
 		},
 		{
+			ID:    "herdr:layout.even",
+			Title: "even out pane sizes",
+			Type:  groupHerdr,
+			Run: func(ctx context.Context, e palette.Exec) error {
+				id, err := need(e.Ctx.FocusedPaneID, errNoPane)
+				if err != nil {
+					return err
+				}
+				exported, err := e.Client.LayoutExport(ctx, herdr.LayoutExportParams{PaneID: &id})
+				if err != nil {
+					return err
+				}
+				for _, split := range evenSplits(exported.Layout.Root, nil) {
+					_, err := e.Client.LayoutSetSplitRatio(ctx, herdr.LayoutSetSplitRatioParams{
+						PaneID: &id,
+						Path:   split.path,
+						Ratio:  split.ratio,
+					})
+					if err != nil {
+						return err
+					}
+				}
+				return nil
+			},
+		},
+		{
 			ID:      "herdr:pane.rename",
 			Binding: "rename_pane",
 			Title:   "rename pane",
@@ -302,134 +328,74 @@ func herdrEntries() []palette.Entry {
 			},
 		},
 		{
-			ID:      "herdr:pane.focus.left",
-			Binding: "focus_pane_left",
-			Title:   "focus pane left",
-			Type:    groupHerdr,
-			Run:     focus(herdr.PaneDirectionLeft),
-		},
-		{
-			ID:      "herdr:pane.focus.down",
-			Binding: "focus_pane_down",
-			Title:   "focus pane down",
-			Type:    groupHerdr,
-			Run:     focus(herdr.PaneDirectionDown),
-		},
-		{
-			ID:      "herdr:pane.focus.up",
-			Binding: "focus_pane_up",
-			Title:   "focus pane up",
-			Type:    groupHerdr,
-			Run:     focus(herdr.PaneDirectionUp),
-		},
-		{
-			ID:      "herdr:pane.focus.right",
-			Binding: "focus_pane_right",
-			Title:   "focus pane right",
-			Type:    groupHerdr,
-			Run:     focus(herdr.PaneDirectionRight),
-		},
-		{
-			ID:      "herdr:pane.cycle.next",
-			Binding: "cycle_pane_next",
-			Title:   "focus next pane",
-			Type:    groupHerdr,
-			Run:     cycle(1),
-		},
-		{
-			ID:      "herdr:pane.cycle.previous",
-			Binding: "cycle_pane_previous",
-			Title:   "focus previous pane",
-			Type:    groupHerdr,
-			Run:     cycle(-1),
-		},
-		{
 			ID:    "herdr:pane.move",
-			Title: "move pane to another tab",
+			Title: "move pane to another tab or workspace",
 			Type:  groupHerdr,
 			Choices: &palette.Choices{
-				Label: "Tab to move the pane to",
-				Empty: "no other tab is open",
-				List:  otherTabs,
+				Label: "Where to move the pane",
+				Empty: "nowhere to move the pane",
+				List:  moveTargets,
 			},
 			Run: func(ctx context.Context, e palette.Exec) error {
 				id, err := need(e.Ctx.FocusedPaneID, errNoPane)
 				if err != nil {
 					return err
 				}
+				var destination herdr.PaneMoveDestination
+				switch e.Chosen {
+				case toNewTab:
+					destination = herdr.PaneMoveDestinationNewTab{WorkspaceID: e.Ctx.WorkspaceID}
+				case toNewWorkspace:
+					destination = herdr.PaneMoveDestinationNewWorkspace{}
+				default:
+					destination = herdr.PaneMoveDestinationTab{TabID: e.Chosen, Split: herdr.SplitDirectionRight}
+				}
 				_, err = e.Client.PaneMove(ctx, herdr.PaneMoveParams{
-					PaneID: id,
-					Destination: herdr.PaneMoveDestinationTab{
-						TabID: e.Chosen,
-						Split: herdr.SplitDirectionRight,
-					},
-					Focus: new(true),
+					PaneID:      id,
+					Destination: destination,
+					Focus:       new(true),
 				})
 				return err
 			},
 		},
 
 		{
-			ID:    "herdr:layout.save",
-			Title: "save the tab's layout",
-			Type:  groupHerdr,
-			Input: &palette.Input{Label: "Layout name"},
-			Run: func(ctx context.Context, e palette.Exec) error {
-				id, err := need(e.Ctx.TabID, errNoTab)
-				if err != nil {
-					return err
-				}
-				exported, err := e.Client.LayoutExport(ctx, herdr.LayoutExportParams{TabID: &id})
-				if err != nil {
-					return err
-				}
-				agents, err := runningAgents(ctx, e.Client, exported.Layout.Root)
-				if err != nil {
-					return err
-				}
-				return layout.Save(e.Env, e.Input, exported.Layout.Root, agents)
-			},
-		},
-		{
-			ID:    "herdr:layout.apply",
-			Title: "open a saved layout in a new tab",
+			ID:    "herdr:pane.swap",
+			Title: "swap pane with another in the tab",
 			Type:  groupHerdr,
 			Choices: &palette.Choices{
-				Label: "Layout to open",
-				Empty: "no layout has been saved yet",
-				List:  savedLayouts,
+				Label: "Pane to swap with",
+				Empty: "no other pane in this tab",
+				List: func(ctx context.Context, e palette.Exec) ([]palette.Choice, error) {
+					id, err := need(e.Ctx.FocusedPaneID, errNoPane)
+					if err != nil {
+						return nil, err
+					}
+					snapshot, err := e.Client.SessionSnapshot(ctx)
+					if err != nil {
+						return nil, err
+					}
+					return palette.TabPanes(snapshot.Snapshot, id), nil
+				},
 			},
-			// A new tab rather than this one: the arrangement opens panes of
-			// its own, and the panes already in a tab are somebody's work.
 			Run: func(ctx context.Context, e palette.Exec) error {
-				root, err := layout.Root(e.Env, e.Chosen)
+				id, err := need(e.Ctx.FocusedPaneID, errNoPane)
 				if err != nil {
 					return err
 				}
-				applied, err := e.Client.LayoutApply(ctx, herdr.LayoutApplyParams{
-					Root:        root,
-					WorkspaceID: e.Ctx.WorkspaceID,
-					TabLabel:    &e.Chosen,
-					Focus:       new(true),
+				swapped, err := e.Client.PaneSwap(ctx, herdr.PaneSwapParams{
+					SourcePaneID: &id,
+					TargetPaneID: &e.Chosen,
 				})
 				if err != nil {
 					return err
 				}
-				return startAgents(ctx, e.Client, applied.Layout.Root, layout.Agents(e.Env, e.Chosen))
-			},
-		},
-		{
-			ID:      "herdr:layout.forget",
-			Title:   "forget a saved layout",
-			Confirm: true,
-			Type:    groupHerdr,
-			Choices: &palette.Choices{
-				Label: "Layout to forget",
-				Empty: "no layout has been saved yet",
-				List:  savedLayouts,
-			},
-			Run: func(_ context.Context, e palette.Exec) error {
-				return layout.Remove(e.Env, e.Chosen)
+				// herdr answers a swap it refused, such as with a pane that has
+				// since moved to another tab, with a reason rather than an error.
+				if reason := swapped.Swap.Reason; reason != nil {
+					return errors.New("pane not swapped: " + string(*reason))
+				}
+				return nil
 			},
 		},
 
@@ -481,60 +447,6 @@ func herdrEntries() []palette.Entry {
 				return err
 			},
 		},
-		{
-			ID:    "herdr:agent.prompt.any",
-			Title: "prompt an agent",
-			Type:  groupHerdr,
-			Choices: &palette.Choices{
-				Label: "Agent to prompt",
-				Empty: "no pane in the session runs an agent",
-				List:  sessionAgents,
-			},
-			Input: &palette.Input{Label: "Prompt"},
-			Run: func(ctx context.Context, e palette.Exec) error {
-				_, err := e.Client.AgentPrompt(ctx, herdr.AgentPromptParams{
-					Target: e.Chosen,
-					Text:   e.Input,
-				})
-				return err
-			},
-		},
-		{
-			ID:    "herdr:agent.prompt",
-			Title: "prompt the focused agent",
-			Type:  groupHerdr,
-			Input: &palette.Input{Label: "Prompt"},
-			Run: func(ctx context.Context, e palette.Exec) error {
-				if e.Ctx.FocusedPaneAgent == nil {
-					return errNoAgent
-				}
-				id, err := need(e.Ctx.FocusedPaneID, errNoPane)
-				if err != nil {
-					return err
-				}
-				_, err = e.Client.AgentPrompt(ctx, herdr.AgentPromptParams{
-					Target: id,
-					Text:   e.Input,
-				})
-				return err
-			},
-		},
-
-		{
-			ID:    "herdr:plugin.manage",
-			Title: "manage plugins",
-			Type:  groupHerdr,
-			// The list says what each plugin is and turning one over leaves it
-			// up: what this command is for is the state of all of them, and
-			// more than one is usually changed at a time.
-			Choices: &palette.Choices{
-				Label: "Plugin to turn on or off",
-				Empty: "no other plugin is installed",
-				Stays: true,
-				List:  installedPlugins,
-			},
-			Run: togglePlugin,
-		},
 
 		{
 			ID:    "herdr:config.edit",
@@ -581,60 +493,6 @@ func split(direction herdr.SplitDirection, swapWith herdr.PaneDirection) func(co
 		})
 		return err
 	}
-}
-
-// cycle focuses the pane after or before the focused one among the panes of
-// its tab, wrapping round at the ends. herdr's own cycle keys have no API
-// behind them, so the order is the one the snapshot lists the tab's panes in.
-func cycle(by int) func(context.Context, palette.Exec) error {
-	return func(ctx context.Context, e palette.Exec) error {
-		id, err := need(e.Ctx.FocusedPaneID, errNoPane)
-		if err != nil {
-			return err
-		}
-		snapshot, err := e.Client.SessionSnapshot(ctx)
-		if err != nil {
-			return err
-		}
-
-		siblings, at := tabPanes(snapshot.Snapshot, id)
-		if at < 0 {
-			return errNoPane
-		}
-		if len(siblings) < 2 {
-			return nil
-		}
-		next := siblings[((at+by)%len(siblings)+len(siblings))%len(siblings)]
-		_, err = e.Client.PaneFocus(ctx, herdr.PaneTarget{PaneID: next})
-		return err
-	}
-}
-
-// tabPanes is the panes of the tab the pane is in, in the order the snapshot
-// lists them, and where the pane sits among them.
-func tabPanes(snapshot herdr.SessionSnapshot, paneID string) ([]string, int) {
-	tab := ""
-	for _, pane := range snapshot.Panes {
-		if pane.PaneID == paneID {
-			tab = pane.TabID
-		}
-	}
-	if tab == "" {
-		return nil, -1
-	}
-
-	var panes []string
-	at := -1
-	for _, pane := range snapshot.Panes {
-		if pane.TabID != tab {
-			continue
-		}
-		if pane.PaneID == paneID {
-			at = len(panes)
-		}
-		panes = append(panes, pane.PaneID)
-	}
-	return panes, at
 }
 
 // moveTab moves the focused tab one place among the tabs of its workspace.
@@ -699,9 +557,62 @@ func workspaceTabs(snapshot herdr.SessionSnapshot, tabID string) (int, int) {
 	return count, at
 }
 
-// otherTabs is every tab but the one the palette was opened in, as targets to
-// move the focused pane to.
-func otherTabs(ctx context.Context, e palette.Exec) ([]palette.Choice, error) {
+type evenSplit struct {
+	path  []bool
+	ratio float64
+}
+
+// evenSplits is the ratio each split needs for the panes side by side in its
+// direction to come out the same size, and the path herdr finds the split by:
+// from the root, false for first and true for second, and never nil: herdr
+// refuses a null path, and the root's is empty. A split already at its ratio
+// is left out.
+//
+// A subtree counts as many panes as it has side by side in the split's
+// direction. One split the other way counts as its wider half, so its panes
+// line up with those beside it rather than each half counting once.
+//
+// herdr keeps a ratio between 0.1 and 0.9, so more than ten panes in a row
+// cannot come out even: the first gets a tenth. The ratio is compared as herdr
+// will store it, so a second run does not send the same clamped ratio again.
+func evenSplits(node herdr.LayoutNode, path []bool) []evenSplit {
+	split, ok := node.(herdr.LayoutNodeSplit)
+	if !ok {
+		return nil
+	}
+	first, second := across(split.First, split.Direction), across(split.Second, split.Direction)
+	var out []evenSplit
+	ratio := min(max(float64(first)/float64(first+second), 0.1), 0.9)
+	if math.Abs(ratio-split.Ratio) > 0.001 {
+		out = append(out, evenSplit{path: append([]bool{}, path...), ratio: ratio})
+	}
+	out = append(out, evenSplits(split.First, append(slices.Clone(path), false))...)
+	return append(out, evenSplits(split.Second, append(slices.Clone(path), true))...)
+}
+
+// across is how many panes the node has side by side in the direction.
+func across(node herdr.LayoutNode, direction herdr.SplitDirection) int {
+	split, ok := node.(herdr.LayoutNodeSplit)
+	if !ok {
+		return 1
+	}
+	first, second := across(split.First, direction), across(split.Second, direction)
+	if split.Direction == direction {
+		return first + second
+	}
+	return max(first, second)
+}
+
+// The two places a pane can be moved to that do not exist yet. They cannot be
+// mistaken for a tab id, which is always a workspace id and a tab number.
+const (
+	toNewTab       = "new tab"
+	toNewWorkspace = "new workspace"
+)
+
+// moveTargets is where the focused pane can go: a tab of its own in the same
+// workspace, a workspace of its own, or any tab but the one it is in.
+func moveTargets(ctx context.Context, e palette.Exec) ([]palette.Choice, error) {
 	snapshot, err := e.Client.SessionSnapshot(ctx)
 	if err != nil {
 		return nil, err
@@ -712,7 +623,11 @@ func otherTabs(ctx context.Context, e palette.Exec) ([]palette.Choice, error) {
 		workspaces[workspace.WorkspaceID] = workspace.Label
 	}
 
-	choices := make([]palette.Choice, 0, len(snapshot.Snapshot.Tabs))
+	choices := make([]palette.Choice, 0, len(snapshot.Snapshot.Tabs)+2)
+	choices = append(choices,
+		palette.Choice{Value: toNewTab, Title: "a new tab", Detail: workspaces[herdr.Value(e.Ctx.WorkspaceID)]},
+		palette.Choice{Value: toNewWorkspace, Title: "a new workspace"},
+	)
 	for _, tab := range snapshot.Snapshot.Tabs {
 		if tab.TabID == herdr.Value(e.Ctx.TabID) {
 			continue
@@ -721,115 +636,6 @@ func otherTabs(ctx context.Context, e palette.Exec) ([]palette.Choice, error) {
 			Value:  tab.TabID,
 			Title:  palette.Label(tab.Label, "tab", tab.Number),
 			Detail: workspaces[tab.WorkspaceID],
-		})
-	}
-	return choices, nil
-}
-
-// savedLayouts is every arrangement the palette has been asked to keep. They
-// are the plugin's own, so herdr is not asked for them.
-func savedLayouts(_ context.Context, e palette.Exec) ([]palette.Choice, error) {
-	saved := layout.List(e.Env)
-	choices := make([]palette.Choice, 0, len(saved))
-	for _, one := range saved {
-		choices = append(choices, palette.Choice{Value: one.Name, Title: one.Name})
-	}
-	return choices, nil
-}
-
-// Words for what a plugin is, which the row shows and the query matches.
-const (
-	pluginEnabled  = "enabled"
-	pluginDisabled = "disabled"
-)
-
-// installedPlugins is every plugin herdr has installed, saying which are on.
-// The palette leaves itself out: turning it off would take away the popup the
-// row is being run from, with no row left to turn it back on, and the list of
-// plugin actions leaves its own out for the same reason.
-func installedPlugins(ctx context.Context, e palette.Exec) ([]palette.Choice, error) {
-	installed, err := e.Client.PluginList(ctx, herdr.PluginListParams{})
-	if err != nil {
-		return nil, err
-	}
-
-	choices := make([]palette.Choice, 0, len(installed.Plugins))
-	for _, plugin := range installed.Plugins {
-		if plugin.PluginID == e.Env.PluginID {
-			continue
-		}
-		state := pluginState(plugin.Enabled)
-		choices = append(choices, palette.Choice{
-			Value:  plugin.PluginID,
-			Title:  plugin.Name,
-			Detail: state,
-			Status: state,
-			// The row shows the name, and the id is how a plugin is spelt
-			// everywhere else, so typing it finds the row too.
-			Search: plugin.PluginID,
-		})
-	}
-	return choices, nil
-}
-
-// togglePlugin turns the picked plugin over. What it is now is read again
-// rather than taken from the row: the list is a screen, and herdr is where the
-// state lives.
-func togglePlugin(ctx context.Context, e palette.Exec) error {
-	installed, err := e.Client.PluginList(ctx, herdr.PluginListParams{PluginID: &e.Chosen})
-	if err != nil {
-		return err
-	}
-
-	// The id is asked for and looked for: what comes back is a list either
-	// way, and the plugin to turn over is the one it names.
-	for _, plugin := range installed.Plugins {
-		if plugin.PluginID != e.Chosen {
-			continue
-		}
-		params := herdr.PluginSetEnabledParams{PluginID: e.Chosen}
-		if plugin.Enabled {
-			_, err = e.Client.PluginDisable(ctx, params)
-		} else {
-			_, err = e.Client.PluginEnable(ctx, params)
-		}
-		return err
-	}
-	return fmt.Errorf("no plugin with id %q is installed", e.Chosen)
-}
-
-func pluginState(enabled bool) string {
-	if enabled {
-		return pluginEnabled
-	}
-	return pluginDisabled
-}
-
-// sessionAgents is every pane in the session running an agent, as targets to
-// prompt. A pane is addressed by its id, the way the rows that go to one are,
-// and reads as the name the agent goes by.
-func sessionAgents(ctx context.Context, e palette.Exec) ([]palette.Choice, error) {
-	snapshot, err := e.Client.SessionSnapshot(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	workspaces := make(map[string]string, len(snapshot.Snapshot.Workspaces))
-	for _, workspace := range snapshot.Snapshot.Workspaces {
-		workspaces[workspace.WorkspaceID] = workspace.Label
-	}
-
-	choices := make([]palette.Choice, 0, len(snapshot.Snapshot.Agents))
-	for _, agent := range snapshot.Snapshot.Agents {
-		name := herdr.Value(agent.Name)
-		if name == "" {
-			name = herdr.Value(agent.Agent)
-		}
-		choices = append(choices, palette.Choice{
-			Value:  agent.PaneID,
-			Title:  name,
-			Detail: string(agent.AgentStatus),
-			Search: workspaces[agent.WorkspaceID] + " " + herdr.Value(agent.Cwd),
 		})
 	}
 	return choices, nil
@@ -908,16 +714,6 @@ func worktreeName(tree herdr.WorktreeInfo) string {
 		return branch
 	}
 	return tree.Label
-}
-
-func focus(direction herdr.PaneDirection) func(context.Context, palette.Exec) error {
-	return func(ctx context.Context, e palette.Exec) error {
-		_, err := e.Client.PaneFocusDirection(ctx, herdr.PaneFocusDirectionParams{
-			Direction: direction,
-			PaneID:    e.Ctx.FocusedPaneID,
-		})
-		return err
-	}
 }
 
 func need(value *string, absent error) (string, error) {

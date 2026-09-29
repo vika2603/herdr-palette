@@ -29,7 +29,7 @@ unlink:
 
 # Open the palette without pressing the key.
 open: build
-    herdr plugin action invoke open --plugin herdr.palette
+    herdr plugin action invoke toggle --plugin herdr.palette
 
 # Exit codes, stdout and stderr of every plugin command herdr ran.
 logs:

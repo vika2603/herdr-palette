@@ -36,10 +36,13 @@ type Settings struct {
 type file struct {
 	Window Window `toml:"window"`
 
+	Scheme             string            `toml:"scheme"`
+	Accent             string            `toml:"accent"`
 	Rule               string            `toml:"rule"`
 	SelectedBackground string            `toml:"selected_background"`
 	Match              string            `toml:"match"`
 	Meta               string            `toml:"meta"`
+	Faint              string            `toml:"faint"`
 	Scrollbar          string            `toml:"scrollbar"`
 	Failure            string            `toml:"failure"`
 	Status             map[string]string `toml:"status"`
@@ -60,11 +63,14 @@ func Load(env *plugin.Env) Settings {
 	return Settings{
 		Window: parsed.Window,
 		Theme: theme.Custom{
+			Scheme: parsed.Scheme,
 			Colours: map[string]string{
+				"accent":              parsed.Accent,
 				"rule":                parsed.Rule,
 				"selected_background": parsed.SelectedBackground,
 				"match":               parsed.Match,
 				"meta":                parsed.Meta,
+				"faint":               parsed.Faint,
 				"scrollbar":           parsed.Scrollbar,
 				"failure":             parsed.Failure,
 			},

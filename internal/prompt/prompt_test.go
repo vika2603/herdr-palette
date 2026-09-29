@@ -23,7 +23,7 @@ func TestTheFieldPutsTheTerminalCursorOnTheCaret(t *testing.T) {
 	if !strings.Contains(frame, "\x1b[?25h") {
 		t.Error("the frame leaves the cursor hidden, which input methods cannot follow")
 	}
-	if !strings.Contains(frame, "Rename tab") || !strings.Contains(frame, "shell") {
+	if !strings.Contains(frame, "RENAME TAB") || !strings.Contains(frame, "shell") {
 		t.Errorf("frame = %q, want the heading and the value", frame)
 	}
 }
@@ -53,7 +53,7 @@ func TestALongValueScrollsWithTheCaret(t *testing.T) {
 
 func TestTheLabelIsShownNextToTheTitle(t *testing.T) {
 	got := heading(Field{Title: "Create worktree", Label: "New branch"}, theme.Defaults())
-	if !strings.Contains(got, "Create worktree") || !strings.Contains(got, "New branch") {
+	if !strings.Contains(got, "CREATE WORKTREE") || !strings.Contains(got, "New branch") {
 		t.Errorf("heading = %q, want both the title and what the value means", got)
 	}
 }

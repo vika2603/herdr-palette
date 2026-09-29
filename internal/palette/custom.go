@@ -55,11 +55,12 @@ func customEntries(own string, commands []keys.Custom) []Entry {
 
 func entryFor(own string, command configured) Entry {
 	return Entry{
-		ID:    command.id,
-		Title: command.title,
-		Type:  TypeCustom,
-		Key:   command.key,
-		Run:   run(own, command),
+		ID:          command.id,
+		Title:       command.title,
+		Type:        TypeCustom,
+		Key:         command.key,
+		Description: command.line,
+		Run:         run(own, command),
 	}
 }
 
@@ -96,17 +97,22 @@ func herdrWindow(commandType string) herdr.PluginPanePlacement {
 
 func run(own string, command configured) func(context.Context, Exec) error {
 	return func(ctx context.Context, e Exec) error {
+		active := activeEnv(e.Ctx)
 		if command.window == "" {
-			return startDetached(command.line, herdr.Value(e.Ctx.FocusedPaneCwd))
+			return startDetached(command.line, herdr.Value(e.Ctx.FocusedPaneCwd), active)
 		}
 
+		env := map[string]string{RunEnv: command.line}
+		for name, value := range active {
+			env[name] = value
+		}
 		params := herdr.PluginPaneOpenParams{
 			PluginID:   own,
 			Entrypoint: RunEntrypoint,
 			Placement:  &command.window,
 			Focus:      new(true),
 			Cwd:        e.Ctx.FocusedPaneCwd,
-			Env:        map[string]string{RunEnv: command.line},
+			Env:        env,
 		}
 		// A zoomed pane, like a split, is placed against an existing pane and
 		// takes its id; a popup always covers the active pane, and herdr
@@ -126,6 +132,27 @@ func run(own string, command configured) func(context.Context, Exec) error {
 		}
 		return nil
 	}
+}
+
+// activeEnv is what herdr sets for a command it runs from a key: the
+// workspace, tab and pane focused when the key was pressed, and that pane's
+// directory. A configured command line reads them to act where the key was
+// pressed, and the palette's own process has none of them — the ids it is
+// given describe its popup — so they come from the invocation context. A
+// value the context does not carry is left unset rather than set empty.
+func activeEnv(c *herdr.PluginInvocationContext) map[string]string {
+	env := map[string]string{}
+	for name, value := range map[string]*string{
+		"HERDR_ACTIVE_WORKSPACE_ID": c.WorkspaceID,
+		"HERDR_ACTIVE_TAB_ID":       c.TabID,
+		"HERDR_ACTIVE_PANE_ID":      c.FocusedPaneID,
+		"HERDR_ACTIVE_PANE_CWD":     c.FocusedPaneCwd,
+	} {
+		if v := herdr.Value(value); v != "" {
+			env[name] = v
+		}
+	}
+	return env
 }
 
 // editorWindow is how much of the pane area an editor opens over. A file is
@@ -177,10 +204,15 @@ func PopupSize(size manifest.PopupSize) (herdr.PopupSize, bool) {
 // startDetached runs a shell command in its own session, so it outlives the
 // popup the palette closes on its way out. Its output goes nowhere, which is
 // what herdr's own shell type does with it. It runs where the focused pane is,
-// as a command that opens a window does.
-func startDetached(command, dir string) error {
+// as a command that opens a window does, with env added to what the plugin
+// was started with.
+func startDetached(command, dir string, env map[string]string) error {
 	cmd := exec.Command(Shell(), "-c", command)
 	cmd.Dir = dir
+	cmd.Env = os.Environ()
+	for name, value := range env {
+		cmd.Env = append(cmd.Env, name+"="+value)
+	}
 	detach(cmd)
 	if err := cmd.Start(); err != nil {
 		return err

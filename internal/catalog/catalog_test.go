@@ -3,7 +3,9 @@ package catalog
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"os/exec"
+	"slices"
 	"strings"
 	"testing"
 
@@ -11,7 +13,6 @@ import (
 	"github.com/vika2603/herdr-client/plugin"
 	"github.com/vika2603/herdr-client/plugin/plugintest"
 
-	"github.com/vika2603/herdr-palette/internal/layout"
 	"github.com/vika2603/herdr-palette/internal/palette"
 )
 
@@ -67,17 +68,6 @@ func worktreeList() herdr.WorktreeListResponse {
 	}}
 }
 
-// exportedLayout is what herdr answers layout.export with: the arrangement of
-// the tab, whose leaves name the panes it holds.
-func exportedLayout() herdr.LayoutNode {
-	return herdr.LayoutNodeSplit{
-		Direction: herdr.SplitDirectionRight,
-		Ratio:     0.5,
-		First:     herdr.LayoutNodePane{PaneID: new("p1"), Cwd: new("/repo")},
-		Second:    herdr.LayoutNodePane{PaneID: new("p2"), Cwd: new("/repo")},
-	}
-}
-
 // server answers every method the catalog can call, so one script serves the
 // whole table.
 func server(t *testing.T) *plugintest.Server {
@@ -88,6 +78,8 @@ func server(t *testing.T) *plugintest.Server {
 		Reply(herdr.MethodWorktreeRemove, herdr.WorktreeRemovedResponse{}).
 		Reply(herdr.MethodTabMove, herdr.TabListResponse{}).
 		Reply(herdr.MethodPaneMove, herdr.PaneMoveResponse{}).
+		Reply(herdr.MethodLayoutExport, herdr.LayoutExportResponse{Layout: herdr.LayoutDescription{Root: unevenLayout()}}).
+		Reply(herdr.MethodLayoutSetSplitRatio, herdr.LayoutSplitRatioSetResponse{}).
 		Reply(herdr.MethodPaneFocus, herdr.PaneInfoResponse{}).
 		Reply(herdr.MethodWorkspaceCreate, herdr.WorkspaceCreatedResponse{}).
 		Reply(herdr.MethodWorkspaceRename, herdr.WorkspaceInfoResponse{}).
@@ -103,36 +95,16 @@ func server(t *testing.T) *plugintest.Server {
 		Reply(herdr.MethodPaneRename, herdr.PaneInfoResponse{}).
 		Reply(herdr.MethodPaneClose, herdr.OKResponse{}).
 		Reply(herdr.MethodPaneEditScrollback, herdr.OKResponse{}).
-		Reply(herdr.MethodPaneFocusDirection, herdr.PaneFocusDirectionResponse{}).
-		Reply(herdr.MethodAgentPrompt, herdr.AgentPromptedResponse{}).
 		Reply(herdr.MethodAgentStart, herdr.AgentStartedResponse{}).
 		Reply(herdr.MethodAgentRename, herdr.AgentInfoResponse{}).
 		Reply(herdr.MethodServerAgentManifests, herdr.AgentManifestStatusResponse{
 			Manifests: []herdr.AgentManifestInfo{{Agent: "claude"}, {Agent: "codex"}},
 		}).
-		Reply(herdr.MethodLayoutExport, herdr.LayoutExportResponse{Layout: herdr.LayoutDescription{Root: exportedLayout()}}).
-		Reply(herdr.MethodLayoutApply, herdr.LayoutApplyResponse{}).
-		Reply(herdr.MethodPluginList, herdr.PluginListResponse{Plugins: []herdr.InstalledPluginInfo{
-			{PluginID: "herdr.palette", Name: "Command Palette", Enabled: true},
-			{PluginID: "herdr.machine-manager", Name: "Machine Manager", Enabled: true},
-			{PluginID: "herdr.auto-title", Name: "Auto Title"},
-		}}).
-		Reply(herdr.MethodPluginEnable, herdr.PluginEnabledResponse{}).
-		Reply(herdr.MethodPluginDisable, herdr.PluginDisabledResponse{}).
 		Reply(herdr.MethodPluginPaneOpen, herdr.PluginPaneOpenedResponse{}).
 		Reply(herdr.MethodServerReloadConfig, herdr.ConfigReloadResponse{}).
 		Reply(herdr.MethodPaneRead, herdr.PaneReadResponse{Read: herdr.PaneReadResult{
 			Text: "make: *** [test] Error 1\n\n  panic: nil map\n",
-		}}).
-		Reply(herdr.MethodAgentGet, herdr.AgentInfoResponse{Agent: herdr.AgentInfo{
-			PaneID: "w1:p3", Agent: new("claude"), Name: new("reviewer"),
-			AgentStatus: herdr.AgentStatusWorking,
-		}}).
-		Reply(herdr.MethodAgentWait, herdr.AgentInfoResponse{Agent: herdr.AgentInfo{
-			PaneID: "w1:p3", Agent: new("claude"), Name: new("reviewer"),
-			AgentStatus: herdr.AgentStatusBlocked, Cwd: new("/repo"),
-		}}).
-		Reply(herdr.MethodNotificationShow, herdr.NotificationShowResponse{})
+		}})
 }
 
 func entry(t *testing.T, id string) palette.Entry {
@@ -218,9 +190,6 @@ func choices(t *testing.T, id string) []palette.Choice {
 	}
 	s := server(t)
 	env := s.Env(plugintest.StateDir(t.TempDir()))
-	// The palette leaves its own plugin out of what can be disabled, which it
-	// knows by the id the entrypoint environment carries.
-	env.PluginID = "herdr.palette"
 	list, err := e.Choices.List(context.Background(), palette.Exec{
 		Client: env.Client(),
 		Ctx:    fullContext(),
@@ -264,15 +233,9 @@ func TestEachEntryCallsItsMethod(t *testing.T) {
 		{id: "herdr:pane.rename", collected: step{input: "renamed"}, method: herdr.MethodPaneRename},
 		{id: "herdr:pane.close", method: herdr.MethodPaneClose},
 		{id: "herdr:pane.edit_scrollback", method: herdr.MethodPaneEditScrollback},
-		{id: "herdr:pane.focus.left", method: herdr.MethodPaneFocusDirection},
-		{id: "herdr:pane.focus.down", method: herdr.MethodPaneFocusDirection},
-		{id: "herdr:pane.focus.up", method: herdr.MethodPaneFocusDirection},
-		{id: "herdr:pane.focus.right", method: herdr.MethodPaneFocusDirection},
 		{id: "herdr:pane.move", collected: step{chosen: "t9"}, method: herdr.MethodPaneMove},
 		{id: "herdr:agent.start", collected: step{chosen: "codex"}, method: herdr.MethodAgentStart},
 		{id: "herdr:agent.rename", collected: step{input: "reviewer"}, method: herdr.MethodAgentRename},
-		{id: "herdr:agent.prompt", collected: step{input: "go on"}, method: herdr.MethodAgentPrompt},
-		{id: "herdr:agent.prompt.any", collected: step{chosen: "p9", input: "go on"}, method: herdr.MethodAgentPrompt},
 		{id: "herdr:config.edit", method: herdr.MethodPluginPaneOpen},
 		{id: "herdr:server.reload_config", method: herdr.MethodServerReloadConfig},
 	}
@@ -340,15 +303,6 @@ func TestSplitTargetsTheFocusedPane(t *testing.T) {
 	}
 }
 
-func TestPromptTargetsTheFocusedPane(t *testing.T) {
-	var params herdr.AgentPromptParams
-	decode(t, run(t, "herdr:agent.prompt", step{input: "go on"})[0].Params, &params)
-
-	if params.Target != "p1" || params.Text != "go on" {
-		t.Errorf("prompted %+v, want the focused pane to receive the text", params)
-	}
-}
-
 func TestWorktreeTakesTheBranchAndTheWorkspaceCwd(t *testing.T) {
 	var params herdr.WorktreeCreateParams
 	decode(t, run(t, "herdr:worktree.new", step{input: "feature"})[0].Params, &params)
@@ -375,7 +329,6 @@ func TestEntriesThatNeedContextFailWithoutIt(t *testing.T) {
 		"herdr:pane.edit_scrollback",
 		"herdr:agent.start",
 		"herdr:agent.rename",
-		"herdr:agent.prompt",
 	} {
 		t.Run(id, func(t *testing.T) {
 			s := server(t)
@@ -391,21 +344,6 @@ func TestEntriesThatNeedContextFailWithoutIt(t *testing.T) {
 				t.Errorf("made %d calls, want none before the context check", len(calls))
 			}
 		})
-	}
-}
-
-func TestPromptRefusesAPaneWithoutAnAgent(t *testing.T) {
-	s := server(t)
-	ctx := fullContext()
-	ctx.FocusedPaneAgent = nil
-
-	err := entry(t, "herdr:agent.prompt").Run(context.Background(), palette.Exec{
-		Client: s.Env().Client(),
-		Ctx:    ctx,
-		Input:  "go on",
-	})
-	if err == nil {
-		t.Fatal("Run() prompted a pane that runs no agent")
 	}
 }
 
@@ -534,15 +472,37 @@ func TestRemovingAWorktreeNamesTheWorkspaceAndDoesNotForce(t *testing.T) {
 	}
 }
 
-func TestMovingAPaneOffersEveryOtherTab(t *testing.T) {
+func TestMovingAPaneOffersNewPlacesAndEveryOtherTab(t *testing.T) {
 	list := choices(t, "herdr:pane.move")
 
-	want := []string{"t0", "t2", "t9"}
-	if got := values(list); len(got) != len(want) || got[0] != want[0] || got[2] != want[2] {
-		t.Fatalf("offered %v, want %v: every tab but the one the palette was opened in", got, want)
+	want := []string{toNewTab, toNewWorkspace, "t0", "t2", "t9"}
+	if got := values(list); !slices.Equal(got, want) {
+		t.Fatalf("offered %v, want %v: a new tab, a new workspace and every tab but the one the palette was opened in", got, want)
 	}
-	if list[2].Detail != "notes" {
-		t.Errorf("detail = %q, want the workspace the tab sits in", list[2].Detail)
+	if list[4].Detail != "notes" {
+		t.Errorf("detail = %q, want the workspace the tab sits in", list[4].Detail)
+	}
+}
+
+func TestMovingAPaneToANewTabKeepsItInItsWorkspace(t *testing.T) {
+	var params herdr.PaneMoveParams
+	decode(t, run(t, "herdr:pane.move", step{chosen: toNewTab})[0].Params, &params)
+
+	tab, ok := params.Destination.(herdr.PaneMoveDestinationNewTab)
+	if !ok {
+		t.Fatalf("destination is %T, want a new tab", params.Destination)
+	}
+	if herdr.Value(tab.WorkspaceID) != herdr.Value(fullContext().WorkspaceID) {
+		t.Errorf("new tab in workspace %q, want the one the palette was opened in", herdr.Value(tab.WorkspaceID))
+	}
+}
+
+func TestMovingAPaneToANewWorkspace(t *testing.T) {
+	var params herdr.PaneMoveParams
+	decode(t, run(t, "herdr:pane.move", step{chosen: toNewWorkspace})[0].Params, &params)
+
+	if _, ok := params.Destination.(herdr.PaneMoveDestinationNewWorkspace); !ok {
+		t.Fatalf("destination is %T, want a new workspace", params.Destination)
 	}
 }
 
@@ -559,6 +519,131 @@ func TestMovingAPaneTargetsTheChosenTab(t *testing.T) {
 	}
 	if tab.TabID != "t9" {
 		t.Errorf("destination tab = %q, want the one that was picked", tab.TabID)
+	}
+}
+
+func TestSwappingOffersTheOtherPanesOfTheTab(t *testing.T) {
+	if got, want := values(choices(t, "herdr:pane.swap")), []string{"p2", "p3"}; !slices.Equal(got, want) {
+		t.Errorf("offered %v, want %v: the panes beside the focused one, in its tab only", got, want)
+	}
+}
+
+func TestSwappingTradesPlacesWithThePickedPane(t *testing.T) {
+	var params herdr.PaneSwapParams
+	for _, call := range run(t, "herdr:pane.swap", step{chosen: "p3"}) {
+		if call.Method == herdr.MethodPaneSwap {
+			decode(t, call.Params, &params)
+		}
+	}
+	if herdr.Value(params.SourcePaneID) != "p1" || herdr.Value(params.TargetPaneID) != "p3" {
+		t.Errorf("swapped %q with %q, want the focused pane with the one picked",
+			herdr.Value(params.SourcePaneID), herdr.Value(params.TargetPaneID))
+	}
+}
+
+// herdr answers a swap it will not make with a reason, not an error, so the
+// palette has to say so itself rather than close as though it had worked.
+func TestASwapHerdrRefusedIsReported(t *testing.T) {
+	reason := herdr.PaneSwapReasonCrossTab
+	s := server(t).Reply(herdr.MethodPaneSwap, herdr.PaneSwapResponse{Swap: herdr.PaneSwapResult{Reason: &reason}})
+	err := execute(t, s.Env(plugintest.StateDir(t.TempDir())), "herdr:pane.swap", step{chosen: "p9"}, fullContext())
+	if err == nil || !strings.Contains(err.Error(), "cross_tab") {
+		t.Errorf("Run() = %v, want the refusal and its reason", err)
+	}
+}
+
+// unevenLayout is one pane across the top and three side by side below it,
+// the top pane short and the first two below squeezed into a third of the row.
+func unevenLayout() herdr.LayoutNode {
+	pane := herdr.LayoutNodePane{}
+	return herdr.LayoutNodeSplit{
+		Direction: herdr.SplitDirectionDown,
+		Ratio:     0.3,
+		First:     pane,
+		Second: herdr.LayoutNodeSplit{
+			Direction: herdr.SplitDirectionRight,
+			Ratio:     0.5,
+			First:     herdr.LayoutNodeSplit{Direction: herdr.SplitDirectionRight, Ratio: 0.3, First: pane, Second: pane},
+			Second:    pane,
+		},
+	}
+}
+
+func TestEvenPanesGetTheSameShareOfTheirRow(t *testing.T) {
+	var got []herdr.LayoutSetSplitRatioParams
+	for _, call := range run(t, "herdr:layout.even", step{}) {
+		if call.Method != herdr.MethodLayoutSetSplitRatio {
+			continue
+		}
+		// herdr refuses a path of null, which is what the root's would be
+		// sent as if it were left nil.
+		if len(got) == 0 && !strings.Contains(string(call.Params), `"path":[]`) {
+			t.Errorf("the root is set with %s, want an empty path", call.Params)
+		}
+		var params herdr.LayoutSetSplitRatioParams
+		decode(t, call.Params, &params)
+		if herdr.Value(params.PaneID) != "p1" {
+			t.Errorf("set a ratio in the tab of %q, want the focused pane's", herdr.Value(params.PaneID))
+		}
+		got = append(got, params)
+	}
+
+	// The top pane and the row below each count as one down the tab, then the
+	// row's splits: two panes of three to the left, then one of two.
+	want := []struct {
+		path  []bool
+		ratio float64
+	}{{[]bool{}, 0.5}, {[]bool{true}, 2.0 / 3}, {[]bool{true, false}, 0.5}}
+	if len(got) != len(want) {
+		t.Fatalf("set %d ratios, want %d: %+v", len(got), len(want), got)
+	}
+	for i, w := range want {
+		if !slices.Equal(got[i].Path, w.path) || math.Abs(got[i].Ratio-w.ratio) > 1e-9 {
+			t.Errorf("split %d: path %v ratio %v, want path %v ratio %v", i, got[i].Path, got[i].Ratio, w.path, w.ratio)
+		}
+	}
+}
+
+// A split the other way counts as its wider half, so a pane beside a stack of
+// two columns gets a third of the width, the same as each column.
+func TestAPaneBesideAStackLinesUpWithItsColumns(t *testing.T) {
+	pane := herdr.LayoutNodePane{}
+	root := herdr.LayoutNodeSplit{
+		Direction: herdr.SplitDirectionRight,
+		Ratio:     0.5,
+		First:     pane,
+		Second: herdr.LayoutNodeSplit{
+			Direction: herdr.SplitDirectionDown,
+			Ratio:     0.5,
+			First:     pane,
+			Second:    herdr.LayoutNodeSplit{Direction: herdr.SplitDirectionRight, Ratio: 0.5, First: pane, Second: pane},
+		},
+	}
+	got := evenSplits(root, nil)
+	if len(got) != 1 || len(got[0].path) != 0 || math.Abs(got[0].ratio-1.0/3) > 1e-9 {
+		t.Errorf("evenSplits = %+v, want only the root set to a third", got)
+	}
+}
+
+// herdr keeps a ratio at 0.1 or more, so eleven panes in a row leave the
+// first a tenth. Sending it once is all that can be done: a second run has
+// nothing left to change.
+func TestMoreThanTenPanesInARowAreSetOnce(t *testing.T) {
+	var row herdr.LayoutNode = herdr.LayoutNodePane{}
+	for range 10 {
+		row = herdr.LayoutNodeSplit{Direction: herdr.SplitDirectionRight, Ratio: 0.5, First: herdr.LayoutNodePane{}, Second: row}
+	}
+	got := evenSplits(row, nil)
+	if len(got) == 0 || len(got[0].path) != 0 || math.Abs(got[0].ratio-0.1) > 1e-9 {
+		t.Fatalf("evenSplits = %+v, want the root clamped to a tenth", got)
+	}
+
+	root := row.(herdr.LayoutNodeSplit)
+	root.Ratio = float64(float32(got[0].ratio))
+	for _, split := range evenSplits(root, nil) {
+		if len(split.path) == 0 {
+			t.Errorf("the root was sent %v again although herdr already holds it", split.ratio)
+		}
 	}
 }
 
@@ -606,38 +691,6 @@ func TestMovingATabPastTheEndDoesNothing(t *testing.T) {
 	}
 }
 
-func TestCyclingFocusWrapsRoundTheTab(t *testing.T) {
-	for _, c := range []struct{ id, want string }{
-		{id: "herdr:pane.cycle.next", want: "p2"},
-		{id: "herdr:pane.cycle.previous", want: "p3"},
-	} {
-		t.Run(c.id, func(t *testing.T) {
-			calls := run(t, c.id, step{})
-			if len(calls) != 2 || calls[1].Method != herdr.MethodPaneFocus {
-				t.Fatalf("made %v, want the snapshot and a focus", calls)
-			}
-
-			var params herdr.PaneTarget
-			decode(t, calls[1].Params, &params)
-			if params.PaneID != c.want {
-				t.Errorf("focused %q, want %q", params.PaneID, c.want)
-			}
-		})
-	}
-}
-
-// A pane alone in its tab has nowhere to cycle to.
-func TestCyclingASinglePaneDoesNothing(t *testing.T) {
-	ctx := fullContext()
-	ctx.FocusedPaneID = new("p9")
-
-	for _, call := range runIn(t, "herdr:pane.cycle.next", step{}, ctx) {
-		if call.Method == herdr.MethodPaneFocus {
-			t.Error("focus was moved although the tab holds one pane")
-		}
-	}
-}
-
 // herdr names an agent after the kind it started, which is what its own UI
 // shows until the agent is renamed.
 func TestStartingAnAgentNamesItAfterTheKindInTheFocusedPane(t *testing.T) {
@@ -676,135 +729,6 @@ func TestRenamingAnAgentRefusesAPaneWithoutOne(t *testing.T) {
 func TestRenamingAnAgentStartsFromWhatItIs(t *testing.T) {
 	if got := entry(t, "herdr:agent.rename").Initial(fullContext()); got != "claude" {
 		t.Errorf("initial value = %q, want the agent running in the focused pane", got)
-	}
-}
-
-// Saving, opening and forgetting a layout work on the palette's own store, so
-// one environment serves the three of them.
-func TestALayoutIsSavedOpenedAndForgotten(t *testing.T) {
-	s := server(t)
-	env := s.Env(plugintest.StateDir(t.TempDir()))
-
-	if err := execute(t, env, "herdr:layout.save", step{input: "work"}, fullContext()); err != nil {
-		t.Fatalf("saving the layout: %v", err)
-	}
-	var export herdr.LayoutExportParams
-	decode(t, paramsOf(t, s, herdr.MethodLayoutExport), &export)
-	if export.TabID == nil || *export.TabID != "t1" {
-		t.Errorf("exported %+v, want the focused tab", export)
-	}
-
-	e := entry(t, "herdr:layout.apply")
-	list, err := e.Choices.List(context.Background(), palette.Exec{Client: env.Client(), Ctx: fullContext(), Env: env})
-	if err != nil {
-		t.Fatalf("listing the saved layouts: %v", err)
-	}
-	if got := values(list); len(got) != 1 || got[0] != "work" {
-		t.Fatalf("offered %v, want the layout that was just saved", got)
-	}
-
-	if err := execute(t, env, "herdr:layout.apply", step{chosen: "work"}, fullContext()); err != nil {
-		t.Fatalf("opening the layout: %v", err)
-	}
-	var apply herdr.LayoutApplyParams
-	decode(t, paramsOf(t, s, herdr.MethodLayoutApply), &apply)
-	if apply.TabLabel == nil || *apply.TabLabel != "work" {
-		t.Errorf("applied %+v, want a new tab named after the layout", apply)
-	}
-	if apply.WorkspaceID == nil || *apply.WorkspaceID != "w1" {
-		t.Error("the layout is not opened in the focused workspace")
-	}
-	for _, pane := range herdr.LayoutPanes(apply.Root) {
-		if pane.PaneID != nil {
-			t.Errorf("the applied layout names pane %q, which would be moved instead of opened", *pane.PaneID)
-		}
-	}
-
-	if err := execute(t, env, "herdr:layout.forget", step{chosen: "work"}, fullContext()); err != nil {
-		t.Fatalf("forgetting the layout: %v", err)
-	}
-	if left := layout.List(env); len(left) != 0 {
-		t.Errorf("%d layouts are still saved", len(left))
-	}
-}
-
-func TestOpeningALayoutThatIsNotSaved(t *testing.T) {
-	s := server(t)
-	env := s.Env(plugintest.StateDir(t.TempDir()))
-
-	if err := execute(t, env, "herdr:layout.apply", step{chosen: "work"}, fullContext()); err == nil {
-		t.Fatal("Run() reported no error for a layout that was never saved")
-	}
-	for _, call := range s.Calls() {
-		if call.Method == herdr.MethodLayoutApply {
-			t.Error("herdr was asked to apply a layout the palette does not have")
-		}
-	}
-}
-
-func TestPromptingAnAgentOffersEveryOneInTheSession(t *testing.T) {
-	list := choices(t, "herdr:agent.prompt.any")
-
-	if got := values(list); len(got) != 1 || got[0] != "p9" {
-		t.Fatalf("offered %v, want the pane running an agent", got)
-	}
-	if list[0].Title != "reviewer" || list[0].Detail != "working" {
-		t.Errorf("row = %+v, want the name the agent goes by and what it is doing", list[0])
-	}
-	if !strings.Contains(list[0].Search, "notes") {
-		t.Errorf("search text = %q, want the workspace the agent sits in", list[0].Search)
-	}
-}
-
-// The target is picked from the list and the text typed afterwards, so the
-// entry runs on both.
-func TestPromptingAnAgentSendsTheTextToThePickedPane(t *testing.T) {
-	var params herdr.AgentPromptParams
-	decode(t, run(t, "herdr:agent.prompt.any", step{chosen: "p9", input: "go on"})[0].Params, &params)
-
-	if params.Target != "p9" || params.Text != "go on" {
-		t.Errorf("prompted %+v, want the agent that was picked to receive the text", params)
-	}
-}
-
-// Turning the palette off would take away the popup the row is being run from,
-// with no row left to turn it back on, so it is not one of them.
-func TestManagingPluginsListsTheOthersAndWhatTheyAre(t *testing.T) {
-	list := choices(t, "herdr:plugin.manage")
-
-	want := []string{"herdr.machine-manager", "herdr.auto-title"}
-	got := values(list)
-	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
-		t.Fatalf("offered %v, want %v: every installed plugin but this one", got, want)
-	}
-	if list[0].Title != "Machine Manager" || list[0].Detail != "enabled" {
-		t.Errorf("row = %+v, want the plugin's name and that it is on", list[0])
-	}
-	if list[1].Detail != "disabled" || list[1].Search != "herdr.auto-title" {
-		t.Errorf("row = %+v, want that it is off, found by its id too", list[1])
-	}
-	// The state is drawn in a colour of its own, the way an agent's status is.
-	if list[0].Status != "enabled" || list[1].Status != "disabled" {
-		t.Errorf("states = %q and %q, want each row to carry the one it shows", list[0].Status, list[1].Status)
-	}
-}
-
-// The list is a screen, so what a plugin is now is read again rather than
-// taken from the row it was drawn on.
-func TestTurningAPluginOverGoesByWhatItIsNow(t *testing.T) {
-	for _, c := range []struct{ plugin, method string }{
-		{plugin: "herdr.machine-manager", method: herdr.MethodPluginDisable},
-		{plugin: "herdr.auto-title", method: herdr.MethodPluginEnable},
-	} {
-		t.Run(c.plugin, func(t *testing.T) {
-			calls := run(t, "herdr:plugin.manage", step{chosen: c.plugin})
-			if len(calls) != 2 {
-				t.Fatalf("made %v, want the list and the change", calls)
-			}
-			if calls[1].Method != c.method {
-				t.Errorf("called %q, want %q", calls[1].Method, c.method)
-			}
-		})
 	}
 }
 

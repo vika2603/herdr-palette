@@ -17,13 +17,14 @@ command = ["./scripts/build.sh"]
 # the border with nothing on it. What a pane is showing is inside it, where
 # there is room to say it properly.
 # A popup is centred in the pane area, so its height is also what decides how
-# high up it starts. The plugin's configuration replaces both under [window].
+# high up it starts. The width leaves the list room for its columns beside the
+# preview. The plugin's configuration replaces both under [window].
 [[panes]]
 id = "palette"
 title = "\u200B"
 description = "Search and run an action"
 placement = "popup"
-width = "60%"
+width = "80%"
 height = "60%"
 command = ["./bin/palette"]
 
@@ -47,10 +48,13 @@ description = "Run a command configured under [[keys.command]]"
 placement = "popup"
 command = ["./bin/palette"]
 
+# Opens the popup, from a key that also closes it. herdr hands every key to a
+# popup while one is up, so the closing half is the popup's own: it quits when
+# the key bound to this action arrives inside it.
 [[actions]]
-id = "open"
-title = "Open command palette"
-description = "Search and run herdr actions and plugin actions"
+id = "toggle"
+title = "Toggle command palette"
+description = "Open the command palette, or close it when it is open"
 contexts = ["global", "workspace", "tab", "pane"]
 command = ["./bin/palette"]
 
@@ -63,16 +67,6 @@ description = "Search the workspaces, tabs and panes of the session and go to on
 contexts = ["global", "workspace", "tab", "pane"]
 command = ["./bin/palette"]
 
-# The same popup, from a key that also closes it. herdr hands every key to a
-# popup while one is up, so the closing half is the popup's own: it quits when
-# the key bound to this action arrives inside it.
-[[actions]]
-id = "toggle"
-title = "Toggle command palette"
-description = "Open the command palette, or close it when it is open"
-contexts = ["global", "workspace", "tab", "pane"]
-command = ["./bin/palette"]
-
 # Goes straight to the last place the palette went to, with no popup in
 # between. What it returns to is whatever the recent order holds first, a
 # workspace, a tab or a pane.
@@ -80,6 +74,16 @@ command = ["./bin/palette"]
 id = "back"
 title = "Go back to the last place"
 description = "Focus the workspace, tab or pane the palette last went to"
+contexts = ["global", "workspace", "tab", "pane"]
+command = ["./bin/palette"]
+
+# Goes to an agent that is blocked, or failing that done, with no popup in
+# between; pressed again from one it goes to the next one waiting. The pane it
+# is pressed in becomes what back returns to.
+[[actions]]
+id = "attend"
+title = "Go to an agent that needs you"
+description = "Focus the next agent that is blocked or done"
 contexts = ["global", "workspace", "tab", "pane"]
 command = ["./bin/palette"]
 

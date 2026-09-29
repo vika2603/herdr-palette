@@ -78,7 +78,7 @@ func RelayPrompt(ctx context.Context, client *herdr.Client, env *plugin.Env, ent
 		Chosen:  entry.Chosen,
 		Context: invocation,
 		Prompt: &Prompt{
-			Title:   entry.Name(),
+			Title:   entry.Title,
 			Label:   entry.Input.Label,
 			Initial: entry.Initial(invocation),
 		},

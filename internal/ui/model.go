@@ -3,10 +3,10 @@ package ui
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/vika2603/herdr-client/herdr"
 	"github.com/vika2603/herdr-client/plugin"
 
@@ -26,7 +26,10 @@ type ranMsg struct {
 // popup shows.
 type (
 	changedMsg struct{}
-	openMsg    struct{ open []palette.Entry }
+	openMsg    struct {
+		open     []palette.Entry
+		statuses []string
+	}
 )
 
 // choicesMsg carries what an entry can act on, once herdr has answered with
@@ -59,25 +62,45 @@ type model struct {
 	commands []palette.Entry
 	open     []palette.Entry
 	entries  []palette.Entry
+	// statuses is what every agent in the session is doing, counted on the
+	// rule under the query.
+	statuses []string
 	// changes carries a signal per batch of herdr events, at most one waiting.
 	changes <-chan struct{}
 	recent  []string
 	// choosing is set while the rows are an entry's targets rather than the
 	// command list, and confirming while a row that cannot be undone is
-	// waiting for the second keystroke that runs it.
+	// waiting for the second keystroke that runs it. closing says the row
+	// waiting closes what a row of the list goes to rather than running a
+	// command, which leaves the popup up.
 	choosing   *chooser
 	confirming *palette.Entry
+	closing    bool
+	// replying is the blocked agent the keyboard has been handed to, whose
+	// screen stands in the list's place until esc gives it back.
+	replying *palette.Ranked
+	// queued are keys pressed for the agent while the last ones were still on
+	// their way, and sending whether some are: the socket takes each request
+	// on a connection of its own, so two in flight could land out of order.
+	queued  []string
+	sending bool
 	// closer is the toggle key, which closes the popup from inside: herdr
 	// hands every key to a popup while one is up.
 	closer closer
 
 	query  textinput.Model
 	ranked []palette.Ranked
+	// lines is the list as it is drawn, with the headings of its groups, and
+	// offset the first of them on show. cursor indexes ranked: a heading is
+	// never selected.
+	lines  []line
 	cursor int
 	offset int
-	// keyWidth is the width of the key column, zero when nothing on show is
-	// bound to a key.
-	keyWidth int
+	// widths are what the columns of a row are drawn to.
+	widths widths
+	// prefix is the key a prefix chord starts with, which the key column
+	// spells out.
+	prefix string
 
 	// epoch counts the screens the popup has walked out of. A request to the
 	// socket carries the one it was made in, and an answer from an earlier
@@ -87,10 +110,19 @@ type model struct {
 
 	styles  styles
 	failure string
+	// notice is what the footer says in place of a failure when nothing went
+	// wrong: an entry with nothing to act on.
+	notice string
 	// pending is set while what a keystroke asked for is out on the socket,
 	// so a slow answer does not read as a keystroke that went nowhere.
 	pending       bool
 	width, height int
+
+	// preview is the last screen read for the preview, and previewSeq moves
+	// on whenever the pane it should show changes.
+	preview      preview
+	previewSeq   int
+	previewReads int
 }
 
 func newModel(
@@ -104,11 +136,14 @@ func newModel(
 ) model {
 	styles := newStyles(colours)
 
+	// The label naming the screen stands where a prompt would.
 	query := textinput.New()
-	query.Prompt = queryPrompt
+	query.Prompt = ""
 	query.Placeholder = searchPlaceholder
 	query.Width = queryWidth(defaultCols)
-	query.PromptStyle = styles.prompt
+	// The cursor keeps the terminal's own colours: drawn in the accent it is a
+	// second block of the label's colour right beside the label.
+	query.PlaceholderStyle = styles.plain.faint
 	query.Focus()
 
 	m := model{
@@ -117,6 +152,8 @@ func newModel(
 		invocation: invocation,
 		commands:   list.Commands,
 		open:       list.Open,
+		statuses:   list.Statuses,
+		prefix:     toggle.Prefix,
 		recent:     recent,
 		query:      query,
 		styles:     styles,
@@ -134,7 +171,7 @@ func newModel(
 func (m *model) setSize(width, height int) {
 	m.width, m.height = width, height
 	m.query.Width = queryWidth(m.cols())
-	m.offset = scroll(m.offset, m.cursor, m.rows())
+	m.reveal()
 }
 
 // start fills the query before the first frame, which is how the popup opens
@@ -144,9 +181,29 @@ func (m *model) start(text string) {
 	m.rank()
 }
 
-func (m model) Init() tea.Cmd { return tea.Batch(textinput.Blink, listen(m.changes)) }
+// Init starts following the session. The field's own blink is left out: the
+// query line draws its caret itself, and it does not blink.
+func (m model) Init() tea.Cmd { return listen(m.changes) }
 
+// Update answers a message, and asks for the preview again once the pane it
+// should show has changed, whatever the message did to change it.
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	target := m.previewTarget()
+	next, cmd := m.update(msg)
+	updated, ok := next.(model)
+	if !ok {
+		return next, cmd
+	}
+	if after := updated.previewTarget(); after != target {
+		updated.previewSeq++
+		if after != "" {
+			cmd = tea.Batch(cmd, updated.previewAfter(previewSettle))
+		}
+	}
+	return updated, cmd
+}
+
+func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.setSize(msg.Width, msg.Height)
@@ -165,11 +222,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if msg.err == nil {
-			// A list that stays is a screen the command is used from, so it
-			// is asked for again rather than closing over what just changed.
-			if m.staying() {
-				return m, m.list(m.choosing.entry)
-			}
 			return m, tea.Quit
 		}
 		// A command that failed leaves the popup open with the reason, so the
@@ -178,12 +230,70 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.failure = msg.err.Error()
 		return m, nil
 
+	case closedMsg:
+		if msg.epoch == m.epoch {
+			m.pending = false
+		}
+		if msg.err != nil {
+			m.failure = msg.err.Error()
+		} else {
+			m.notice = "closed " + msg.name
+		}
+		return m, nil
+
 	case changedMsg:
 		return m, tea.Batch(m.reload(), listen(m.changes))
 
 	case openMsg:
+		m.statuses = msg.statuses
 		m.setOpen(msg.open)
+		if m.replying != nil {
+			return m, m.followReply()
+		}
 		return m, nil
+
+	case previewTickMsg:
+		if msg.seq != m.previewSeq || m.previewTarget() == "" {
+			return m, nil
+		}
+		return m, m.readPreview(m.previewTarget(), false)
+
+	case previewEchoMsg:
+		if msg.seq != m.previewSeq || m.previewTarget() == "" {
+			return m, nil
+		}
+		return m, m.readPreview(m.previewTarget(), true)
+
+	case previewMsg:
+		if msg.seq != m.previewSeq {
+			return m, nil
+		}
+		if msg.read > m.preview.read {
+			m.preview = preview{pane: msg.pane, text: msg.text, err: msg.err, read: msg.read}
+		}
+		if msg.echo {
+			return m, nil
+		}
+		if m.replying != nil {
+			return m, m.previewAfter(replyRefresh)
+		}
+		return m, m.previewAfter(previewRefresh)
+
+	case replySentMsg:
+		m.sending = false
+		if msg.err != nil {
+			m.failure = msg.err.Error()
+		}
+		if m.replying == nil {
+			m.queued = nil
+			return m, nil
+		}
+		// Read once the key has had time to show, beside the refresh already
+		// running: restarting that for every key would hold every read off
+		// for as long as keys keep coming.
+		seq := m.previewSeq
+		echo := tea.Tick(replyEcho, func(time.Time) tea.Msg { return previewEchoMsg{seq: seq} })
+		return m, tea.Batch(m.flushReply(), echo)
 
 	case choicesMsg:
 		if msg.epoch != m.epoch {
@@ -209,7 +319,8 @@ const wheelStep = 3
 // and a row taken over by where the pointer came to rest is a row the next
 // enter would run unread.
 func (m model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	if msg.Action != tea.MouseActionPress {
+	// The agent's screen is not a list, and a click is not an answer to it.
+	if msg.Action != tea.MouseActionPress || m.replying != nil {
 		return m, nil
 	}
 	switch msg.Button {
@@ -220,7 +331,7 @@ func (m model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		m.move(wheelStep)
 		return m, nil
 	case tea.MouseButtonLeft:
-		index, ok := m.rowAt(msg.Y)
+		index, ok := m.rowAt(msg.X, msg.Y)
 		if !ok {
 			// A click off the rows is not an answer, so it puts the question
 			// away rather than leaving it up over a list being read.
@@ -235,7 +346,7 @@ func (m model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			m.confirming = nil
 			if index == m.cursor {
 				m.pending = true
-				return m, m.run(entry)
+				return m, m.answer(entry)
 			}
 			m.cursor = index
 			return m, nil
@@ -249,16 +360,17 @@ func (m model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 // rowAt is the entry the pointer is over, and whether it is over one at all.
 // A row has to have been drawn: the rule under the list and the line below it
 // are inside the popup too, and the arithmetic alone would read them as the
-// rows that would have been there had the window been taller.
-func (m model) rowAt(y int) (int, bool) {
-	if y < headerRows || y >= headerRows+m.rows() {
+// rows that would have been there had the window been taller. A group's
+// heading and the preview beside the list are not rows either.
+func (m model) rowAt(x, y int) (int, bool) {
+	if y < headerRows || y >= headerRows+m.rows() || x >= m.listWidth() {
 		return 0, false
 	}
-	index := m.offset + y - headerRows
-	if index >= len(m.ranked) {
+	at := m.offset + y - headerRows
+	if at >= len(m.lines) || m.lines[at].isHeading() {
 		return 0, false
 	}
-	return index, true
+	return m.lines[at].row, true
 }
 
 func (m model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -274,6 +386,9 @@ func (m model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if taken {
 		return m, nil
 	}
+	if m.replying != nil {
+		return m.keyReply(msg)
+	}
 	return m.keyList(msg)
 }
 
@@ -286,7 +401,7 @@ func (m model) keyList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.confirming = nil
 		if msg.String() == "enter" {
 			m.pending = true
-			return m, m.run(entry)
+			return m, m.answer(entry)
 		}
 		return m, nil
 	}
@@ -315,11 +430,18 @@ func (m model) keyList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		return m.choose()
 	case "tab":
-		// A list that stays is a screen of states rather than of targets, and
-		// turning one over is what tab reads as. Elsewhere it types nothing
-		// and does nothing.
-		if m.staying() {
-			return m.choose()
+		// On an agent that is waiting tab moves the keyboard over to the
+		// agent. Elsewhere it types nothing and does nothing.
+		//
+		// Not while a command is out: its answer would close the popup or
+		// put a list up under the agent's screen.
+		if m.choosing == nil && !m.pending && m.cursor < len(m.ranked) && canReply(m.ranked[m.cursor]) {
+			return m.startReply()
+		}
+		return m, nil
+	case "ctrl+x":
+		if m.canClose() {
+			return m.startClose()
 		}
 		return m, nil
 	case "backspace":
@@ -336,7 +458,7 @@ func (m model) keyList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	before := m.query.Value()
 	m.query, cmd = m.query.Update(msg)
 	if m.query.Value() != before {
-		m.failure = ""
+		m.failure, m.notice = "", ""
 		m.rank()
 	}
 	return m, cmd
@@ -356,8 +478,8 @@ func (m model) choose() (tea.Model, tea.Cmd) {
 	// The list an entry picks its target from is not itself the act, so the
 	// question waits until there is something to ask about.
 	if entry.Confirm && entry.Choices == nil {
-		m.confirming = &entry
-		m.failure = ""
+		m.confirming, m.closing = &entry, false
+		m.failure, m.notice = "", ""
 		return m, nil
 	}
 	m.pending = true
@@ -377,45 +499,23 @@ func (m model) list(entry palette.Entry) tea.Cmd {
 	}
 }
 
-// staying reports whether the list on show is one the commands are run from
-// rather than picked out of.
-func (m model) staying() bool {
-	return m.choosing != nil && m.choosing.entry.Choices.Stays
-}
-
 // choices shows what the entry can act on, or says why there is nothing to
 // show. Either way the popup stays open: the keystroke that asked for the list
 // is answered where it was made.
-//
-// A list asked for again, after a row of it ran, replaces the rows under the
-// query and the selection they were picked with, so the screen does not move
-// out from under the next keystroke.
 func (m *model) choices(msg choicesMsg) {
 	m.pending = false
 	switch {
 	case msg.err != nil:
 		m.failure = msg.err.Error()
 	case len(msg.choices) == 0:
-		if m.choosing != nil {
-			m.abandon()
-		}
-		m.failure = msg.entry.Choices.Empty
+		m.notice = msg.entry.Choices.Empty
 	default:
-		again := m.choosing != nil && m.choosing.entry.ID == msg.entry.ID
-		if !again {
-			m.choosing = &chooser{entry: msg.entry, query: msg.query}
-			m.query.SetValue("")
-			m.query.Placeholder = msg.entry.Choices.Label
-		}
-
-		cursor := m.cursor
+		m.choosing = &chooser{entry: msg.entry, query: msg.query}
+		m.query.SetValue("")
+		m.query.Placeholder = msg.entry.Choices.Label
 		m.entries = palette.ChoiceEntries(msg.entry, msg.choices)
-		m.failure = ""
+		m.failure, m.notice = "", ""
 		m.rank()
-		if again {
-			m.cursor = clamp(cursor, len(m.ranked))
-			m.offset = scroll(m.offset, m.cursor, m.rows())
-		}
 	}
 }
 
@@ -427,7 +527,7 @@ func (m *model) abandon() {
 	m.query.SetValue(m.choosing.query)
 	m.query.Placeholder = searchPlaceholder
 	m.choosing = nil
-	m.failure = ""
+	m.failure, m.notice = "", ""
 	m.epoch++
 	m.pending = false
 	m.collect()
@@ -477,11 +577,11 @@ func (m model) execute(entry palette.Entry) error {
 // loop, so a slow socket does not hold up a keystroke.
 func (m model) reload() tea.Cmd {
 	return func() tea.Msg {
-		open, err := palette.OpenEntries(m.ctx, m.env.Client())
+		session, err := palette.OpenSession(m.ctx, m.env.Client())
 		if err != nil {
 			return nil
 		}
-		return openMsg{open: open}
+		return openMsg{open: session.Entries, statuses: session.Statuses}
 	}
 }
 
@@ -501,18 +601,26 @@ func (m *model) setOpen(open []palette.Entry) {
 	if m.cursor < len(m.ranked) {
 		selected = m.ranked[m.cursor].Entry.ID
 	}
+	offset, at := m.offset, m.cursor
 
 	m.open = open
 	m.collect()
 	m.rank()
 
+	// A selected row that has gone, such as one just closed, leaves the
+	// selection where it was, on the row that took its place: the next one to
+	// close is picked from there, not from the top.
+	m.cursor = min(at, max(len(m.ranked)-1, 0))
 	for i, ranked := range m.ranked {
 		if ranked.Entry.ID == selected {
 			m.cursor = i
 			break
 		}
 	}
-	m.offset = scroll(m.offset, m.cursor, m.rows())
+	// The window stays where it was rather than jumping back to the top with
+	// the rebuild, unless that would leave the selection out of it.
+	m.offset = min(offset, max(len(m.lines)-1, 0))
+	m.reveal()
 
 	// The question names the row under the selection. If the rebuild moved the
 	// selection off it — the pane it went to has gone — the question is about
@@ -536,12 +644,18 @@ func (m *model) rank() {
 	}
 
 	m.ranked = palette.Rank(entries, text, m.recent)
-	m.cursor, m.offset = 0, 0
-
-	m.keyWidth = 0
-	for _, ranked := range m.ranked {
-		m.keyWidth = max(m.keyWidth, len([]rune(ranked.Entry.Key)))
+	// A list nobody has searched yet is laid out in groups; a query's matches
+	// are one list in the order they matched, which the groups would break.
+	if strings.TrimSpace(text) == "" && m.choosing == nil {
+		m.ranked, m.lines = grouped(m.ranked)
+	} else {
+		m.lines = ungrouped(len(m.ranked))
 	}
+	m.cursor, m.offset = 0, 0
+	m.widths = measure(m.ranked, m.prefix)
+	// A window one line high would otherwise show the heading over the first
+	// row rather than the row selected.
+	m.reveal()
 }
 
 // step moves the selection one row and goes round at the ends, so the far end
@@ -553,7 +667,7 @@ func (m *model) step(by int) {
 	}
 	m.settle()
 	m.cursor = (m.cursor + by + len(m.ranked)) % len(m.ranked)
-	m.offset = scroll(m.offset, m.cursor, m.rows())
+	m.reveal()
 }
 
 // move takes the selection by a page or a turn of the wheel, which stop at the
@@ -565,7 +679,7 @@ func (m *model) move(by int) {
 		return
 	}
 	m.cursor = clamp(m.cursor+by, len(m.ranked))
-	m.offset = scroll(m.offset, m.cursor, m.rows())
+	m.reveal()
 }
 
 // settle clears what the footer is holding over the list. Moving the selection
@@ -573,18 +687,15 @@ func (m *model) move(by int) {
 // next keystroke is no longer answering; the footer is also where the keys and
 // what is on show live, so neither is held there for the rest of the popup.
 func (m *model) settle() {
-	m.failure = ""
+	m.failure, m.notice = "", ""
 	m.confirming = nil
 }
 
-// queryPrompt stands in front of the query, and queryWidth is how much of a
-// long query is on show: the columns left once the prompt and the cursor's own
-// have been taken. Without it the line grows past the popup and wraps, which
-// pushes every row below it down.
-const queryPrompt = "› "
-
+// queryWidth is how much of a long query is on show: the columns left once the
+// label in front of it and the cursor's own have been taken. Without it the
+// line grows past the popup and wraps, which pushes every row below it down.
 func queryWidth(cols int) int {
-	return max(cols-lipgloss.Width(queryPrompt)-1, 1)
+	return max(cols-queryLead-1, 1)
 }
 
 // GoesPrefix narrows the list to the rows that go somewhere already open. It
@@ -616,16 +727,38 @@ func clamp(index, length int) int {
 	return index
 }
 
-// scroll keeps the cursor inside the visible window.
-func scroll(offset, cursor, rows int) int {
+// reveal scrolls the window to the selected row. Moving up onto the first row
+// of a group brings its heading into the window with it, so a row is never on
+// show without the group it belongs to having been said.
+func (m *model) reveal() {
+	at := m.lineOf(m.cursor)
+	top := at
+	if top > 0 && m.lines[top-1].isHeading() && m.rows() > 1 {
+		top--
+	}
+	m.offset = scroll(m.offset, top, at, m.rows())
+}
+
+// lineOf is the line the row is drawn on.
+func (m model) lineOf(row int) int {
+	for i, l := range m.lines {
+		if l.row == row {
+			return i
+		}
+	}
+	return 0
+}
+
+// scroll keeps the lines from top to bottom inside the visible window.
+func scroll(offset, top, bottom, rows int) int {
 	if rows <= 0 {
 		return 0
 	}
-	if cursor < offset {
-		return cursor
+	if top < offset {
+		return top
 	}
-	if cursor >= offset+rows {
-		return cursor - rows + 1
+	if bottom >= offset+rows {
+		return bottom - rows + 1
 	}
 	return offset
 }

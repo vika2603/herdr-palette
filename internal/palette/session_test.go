@@ -39,7 +39,7 @@ func TestARenamedAgentShowsTheNameItWasGiven(t *testing.T) {
 	if !ok {
 		t.Fatal("the agent's pane is not in the list")
 	}
-	if agent.Detail != "reviewer · working" {
+	if agent.Detail != "working · reviewer" {
 		t.Errorf("detail = %q, want the name the agent was given and its status", agent.Detail)
 	}
 }
@@ -54,7 +54,7 @@ func TestAPaneRunningAnAgentSaysWhatItIsDoing(t *testing.T) {
 	if agent.Type != TypeAgent {
 		t.Errorf("namespace = %q, want the pane running an agent to show as one", agent.Type)
 	}
-	if agent.Detail != "claude · working" {
+	if agent.Detail != "working · claude" {
 		t.Errorf("detail = %q, want the agent and its status", agent.Detail)
 	}
 
@@ -95,5 +95,43 @@ func TestAnAgentIsFoundByItsStatus(t *testing.T) {
 	}
 	if !strings.Contains(ranked[0].Entry.Name(), "go to") {
 		t.Errorf("row = %q, want it to go to the agent", ranked[0].Entry.Name())
+	}
+}
+
+// A tab or a workspace is previewed through a pane of it: the focused one when
+// the tab holds it, since that is what the tab shows, and its first otherwise.
+func TestATabIsPreviewedThroughOneOfItsPanes(t *testing.T) {
+	snapshot := herdr.SessionSnapshot{
+		Workspaces: []herdr.WorkspaceInfo{
+			{WorkspaceID: "w1", Label: "here", Focused: true, ActiveTabID: "w1:t1"},
+			{WorkspaceID: "w2", Label: "there", ActiveTabID: "w2:t2"},
+		},
+		Tabs: []herdr.TabInfo{
+			{TabID: "w1:t1", WorkspaceID: "w1", Focused: true},
+			{TabID: "w2:t1", WorkspaceID: "w2"},
+			{TabID: "w2:t2", WorkspaceID: "w2"},
+		},
+		Panes: []herdr.PaneInfo{
+			{PaneID: "w2:p1", TabID: "w2:t1", WorkspaceID: "w2"},
+			{PaneID: "w2:p2", TabID: "w2:t2", WorkspaceID: "w2"},
+			{PaneID: "w2:p3", TabID: "w2:t2", WorkspaceID: "w2"},
+		},
+	}
+	snapshot.Panes[2].Focused = true
+
+	entries := sessionEntries(snapshot)
+	for id, want := range map[string]string{
+		"tab:w2:t1":    "w2:p1",
+		"tab:w2:t2":    "w2:p3",
+		"workspace:w2": "w2:p3",
+	} {
+		entry, ok := find(entries, id)
+		if !ok {
+			t.Errorf("%s is not in the list", id)
+			continue
+		}
+		if entry.Pane != want {
+			t.Errorf("%s previews %q, want %q", id, entry.Pane, want)
+		}
 	}
 }

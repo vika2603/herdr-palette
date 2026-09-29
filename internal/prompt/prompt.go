@@ -30,8 +30,8 @@ type Field struct {
 	Initial string
 }
 
-// caret is what stands in front of the edited line, matching the palette's
-// query line.
+// caret is what stands in front of the edited line, drawn in the accent the
+// palette marks what has focus with.
 const caret = "› "
 
 // defaultWidth is used when the pane's size is unavailable.
@@ -47,7 +47,11 @@ func Ask(in *os.File, out io.Writer, field Field, colours theme.Theme) (string, 
 	}
 	defer func() { _ = term.Restore(in.Fd(), state) }()
 
-	view := screen{heading: heading(field, colours), width: width(in)}
+	view := screen{
+		heading: heading(field, colours),
+		caret:   lipgloss.NewStyle().Foreground(colours.Accent),
+		width:   width(in),
+	}
 	edit := line{runes: []rune(field.Initial)}
 	edit.at = len(edit.runes)
 
@@ -86,19 +90,23 @@ func width(in *os.File) int {
 	return cols
 }
 
+// heading names the command the value is for the way the palette names its
+// screens, in a label of the accent, with what the value means beside it.
 func heading(field Field, colours theme.Theme) string {
-	title := lipgloss.NewStyle().Bold(true).Render(field.Title)
+	chip := lipgloss.NewStyle().Foreground(colours.Accent).Reverse(true).Bold(true)
+	title := chip.Render(" " + strings.ToUpper(field.Title) + " ")
 	if field.Label == "" {
 		return title
 	}
 	meta := lipgloss.NewStyle().Foreground(colours.Meta)
-	return title + meta.Render(" · "+field.Label)
+	return title + meta.Render("  "+field.Label)
 }
 
 // screen draws the two lines the field shows: the heading, and the value with
 // the terminal's cursor on the caret.
 type screen struct {
 	heading string
+	caret   lipgloss.Style
 	width   int
 }
 
@@ -114,7 +122,7 @@ func (s screen) render(l line) string {
 	// value is edited on.
 	out.WriteString(ansi.Truncate(s.heading, s.width, "…"))
 	out.WriteString("\r\n\x1b[2K")
-	out.WriteString(caret)
+	out.WriteString(s.caret.Render(caret))
 	out.WriteString(string(l.runes[from:to]))
 
 	column := lipgloss.Width(caret) + lipgloss.Width(string(l.runes[from:l.at])) + 1

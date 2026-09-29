@@ -17,6 +17,9 @@ import (
 type List struct {
 	Commands []Entry
 	Open     []Entry
+	// Statuses is what every agent in the session is doing, for the count the
+	// popup keeps of them.
+	Statuses []string
 }
 
 // All is both halves in the order they are shown.
@@ -69,11 +72,11 @@ func Load(
 		}
 	}
 
-	open, err := OpenEntries(ctx, client)
+	session, err := OpenSession(ctx, client)
 	if err != nil {
 		failures = append(failures, err)
 	}
-	return List{Commands: commands, Open: open}, errors.Join(failures...)
+	return List{Commands: commands, Open: session.Entries, Statuses: session.Statuses}, errors.Join(failures...)
 }
 
 // installedPlugins maps each installed plugin to what herdr knows about it:
@@ -120,7 +123,8 @@ func pluginEntry(action herdr.PluginActionInfo, name string) Entry {
 		AlwaysRelay: true,
 		// The row shows the plugin's name, but typing its id is a natural way
 		// to find its actions too.
-		Search: pluginID,
+		Search:      pluginID,
+		Description: herdr.Value(action.Description),
 		Run: func(ctx context.Context, e Exec) error {
 			_, err := e.Client.PluginActionInvoke(ctx, herdr.PluginActionInvokeParams{
 				PluginID: &pluginID,

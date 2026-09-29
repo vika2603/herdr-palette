@@ -14,18 +14,25 @@ var tokens = map[string]string{
 	"surface0": "#24283b",
 }
 
-func TestDefaultsAreComplete(t *testing.T) {
-	colours := Defaults()
+func TestEverySchemeIsComplete(t *testing.T) {
+	for _, colours := range []Theme{Herd(), Terminal()} {
+		complete(t, colours)
+	}
+}
+
+func complete(t *testing.T, colours Theme) {
+	t.Helper()
 
 	for name, colour := range map[string]lipgloss.TerminalColor{
-		"rule": colours.Rule, "selected": colours.Selected, "match": colours.Match,
-		"meta": colours.Meta, "scrollbar": colours.Scrollbar, "failure": colours.Failure,
+		"accent": colours.Accent, "rule": colours.Rule, "selected": colours.Selected,
+		"match": colours.Match, "meta": colours.Meta, "faint": colours.Faint,
+		"scrollbar": colours.Scrollbar, "failure": colours.Failure,
 	} {
 		if colour == nil {
 			t.Errorf("%s has no default colour", name)
 		}
 	}
-	for _, status := range []string{"working", "blocked", "done", "idle", "enabled", "disabled"} {
+	for _, status := range []string{"working", "blocked", "done", "idle"} {
 		if colours.Status[status] == nil {
 			t.Errorf("%s has no default colour", status)
 		}
@@ -78,5 +85,35 @@ func TestAStatusColourCanBeReplaced(t *testing.T) {
 	}
 	if colours.Status["blocked"] != Defaults().Status["blocked"] {
 		t.Error("a status nothing configures lost its colour")
+	}
+}
+
+func TestTheMatchFollowsAnAccentHerdrSupplies(t *testing.T) {
+	colours := Load(map[string]string{"accent": "#f5c2e7"}, Custom{})
+
+	if colours.Accent != lipgloss.Color("#f5c2e7") {
+		t.Errorf("accent = %v, want herdr's accent", colours.Accent)
+	}
+	if colours.Match != colours.Accent {
+		t.Errorf("match = %v, want the accent when nothing names a colour for it", colours.Match)
+	}
+}
+
+func TestAMatchColourOfItsOwnOutlivesTheAccent(t *testing.T) {
+	colours := Load(nil, Custom{Colours: map[string]string{"accent": "#111111", "match": "#222222"}})
+
+	if colours.Accent != lipgloss.Color("#111111") || colours.Match != lipgloss.Color("#222222") {
+		t.Errorf("accent = %v and match = %v, want each the one configured", colours.Accent, colours.Match)
+	}
+}
+
+func TestTheTerminalSchemeDrawsInTheTerminalsColours(t *testing.T) {
+	colours := Load(nil, Custom{Scheme: SchemeTerminal})
+
+	if colours.Accent != lipgloss.Color("5") || colours.Meta != lipgloss.Color("8") {
+		t.Errorf("accent = %v and meta = %v, want ANSI indexes", colours.Accent, colours.Meta)
+	}
+	if !reflect.DeepEqual(Load(nil, Custom{Scheme: "no such scheme"}), Defaults()) {
+		t.Error("a scheme the palette does not know did not fall back to the default")
 	}
 }

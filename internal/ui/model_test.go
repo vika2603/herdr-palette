@@ -295,10 +295,14 @@ func TestTheViewShowsTheRowsAsTheyAreSearched(t *testing.T) {
 	var ran []string
 	view := testModel(t, nil, &ran).View()
 
-	for _, want := range []string{"herdr: split pane right", "command: open git jump", "run", "close"} {
+	for _, want := range []string{"split pane right", "open git jump", "command", "run", "close"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("the view does not contain %q", want)
 		}
+	}
+	// Where a row comes from is a column of its own, not in front of the title.
+	if rows := strings.Join(strings.Split(view, "\n")[headerRows:headerRows+3], "\n"); strings.Contains(rows, "command: open") {
+		t.Errorf("the namespace is still in front of the title:\n%s", rows)
 	}
 }
 
@@ -446,15 +450,15 @@ func TestTheKeyColumnShowsWhatEachCommandIsBoundTo(t *testing.T) {
 		{ID: "a", Title: "New tab", Type: "herdr", Key: "prefix+c"},
 		{ID: "b", Title: "Split pane right", Type: "herdr"},
 	}
-	m := newModel(context.Background(), testEnv(t), &herdr.PluginInvocationContext{}, palette.List{Commands: entries}, nil, theme.Defaults(), Toggle{})
+	m := newModel(context.Background(), testEnv(t), &herdr.PluginInvocationContext{}, palette.List{Commands: entries}, nil, theme.Defaults(), Toggle{Prefix: "ctrl+b"})
 	m.setSize(60, 12)
 
 	view := m.View()
-	if !strings.Contains(view, "prefix+c") {
+	if !strings.Contains(view, "⌃b c") {
 		t.Errorf("the key is missing from the row:\n%s", view)
 	}
-	if m.keyWidth != len("prefix+c") {
-		t.Errorf("key column width = %d, want the widest key", m.keyWidth)
+	if m.widths.key != lipgloss.Width("⌃b c") {
+		t.Errorf("key column width = %d, want the widest key", m.widths.key)
 	}
 }
 
@@ -462,8 +466,8 @@ func TestThereIsNoKeyColumnWithoutBindings(t *testing.T) {
 	var ran []string
 	m := testModel(t, nil, &ran)
 
-	if m.keyWidth != 0 {
-		t.Errorf("key column width = %d, want none when nothing is bound", m.keyWidth)
+	if m.widths.key != 0 {
+		t.Errorf("key column width = %d, want none when nothing is bound", m.widths.key)
 	}
 }
 
@@ -731,8 +735,12 @@ func TestAnEntryWithNothingToActOnSaysSo(t *testing.T) {
 	if m.choosing != nil {
 		t.Fatal("an empty list is up, which has nothing to pick")
 	}
-	if m.failure != "every worktree is open already" {
-		t.Errorf("failure = %q, want what the entry says about an empty list", m.failure)
+	if m.notice != "every worktree is open already" {
+		t.Errorf("notice = %q, want what the entry says about an empty list", m.notice)
+	}
+	// Nothing went wrong, so it is not said as a failure would be.
+	if m.failure != "" {
+		t.Errorf("failure = %q, want an empty list reported as a notice", m.failure)
 	}
 }
 
@@ -768,106 +776,6 @@ func TestPickingATargetForAnEntryThatAlsoAsksForAValue(t *testing.T) {
 	}
 }
 
-// A list that stays is a screen the command is used from: running a row leaves
-// it up, with the rows saying what they are now.
-func TestAListThatStaysIsAskedForAgainAfterARowRuns(t *testing.T) {
-	var picked string
-	state := map[string]string{"a": "enabled", "b": "disabled"}
-	list := func(context.Context, palette.Exec) ([]palette.Choice, error) {
-		return []palette.Choice{
-			{Value: "a", Title: "Auto Title", Detail: state["a"]},
-			{Value: "b", Title: "Machine Manager", Detail: state["b"]},
-		}, nil
-	}
-
-	m := chooserModel(t, &picked, list)
-	m.commands[1].Choices.Stays = true
-	m.commands[1].Run = func(_ context.Context, e palette.Exec) error {
-		state[e.Chosen] = "disabled"
-		picked = e.Chosen
-		return nil
-	}
-	m.collect()
-	m.rank()
-
-	m = choose(t, m, "worktree")
-	if m.cursor != 0 || m.ranked[0].Detail != "enabled" {
-		t.Fatalf("the list starts at %+v, want the first row as it is now", m.ranked[0])
-	}
-
-	_, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
-	msg := cmd()
-	if ran, ok := msg.(ranMsg); !ok || ran.err != nil {
-		t.Fatalf("running the row returned %v", msg)
-	}
-	if picked != "a" {
-		t.Fatalf("ran with %q, want the row that was selected", picked)
-	}
-
-	// The popup asks for the list again instead of quitting.
-	next, cmd := send(t, m, ranMsg{})
-	if cmd == nil {
-		t.Fatal("the list was not asked for again")
-	}
-	again, ok := cmd().(choicesMsg)
-	if !ok {
-		t.Fatalf("asking again returned %T, want the rebuilt list", cmd())
-	}
-
-	next, _ = send(t, next, again)
-	if next.choosing == nil {
-		t.Fatal("the popup left the list after running a row")
-	}
-	if next.ranked[0].Detail != "disabled" {
-		t.Errorf("the row still says %q, want what it is now", next.ranked[0].Detail)
-	}
-	if next.cursor != 0 {
-		t.Errorf("cursor = %d, want the row that was just run", next.cursor)
-	}
-}
-
-// On a screen of states, tab is what turning one over reads as; the command
-// list has nothing for it to do.
-func TestTabTurnsARowOverOnlyOnAListThatStays(t *testing.T) {
-	var picked string
-	m := chooserModel(t, &picked, worktreeChoices)
-
-	if _, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyTab}); cmd != nil {
-		t.Error("tab did something in the command list")
-	}
-
-	m.commands[1].Choices.Stays = true
-	m.collect()
-	m.rank()
-	m = choose(t, m, "worktree")
-
-	_, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyTab})
-	if cmd == nil {
-		t.Fatal("tab did not run the selected row")
-	}
-	if msg, ok := cmd().(ranMsg); !ok || msg.err != nil {
-		t.Fatalf("running the row returned %v", cmd())
-	}
-	if picked != "/trees/fix" {
-		t.Errorf("ran with %q, want the row that was selected", picked)
-	}
-}
-
-func TestTheFooterSaysTabTurnsARowOver(t *testing.T) {
-	var picked string
-	m := chooserModel(t, &picked, worktreeChoices)
-	m.commands[1].Choices.Stays = true
-	m.collect()
-	m.rank()
-
-	if strings.Contains(m.footer(), "toggle") {
-		t.Error("the command list offers a toggle")
-	}
-	if got := choose(t, m, "worktree").footer(); !strings.Contains(got, "toggle ⇥") {
-		t.Errorf("footer = %q, want the key that turns a row over", got)
-	}
-}
-
 // wideModel is a list whose rows carry wide characters, which cost two columns
 // each and are what a row measured in runes gets wrong.
 func wideModel(t *testing.T, cols int) model {
@@ -900,11 +808,11 @@ func TestNoLineOutgrowsThePopup(t *testing.T) {
 
 func TestTheKeyColumnGivesWayOnANarrowPopup(t *testing.T) {
 	wide, narrow := wideModel(t, 72), wideModel(t, 40)
-	if wide.keyColumn() != wide.keyWidth {
-		t.Errorf("key column = %d on a popup with room for it, want %d", wide.keyColumn(), wide.keyWidth)
+	if got := wide.columns(wide.listWidth()).key; got != wide.widths.key {
+		t.Errorf("key column = %d on a popup with room for it, want %d", got, wide.widths.key)
 	}
-	if narrow.keyColumn() != 0 {
-		t.Errorf("key column = %d on a popup too narrow for it, want none", narrow.keyColumn())
+	if got := narrow.columns(narrow.listWidth()).key; got != 0 {
+		t.Errorf("key column = %d on a popup too narrow for it, want none", got)
 	}
 	if !strings.Contains(narrow.View(), "\u4e3b\u5de5\u4f5c\u533a") {
 		t.Errorf("the detail lost its room to the key column:\n%s", narrow.View())
@@ -913,7 +821,7 @@ func TestTheKeyColumnGivesWayOnANarrowPopup(t *testing.T) {
 
 func TestTheFooterDropsKeysRatherThanOverrunning(t *testing.T) {
 	narrow := wideModel(t, 24).footer()
-	if strings.Contains(narrow, "close esc") {
+	if strings.Contains(narrow, "esc close") {
 		t.Errorf("a footer too narrow for both halves kept the keys: %q", narrow)
 	}
 	if !strings.Contains(narrow, "run") {
@@ -1397,11 +1305,11 @@ func TestAClickBelowTheDrawnRowsDoesNothing(t *testing.T) {
 	}
 
 	last := headerRows + m.rows() - 1
-	if _, ok := m.rowAt(last); !ok {
+	if _, ok := m.rowAt(0, last); !ok {
 		t.Errorf("the last drawn row is not read as one")
 	}
 	for _, y := range []int{last + 1, last + 2, last + 3} {
-		if index, ok := m.rowAt(y); ok {
+		if index, ok := m.rowAt(0, y); ok {
 			t.Errorf("y=%d is read as row %d, which was never drawn", y, index)
 		}
 		if _, cmd := send(t, m, tea.MouseMsg{
@@ -1412,55 +1320,6 @@ func TestAClickBelowTheDrawnRowsDoesNothing(t *testing.T) {
 	}
 	if len(ran) != 0 {
 		t.Errorf("clicks below the rows ran %v", ran)
-	}
-}
-
-// The epoch has to survive a staying list asking for its rows again, or the
-// command it just ran would answer into a screen that never sees it.
-func TestAStayingListSurvivesItsOwnRebuild(t *testing.T) {
-	var picked string
-	state := map[string]string{"a": "enabled", "b": "enabled"}
-	list := func(context.Context, palette.Exec) ([]palette.Choice, error) {
-		return []palette.Choice{
-			{Value: "a", Title: "Auto Title", Detail: state["a"]},
-			{Value: "b", Title: "Machine Manager", Detail: state["b"]},
-		}, nil
-	}
-	m := chooserModel(t, &picked, list)
-	m.commands[1].Choices.Stays = true
-	m.commands[1].Run = func(_ context.Context, e palette.Exec) error {
-		state[e.Chosen] = "disabled"
-		return nil
-	}
-	m.collect()
-	m.rank()
-	m = choose(t, m, "worktree")
-	if !m.staying() {
-		t.Fatal("the list does not stay up")
-	}
-	before := m.epoch
-
-	// Running a row asks the list for its rows again, on the same screen.
-	m, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
-	m, cmd = send(t, m, cmd())
-	if m.epoch != before {
-		t.Fatalf("epoch moved to %d while the screen stayed, want %d", m.epoch, before)
-	}
-	if cmd == nil {
-		t.Fatal("running a row did not ask the staying list for its rows again")
-	}
-	m, _ = send(t, m, cmd())
-	if m.choosing == nil {
-		t.Error("the staying list closed on the answer it asked for")
-	}
-
-	// Leaving it does move the epoch, so what it asked for lands nowhere.
-	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyEsc})
-	if m.epoch == before {
-		t.Error("leaving the list did not move the epoch")
-	}
-	if m.choosing != nil || m.pending {
-		t.Errorf("esc left choosing=%v pending=%v", m.choosing != nil, m.pending)
 	}
 }
 

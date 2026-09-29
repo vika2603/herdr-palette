@@ -158,7 +158,7 @@ func TestRelayPromptHandsOverWhatTheFieldShows(t *testing.T) {
 	if pending.Prompt == nil {
 		t.Fatal("the entry was handed over to run, not to ask for its value")
 	}
-	if pending.Prompt.Title != "herdr: rename tab" || pending.Prompt.Label != "Tab name" {
+	if pending.Prompt.Title != "rename tab" || pending.Prompt.Label != "Tab name" {
 		t.Errorf("prompt = %+v, want the entry's title and label", pending.Prompt)
 	}
 	if pending.Prompt.Initial != "shell" {

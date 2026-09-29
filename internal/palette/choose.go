@@ -14,21 +14,18 @@ type Choice struct {
 	// Search is text the query may match that the row does not show, the way
 	// an entry's own search text works.
 	Search string
+	// Pane is the pane the choice is about, previewed the way a row that goes
+	// to a pane is.
+	Pane string
 }
 
 // Choices is the second step of an entry whose target is one of a list herdr
 // answers with, rather than a value the user types. The palette shows the
 // list in its own window, under Label, and runs the entry with what was
 // picked. Empty is what it says when there is nothing to pick.
-//
-// Stays keeps the list up afterwards, asked for again so the rows say what
-// they are now. It is for a command that is a screen rather than one act —
-// turning plugins on and off, where the point is to see the state and change
-// more than one — and the popup closes on esc instead.
 type Choices struct {
 	Label string
 	Empty string
-	Stays bool
 	List  func(context.Context, Exec) ([]Choice, error)
 }
 
@@ -44,6 +41,7 @@ func ChoiceEntries(entry Entry, choices []Choice) []Entry {
 			Detail:      choice.Detail,
 			Status:      choice.Status,
 			Search:      choice.Search,
+			Pane:        choice.Pane,
 			Chosen:      choice.Value,
 			Confirm:     entry.Confirm,
 			AlwaysRelay: entry.AlwaysRelay,

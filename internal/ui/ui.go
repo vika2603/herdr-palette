@@ -48,6 +48,7 @@ func Run(ctx context.Context, env *plugin.Env, list palette.List, loadErr error,
 	// renderer accepts halves that wait and costs nothing it has to draw.
 	program := tea.NewProgram(m, tea.WithContext(ctx), tea.WithMouseCellMotion(), tea.WithFPS(120))
 	_, err := program.Run()
+	m.state.close()
 	if ctx.Err() != nil {
 		return nil
 	}

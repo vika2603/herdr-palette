@@ -87,6 +87,9 @@ type model struct {
 	// closer is the toggle key, which closes the popup from inside: herdr
 	// hands every key to a popup while one is up.
 	closer closer
+	// state is shared by every copy of the model, so the program's exit can
+	// wait for a write a command started.
+	state *stateGate
 
 	query  textinput.Model
 	ranked []palette.Ranked
@@ -158,6 +161,7 @@ func newModel(
 		query:      query,
 		styles:     styles,
 		closer:     newCloser(toggle),
+		state:      &stateGate{},
 	}
 	m.changes = watch(ctx, env)
 	m.collect()
@@ -541,7 +545,7 @@ func (m model) run(entry palette.Entry) tea.Cmd {
 		if err == nil {
 			// A failed write only costs the recent order, so it does not turn
 			// a command that ran into a command that reports failure.
-			_ = palette.WriteRecent(m.env, entry.ID, m.recent)
+			m.state.write(func() { _ = palette.WriteRecent(m.env, entry.ID, m.recent) })
 		}
 		return ranMsg{epoch: epoch, err: err}
 	}

@@ -65,8 +65,15 @@ popup in `panes`.
 
 Before you type, the list is grouped into what needs you, what you ran
 recently, what you can run and what is open. The pane you opened the palette from
-is listed last, marked `here`, so `ctrl+x` closes it without leaving it. From 110 columns wide the popup shows
-a preview of the selected pane or command.
+is listed last, marked by a small coloured dot on the right, so `ctrl+x` closes
+it without leaving it. From 110 columns wide the popup shows a preview of the
+selected pane or command. Press `ctrl+o` to hide or show it
+while the palette is open. Hiding it gives the list the full width; answering
+a blocked agent still shows its screen.
+
+Agent rows show a coloured state icon before the name: `●` working, `!` blocked,
+`✓` done, `○` idle. Unknown states have no icon. State names remain searchable
+and appear in the footer for the selected row.
 
 ## Keys in the popup
 
@@ -78,6 +85,7 @@ a preview of the selected pane or command.
 | `pgup` / `pgdown` | move a page |
 | `tab` | list only the scope the query starts the name of; otherwise answer the selected agent when it is blocked, and `esc` gives the keyboard back |
 | `ctrl+x` | close the selected pane, tab or workspace without going there |
+| `ctrl+o` | hide or show the side preview on a wide popup |
 | `ctrl+u` | clear the query |
 | `backspace` | leave a scope or a list of targets, once the query is empty |
 | `esc` | close the popup, or leave a scope or a list of targets |

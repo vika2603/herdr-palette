@@ -29,9 +29,9 @@ func sessionList() palette.List {
 			{ID: "jump", Title: "open git jump", Type: palette.TypeCustom},
 		},
 		Session: palette.Session{Entries: []palette.Entry{
-			{ID: "pane:done", Title: "Go To api", Type: "Agent", Kind: palette.KindAgent, Detail: "done · claude", Status: "done", Pane: "p-done"},
-			{ID: "pane:working", Title: "Go To billing", Type: "Agent", Kind: palette.KindAgent, Detail: "working · claude", Status: "working", Pane: "p-working"},
-			{ID: "pane:blocked", Title: "Go To frontend", Type: "Agent", Kind: palette.KindAgent, Detail: "blocked · codex", Status: "blocked", Pane: "p-blocked"},
+			{ID: "pane:done", Title: "Go To api", Type: "Agent", Kind: palette.KindAgent, Detail: "claude · done", Status: "done", Pane: "p-done"},
+			{ID: "pane:working", Title: "Go To billing", Type: "Agent", Kind: palette.KindAgent, Detail: "claude · working", Status: "working", Pane: "p-working"},
+			{ID: "pane:blocked", Title: "Go To frontend", Type: "Agent", Kind: palette.KindAgent, Detail: "codex · blocked", Status: "blocked", Pane: "p-blocked"},
 			{ID: "workspace:docs", Title: "Go To docs", Type: "Workspace", Kind: palette.KindWorkspace},
 		}, Statuses: []string{"blocked", "done", "working", "working"}},
 	}
@@ -175,6 +175,50 @@ func TestANarrowPopupHasNoPreview(t *testing.T) {
 	m := sessionModel(t, testEnv(t), nil, previewMinCols-1, 12)
 	if m.previewWidth() != 0 || m.previewTarget() != "" {
 		t.Errorf("a %d-column popup draws a preview", m.cols())
+	}
+}
+
+func TestPreviewCanBeToggledWithoutLeavingTheList(t *testing.T) {
+	server, env := previewServer(t, "screen")
+	m := typeQuery(t, sessionModel(t, env, nil, 120, 14), "frontend")
+	selected, query, stale := m.ranked[m.cursor].Entry.ID, m.query.Value(), m.previewSeq
+	m, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyCtrlO})
+	if cmd != nil || m.previewTarget() != "" || m.previewEnabled {
+		t.Error("disabled preview scheduled a passive pane read")
+	}
+	if m.ranked[m.cursor].Entry.ID != selected || m.query.Value() != query {
+		t.Error("toggling preview changed the selection or query")
+	}
+	if !strings.Contains(ansi.Strip(m.footer()), "show preview") {
+		t.Error("the footer does not offer to show the preview")
+	}
+	if m.previewWidth() != 0 || m.listWidth() != m.cols() {
+		t.Errorf("list width = %d of %d columns with preview disabled", m.listWidth(), m.cols())
+	}
+	if _, cmd := send(t, m, previewTickMsg{seq: m.previewSeq}); cmd != nil || saw(t, server, herdr.MethodPaneRead) {
+		t.Error("disabled preview read the selected pane")
+	}
+	m, cmd = send(t, m, previewMsg{seq: stale, read: 1, pane: "p-blocked", text: "stale screen"})
+	if cmd != nil || m.preview.text != "" {
+		t.Error("a read from before the preview was hidden was kept or rescheduled")
+	}
+	for i, line := range m.body() {
+		if got := lipgloss.Width(line); got != m.cols() {
+			t.Errorf("line %d width = %d, want %d", i, got, m.cols())
+		}
+	}
+	m, cmd = send(t, m, tea.KeyMsg{Type: tea.KeyCtrlO})
+	if !m.previewEnabled || m.previewTarget() != "p-blocked" || cmd == nil || m.previewWidth() == 0 {
+		t.Error("showing preview did not schedule a fresh read for the selected pane")
+	}
+	if m.ranked[m.cursor].Entry.ID != selected || m.query.Value() != query || !strings.Contains(ansi.Strip(m.footer()), "hide preview") {
+		t.Error("showing preview lost the selection, query or toggle hint")
+	}
+	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyCtrlO})
+
+	m, cmd = send(t, m, tea.KeyMsg{Type: tea.KeyTab})
+	if m.replying == nil || m.previewTarget() != "p-blocked" || cmd == nil {
+		t.Error("disabled side preview also disabled answering the blocked agent")
 	}
 }
 

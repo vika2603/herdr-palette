@@ -45,8 +45,7 @@ func OpenSession(ctx context.Context, client *herdr.Client) (Session, error) {
 	return Session{Entries: entries, Statuses: agentStatuses(snapshot.Snapshot)}, nil
 }
 
-// agentStatuses is the status of every pane running an agent whose status
-// herdr knows.
+// agentStatuses is the reported status of every pane running an agent.
 func agentStatuses(snapshot herdr.SessionSnapshot) []string {
 	var statuses []string
 	for _, pane := range snapshot.Panes {
@@ -90,13 +89,13 @@ func paneEntries(snapshot herdr.SessionSnapshot) []Entry {
 			Type:   paneType(kind),
 			Kind:   kind,
 			Here:   pane.Focused,
-			Detail: joinNames(paneDetail(pane, agents[pane.PaneID], workspaces[pane.WorkspaceID]), here(pane.Focused)),
+			Detail: paneDetail(pane, agents[pane.PaneID], workspaces[pane.WorkspaceID]),
 			Status: paneStatus(pane),
 			Pane:   id,
 			// The row says where it goes, not where it is, so where it is —
 			// the workspace, the tab and the directory — is searchable, and
 			// shown when that is what the query matched.
-			Search: joinNames(workspaces[pane.WorkspaceID], tabs[pane.TabID], herdr.Value(pane.Cwd)),
+			Search: joinNames(workspaces[pane.WorkspaceID], tabs[pane.TabID], herdr.Value(pane.Cwd), here(pane.Focused)),
 			Run: func(ctx context.Context, e Exec) error {
 				_, err := e.Client.PaneFocus(ctx, herdr.PaneTarget{PaneID: id})
 				return err
@@ -110,9 +109,7 @@ func paneEntries(snapshot herdr.SessionSnapshot) []Entry {
 	return entries
 }
 
-// here is what the detail of the row for where the palette was opened from
-// ends in. It comes last, so the status a narrow row keeps stays first, and
-// it is searched with the row, so typing it finds that row.
+// here keeps the current place searchable while the row marks it visually.
 func here(focused bool) string {
 	if focused {
 		return "here"
@@ -145,7 +142,8 @@ func workspaceEntries(snapshot herdr.SessionSnapshot) []Entry {
 			Type:   TypeWorkspace,
 			Kind:   KindWorkspace,
 			Here:   workspace.Focused,
-			Detail: joinNames(status, count(workspace.TabCount, "tab"), here(workspace.Focused)),
+			Detail: joinNames(status, count(workspace.TabCount, "tab")),
+			Search: here(workspace.Focused),
 			Status: status,
 			Pane:   panes[workspace.ActiveTabID],
 			Run: func(ctx context.Context, e Exec) error {
@@ -178,7 +176,8 @@ func tabEntries(snapshot herdr.SessionSnapshot) []Entry {
 			Type:   TypeTab,
 			Kind:   KindTab,
 			Here:   tab.Focused,
-			Detail: joinNames(status, workspaces[tab.WorkspaceID], here(tab.Focused)),
+			Detail: joinNames(status, workspaces[tab.WorkspaceID]),
+			Search: here(tab.Focused),
 			Status: status,
 			Pane:   panes[id],
 			Run: func(ctx context.Context, e Exec) error {
@@ -271,10 +270,8 @@ func paneType(kind Kind) string {
 	return TypePane
 }
 
-// paneDetail is what the row shows next to the title: for an agent its status
-// and the name it goes by, and for any other pane the workspace it sits in.
-// The status comes first because it is what a narrow row keeps when the
-// detail has to be cut, and the palette keeps it current while it is open.
+// paneDetail is what the row shows next to the title: for an agent its name
+// followed by its status, and for any other pane the workspace it sits in.
 // The name is the agent's own unless it was renamed, so an unnamed agent reads
 // as what it is.
 func paneDetail(pane herdr.PaneInfo, name, workspace string) string {
@@ -285,17 +282,17 @@ func paneDetail(pane herdr.PaneInfo, name, workspace string) string {
 	if name != "" {
 		agent = name
 	}
-	if pane.AgentStatus == "" || pane.AgentStatus == herdr.AgentStatusUnknown {
-		return agent
-	}
-	return string(pane.AgentStatus) + " · " + agent
+	return agent + " · " + paneStatus(pane)
 }
 
 // paneStatus is the state the row's detail describes, which only a pane
 // running an agent has.
 func paneStatus(pane herdr.PaneInfo) string {
-	if herdr.Value(pane.Agent) == "" || pane.AgentStatus == herdr.AgentStatusUnknown {
+	if herdr.Value(pane.Agent) == "" {
 		return ""
+	}
+	if pane.AgentStatus == "" {
+		return string(herdr.AgentStatusUnknown)
 	}
 	return string(pane.AgentStatus)
 }

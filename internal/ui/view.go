@@ -21,6 +21,7 @@ type tone struct {
 	faint  lipgloss.Style
 	match  lipgloss.Style
 	marker lipgloss.Style
+	origin lipgloss.Style
 	// status is what a row's state is drawn in, by herdr's name for it.
 	status map[string]lipgloss.Style
 }
@@ -53,6 +54,7 @@ func newStyles(colours theme.Theme) styles {
 			faint:  fg(colours.Faint),
 			match:  fg(colours.Match).Bold(true),
 			marker: lipgloss.NewStyle(),
+			origin: fg(colours.Accent),
 			status: statusStyles(colours, lipgloss.NewStyle()),
 		},
 		picked: tone{
@@ -64,6 +66,7 @@ func newStyles(colours theme.Theme) styles {
 			// terminal with no room for both may round to the same one.
 			match:  band.Foreground(colours.Match).Bold(true).Underline(true),
 			marker: band.Foreground(colours.Accent),
+			origin: band.Foreground(colours.Accent),
 			status: statusStyles(colours, band),
 		},
 
@@ -107,8 +110,8 @@ const (
 	defaultRows = 12
 )
 
-// minCols is the narrowest a row can be drawn in: the marker and the blank
-// after it, one column of title, the blank at the end and the scrollbar.
+// minCols is the narrowest a row can be drawn in: the selection and a blank,
+// one title cell, a blank, the origin marker and the scrollbar.
 // Below it a row cannot be built at all, so the rows are drawn to this width
 // and the popup is the one that does not fit them, rather than the arithmetic
 // coming apart.
@@ -133,11 +136,13 @@ const (
 	// headerRows is how many lines precede the first line of the list: the
 	// query line and the rule under it. A click's row is counted from there.
 	headerRows = 2
-	// margins is what a row spends outside its columns: the marker and the
-	// blank after it, the blank before the scrollbar, and the scrollbar.
-	margins = 4
+	// margins includes the selection and its blank, the blank and origin
+	// marker at the right edge, and the scrollbar.
+	margins = 5
 	// columnGap is the blank between two columns of a row.
 	columnGap = 2
+	// sectionGap separates the title and key from right-aligned metadata.
+	sectionGap = 4
 	// detailShare is the fraction of the list the detail column may take, and
 	// minDetail the width below which it is left out: what the row is comes
 	// first, and a couple of letters of context explain nothing. A detail
@@ -163,6 +168,9 @@ const (
 // behind the row says the same thing, but the marker survives a terminal or a
 // theme that draws no background.
 const selectionMarker = "▌"
+
+// originMarker stays on the invoking place while selection moves elsewhere.
+const originMarker = "•"
 
 // queryLead is what precedes the query on its line: a blank, the label naming
 // the screen with its padding, and the blank after it. It follows the label
@@ -376,7 +384,7 @@ func (m model) fill(rendered string, width int) string {
 // columns is how wide each part of a row is drawn in a list width columns
 // wide, zero for a column left out.
 type columns struct {
-	title, detail, source, key int
+	width, title, detail, source, key int
 }
 
 func span(width int) int {
@@ -386,13 +394,13 @@ func span(width int) int {
 	return width + columnGap
 }
 
-// columns lays out the rows. The detail, source and key columns are each as
-// wide as the widest value on show, so each lines up down the list; what a
-// row is comes first, and the columns give way in the order that keeps it
-// readable.
+// columns budgets room for the longest detail, source and key on show. Keys
+// follow their titles; details and sources each align to a right-hand edge.
+// The budgets give way in the order that keeps titles readable.
 func (m model) columns(width int) columns {
 	body := max(width-margins, 1)
 	c := columns{
+		width:  width,
 		detail: min(m.widths.detail, width/detailShare),
 		source: m.widths.source,
 		key:    m.widths.key,
@@ -419,8 +427,8 @@ func (m model) columns(width int) columns {
 	return c
 }
 
-// widths are the widest detail, source and key among the rows, which the
-// columns are drawn to.
+// widths are the widest detail, source and key among the rows, used to decide
+// which metadata can fit beside a title.
 type widths struct {
 	detail, source, key int
 }
@@ -437,13 +445,20 @@ func measure(ranked []palette.Ranked, prefix string) widths {
 	return w
 }
 
-// detailWidth is what a row's detail takes: the text, and the dot in front of
-// a state.
+// detailWidth measures the displayed detail, including the compact agent
+// state icon instead of the searchable state name.
 func detailWidth(r palette.Ranked) int {
 	if r.Detail == "" {
 		return 0
 	}
-	if r.Status != "" {
+	if trailingStatus(r) {
+		name := strings.TrimSuffix(r.Detail, " · "+r.Status)
+		if icon := statusIcon(r.Status); icon != "" {
+			return lipgloss.Width(name + " " + icon)
+		}
+		return lipgloss.Width(name)
+	}
+	if r.Status != "" && !trailingStatus(r) {
 		return lipgloss.Width(r.Detail) + 2
 	}
 	return lipgloss.Width(r.Detail)
@@ -466,11 +481,36 @@ func (m model) row(index int, c columns) string {
 		marker = t.marker.Render(selectionMarker)
 	}
 
-	// A row with nothing in the detail column lets its title run on into it.
-	room := c.title
-	if c.detail > 0 && ranked.Detail == "" {
-		room += span(c.detail)
+	lead, key := "", ""
+	if c.key > 0 {
+		lead, key = spelling.keycap(entry.Key, m.prefix)
 	}
+	keyWidth := lipgloss.Width(lead + key)
+	keySpan := 0
+	if keyWidth > 0 {
+		keySpan = keyWidth + columnGap
+	}
+	detail := ""
+	if c.detail > 0 && ranked.Detail != "" {
+		detail = m.detail(ranked, c.detail, t)
+	}
+	detailRoom := lipgloss.Width(detail)
+	from := ""
+	if c.source > 0 {
+		name := truncate(source(entry), c.source)
+		from = paint(name, before(ranked.Matched, len([]rune(name))), t.faint, t.match)
+	}
+	rightWidth := detailRoom + lipgloss.Width(from)
+	if detail != "" && from != "" {
+		rightWidth += columnGap
+	}
+	rightSpan := 0
+	if rightWidth > 0 {
+		rightSpan = rightWidth + sectionGap
+	}
+	// Only this row's actual metadata reserves room. A long plugin name
+	// elsewhere does not leave an empty source slot beside an agent's state.
+	room := max(c.width-margins-keySpan-rightSpan, 1)
 	// The matched positions index the whole name, namespace first.
 	namespace := len([]rune(entry.Namespace()))
 	title := m.title(entry, truncate(entry.Title, room), shift(ranked.Matched, namespace), t)
@@ -479,26 +519,10 @@ func (m model) row(index int, c columns) string {
 	b.WriteString(marker)
 	b.WriteString(t.text.Render(" "))
 	b.WriteString(title)
-	b.WriteString(t.text.Render(strings.Repeat(" ", max(room-lipgloss.Width(title), 0))))
 
 	gap := t.text.Render(strings.Repeat(" ", columnGap))
-	if c.detail > 0 && ranked.Detail != "" {
+	if keyWidth > 0 {
 		b.WriteString(gap)
-		b.WriteString(m.detail(ranked, c.detail, t))
-	}
-	if c.source > 0 {
-		from := truncate(source(entry), c.source)
-		rendered := paint(from, before(ranked.Matched, len([]rune(from))), t.meta, t.match)
-		b.WriteString(gap)
-		b.WriteString(rendered)
-		b.WriteString(t.text.Render(strings.Repeat(" ", max(c.source-lipgloss.Width(rendered), 0))))
-	}
-	if c.key > 0 {
-		// Right-aligned, so the rows end on a straight edge whatever the keys
-		// are.
-		lead, key := spelling.keycap(entry.Key, m.prefix)
-		b.WriteString(gap)
-		b.WriteString(t.text.Render(strings.Repeat(" ", max(c.key-lipgloss.Width(lead+key), 0))))
 		if lead != "" {
 			b.WriteString(t.faint.Render(lead))
 		}
@@ -506,7 +530,21 @@ func (m model) row(index int, c columns) string {
 			b.WriteString(t.meta.Render(key))
 		}
 	}
-	b.WriteString(t.text.Render(" "))
+	if rightWidth > 0 {
+		start := c.width - 3 - rightWidth
+		b.WriteString(t.text.Render(strings.Repeat(" ", max(start-lipgloss.Width(b.String()), sectionGap))))
+		b.WriteString(detail)
+		if detail != "" && from != "" {
+			b.WriteString(gap)
+		}
+		b.WriteString(from)
+	}
+	b.WriteString(t.text.Render(strings.Repeat(" ", max(c.width-2-lipgloss.Width(b.String()), 0))))
+	if entry.Here {
+		b.WriteString(t.origin.Render(originMarker))
+	} else {
+		b.WriteString(t.text.Render(" "))
+	}
 	return b.String()
 }
 
@@ -523,18 +561,64 @@ func (m model) title(entry palette.Entry, text string, matched []int, t tone) st
 		paint(string(runes[verb:]), shift(matched, verb), t.text, t.match)
 }
 
-// detail draws what a row carries beside its title, width columns wide: a
-// state with its dot in the state's colour, anything else dim.
+// detail replaces agent state names with coloured icons, leaving the name
+// dim. Matching the full state name highlights its icon.
 func (m model) detail(ranked palette.Ranked, width int, t tone) string {
-	base, dot := t.meta, ""
+	if trailingStatus(ranked) {
+		name := strings.TrimSuffix(ranked.Detail, " · "+ranked.Status)
+		stateAt := len([]rune(name)) + len([]rune(" · "))
+		style := t.state(ranked.Status)
+		if len(shift(ranked.DetailMatched, stateAt)) > 0 {
+			style = t.match
+		}
+		icon := statusIcon(ranked.Status)
+		if icon == "" {
+			return paint(truncate(name, width), before(ranked.DetailMatched, len([]rune(name))), t.meta, t.match)
+		}
+		state := style.Render(icon)
+		nameRoom := width - lipgloss.Width(icon) - 1
+		if nameRoom <= 0 {
+			return state
+		}
+		return state + t.meta.Render(" ") +
+			paint(truncate(name, nameRoom), before(ranked.DetailMatched, len([]rune(name))), t.meta, t.match)
+	}
+	dot := ""
 	room := width
 	if ranked.Status != "" {
-		base = t.state(ranked.Status)
-		dot = base.Render("● ")
+		dot = t.state(ranked.Status).Render("● ")
 		room -= 2
 	}
-	rendered := dot + paint(truncate(ranked.Detail, room), ranked.DetailMatched, base, t.match)
-	return rendered + t.text.Render(strings.Repeat(" ", max(width-lipgloss.Width(rendered), 0)))
+	text := []rune(truncate(ranked.Detail, room))
+	stateEnd := 0
+	if ranked.Status != "" && (ranked.Detail == ranked.Status || strings.HasPrefix(ranked.Detail, ranked.Status+" · ")) {
+		stateEnd = min(len([]rune(ranked.Status)), len(text))
+	}
+	rendered := dot + paint(string(text[:stateEnd]), before(ranked.DetailMatched, stateEnd), t.state(ranked.Status), t.match) +
+		paint(string(text[stateEnd:]), shift(ranked.DetailMatched, stateEnd), t.meta, t.match)
+	return rendered
+}
+
+func statusIcon(status string) string {
+	switch status {
+	case "working":
+		return "●"
+	case "blocked":
+		return "!"
+	case "done":
+		return "✓"
+	case "idle":
+		return "○"
+	default:
+		return ""
+	}
+}
+
+// Searchable agent details store the state last; their display puts its icon
+// first. Tab and workspace summaries store the state first.
+func trailingStatus(r palette.Ranked) bool {
+	return r.Status != "" && r.Entry.Kind != palette.KindTab && r.Entry.Kind != palette.KindWorkspace &&
+		strings.HasSuffix(r.Detail, " · "+r.Status)
 }
 
 // scrollbar draws where the visible window sits in the whole list, one column
@@ -703,6 +787,13 @@ func (m model) footer() string {
 	}
 	if m.canClose() {
 		more = append(more, closeHint(m.ranked[m.cursor].Entry))
+	}
+	if m.cols() >= previewMinCols {
+		action := "show preview"
+		if m.previewEnabled {
+			action = "hide preview"
+		}
+		more = append(more, hint{spelling.name("ctrl+o"), action})
 	}
 	if m.scope != m.home {
 		back.does = "back"

@@ -76,9 +76,10 @@ names. Matching and sorting fold case separately from display.
 `session.snapshot` is the whole session in one call, so every pane becomes a
 row that focuses it with `pane.focus`. The pane, tab and workspace the palette
 was opened from are rows too, so they can be closed without leaving them. They
-carry `Here` and a detail ending in "here": going there goes nowhere, so such a
-row gains nothing from the recent order, sorts after the rows its score ties
-with, and is not among what needs you. A plugin popup is not part of the
+carry `Here` and a small coloured origin marker at the right edge, separate
+from the selection cursor on the left. Going there goes nowhere, so such a row
+gains nothing from the recent order, sorts after the rows its score ties with,
+and is not among what needs you. A plugin popup is not part of the
 session's panes, so the palette's own window never appears in its list.
 
 Every other workspace and tab is a row as well, previewed through the pane it
@@ -162,8 +163,10 @@ session-wide: the pane, tab and workspace events that add or rename a row.
 the per-pane subscription is there at all. Pane output is left out: it changes
 constantly and no row shows it. The preview beside a wide list reads the
 selected pane's visible screen with `pane.read` instead, after the selection
-rests for 80 ms and then once a second while it is on show. Each read carries a
-sequence number that moves on whenever the pane to show changes, so a read for
+rests for 80 ms and then once a second while it is on show. `ctrl+o` hides or
+shows the panel for the current popup, without changing its query or selection.
+Hiding it stops passive reads and gives the list the full width. Each read
+carries a sequence number that moves on whenever the pane to show changes, so a read for
 a pane already left is dropped and its refresh is not asked for again.
 
 Every one of these rows starts with "Go To", so typing that — or `goto`, which
@@ -276,15 +279,20 @@ wide character costs two, and a line that overruns the popup wraps, which
 pushes every row below it down and puts a click on the wrong row — the list
 holds commands that close somebody's work, so that is worth the care.
 
-What a row spends its width on is ordered. What the row is comes first, then
-the detail that tells two rows of the same name apart, then where it comes
-from, then the key. The detail, namespace and key columns are each as wide as
-the widest value on show, so each lines up down the list, and a row with no
-detail lets its title run on into that column. The key column is left out
-entirely below the width where the rows would have too little left, and the
-namespace column after it: half a key names nothing, and what an agent is
-doing is worth more than the key beside a command. An agent's detail puts its
-status before its name, so a detail cut short keeps the status.
+The title and its shortcut sit together on the left, with no shortcut slot on
+a row that has none. Detail and namespace form a compact block at the right
+edge, with a small gap between them. Each row reserves only its actual source
+width, so a long plugin name does not create a gap in every other row. The
+title can use the space left by shorter metadata, with a wider gap separating
+it from that block. Shortcuts disappear first when space runs out, then
+namespaces: half a key names nothing, and an
+agent's state matters more than the key beside a command. Agent detail shows
+a coloured state icon before the name: working `●`, blocked `!`, done `✓`,
+idle `○`. Unknown states have no icon. A missing reported state is unknown,
+not idle.
+The underlying detail retains the full state for searching and the footer;
+a match in that state highlights the icon. A long name is shortened before
+the icon, so the state remains visible in a narrow detail area.
 
 An empty query lays the list out in groups, and the list is then drawn as
 lines rather than rows: a heading is a line no selection lands on. The cursor

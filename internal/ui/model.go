@@ -120,9 +120,10 @@ type model struct {
 
 	// preview is the last screen read for the preview, and previewSeq moves
 	// on whenever the pane it should show changes.
-	preview      preview
-	previewSeq   int
-	previewReads int
+	previewEnabled bool
+	preview        preview
+	previewSeq     int
+	previewReads   int
 }
 
 func newModel(
@@ -146,18 +147,19 @@ func newModel(
 	query.Focus()
 
 	m := model{
-		ctx:        ctx,
-		env:        env,
-		invocation: invocation,
-		source:     list,
-		scope:      palette.ScopePalette,
-		home:       palette.ScopePalette,
-		prefix:     toggle.Prefix,
-		recent:     recent,
-		query:      query,
-		styles:     styles,
-		closer:     newCloser(toggle),
-		state:      &stateGate{},
+		ctx:            ctx,
+		env:            env,
+		invocation:     invocation,
+		source:         list,
+		scope:          palette.ScopePalette,
+		home:           palette.ScopePalette,
+		prefix:         toggle.Prefix,
+		recent:         recent,
+		query:          query,
+		styles:         styles,
+		closer:         newCloser(toggle),
+		state:          &stateGate{},
+		previewEnabled: true,
 	}
 	m.changes = watch(ctx, env)
 	m.query.Width = m.queryWidth()
@@ -427,6 +429,15 @@ func (m model) keyList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch msg.String() {
+	case "ctrl+o":
+		if m.cols() < previewMinCols {
+			m.notice = "widen the palette to show a preview"
+			return m, nil
+		}
+		m.previewEnabled = !m.previewEnabled
+		m.preview = preview{}
+		m.failure, m.notice = "", ""
+		return m, nil
 	case "esc":
 		// A list of targets or a scope is a step inside the palette, so esc
 		// goes back to the commands rather than closing the popup.

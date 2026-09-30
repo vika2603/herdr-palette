@@ -39,7 +39,7 @@ func TestARenamedAgentShowsTheNameItWasGiven(t *testing.T) {
 	if !ok {
 		t.Fatal("the agent's pane is not in the list")
 	}
-	if agent.Detail != "working · reviewer" {
+	if agent.Detail != "reviewer · working" {
 		t.Errorf("detail = %q, want the name the agent was given and its status", agent.Detail)
 	}
 }
@@ -54,13 +54,31 @@ func TestAPaneRunningAnAgentSaysWhatItIsDoing(t *testing.T) {
 	if agent.Type != TypeAgent {
 		t.Errorf("namespace = %q, want the pane running an agent to show as one", agent.Type)
 	}
-	if agent.Detail != "working · claude" {
+	if agent.Detail != "claude · working" {
 		t.Errorf("detail = %q, want the agent and its status", agent.Detail)
 	}
 
 	plain, _ := find(entries, "pane:w1:p2")
-	if plain.Type != TypePane || plain.Detail != "palette" {
+	if plain.Type != TypePane || plain.Detail != "palette" || plain.Status != "" {
 		t.Errorf("entry = %+v, want a plain pane under the workspace it sits in", plain)
+	}
+}
+
+func TestUnreportedAgentStatusIsNotTreatedAsIdle(t *testing.T) {
+	for _, test := range []struct {
+		status herdr.AgentStatus
+		want   string
+	}{
+		{herdr.AgentStatusIdle, "idle"},
+		{herdr.AgentStatusUnknown, "unknown"},
+		{"", "unknown"},
+	} {
+		snapshot := agentSnapshot()
+		snapshot.Panes[0].AgentStatus = test.status
+		entry, ok := find(paneEntries(snapshot), "pane:w1:p1")
+		if !ok || entry.Status != test.want || entry.Detail != "claude · "+test.want {
+			t.Errorf("reported state %q: entry = %+v, want an explicit %q state", test.status, entry, test.want)
+		}
 	}
 }
 

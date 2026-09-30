@@ -75,7 +75,7 @@ func Herd() Theme {
 		Selected:  lipgloss.AdaptiveColor{Dark: "#262338", Light: "#ECE8FB"},
 		Match:     accent,
 		Meta:      muted,
-		Faint:     lipgloss.AdaptiveColor{Dark: "#6A6883", Light: "#9290A8"},
+		Faint:     lipgloss.AdaptiveColor{Dark: "#4D4D54", Light: "#9290A8"},
 		Scrollbar: muted,
 		Failure:   lipgloss.AdaptiveColor{Dark: "#F0506E", Light: "#C8254A"},
 		Status: map[string]lipgloss.TerminalColor{

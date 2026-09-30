@@ -449,12 +449,13 @@ func TestNoScrollbarWhenEverythingFits(t *testing.T) {
 
 func TestTheKeyColumnShowsWhatEachCommandIsBoundTo(t *testing.T) {
 	entries := []palette.Entry{
-		{ID: "a", Title: "New tab", Type: "herdr", Key: "prefix+c"},
-		{ID: "b", Title: "Split pane right", Type: "herdr"},
+		{ID: "a", Title: "New tab", Type: "herdr", Key: "prefix+c", Detail: "working"},
+		{ID: "b", Title: "Split pane right", Type: "herdr", Detail: "idle"},
+		{ID: "c", Title: "Manage machines", Type: "Machine Manager"},
 	}
 	withSpelling(t, "darwin")
 	m := newModel(context.Background(), testEnv(t), &herdr.PluginInvocationContext{}, palette.List{Commands: entries}, nil, theme.Defaults(), Toggle{Prefix: "ctrl+b"})
-	m.setSize(60, 12)
+	m.setSize(80, 12)
 
 	view := m.View()
 	if !strings.Contains(view, "⌃b c") {
@@ -462,6 +463,23 @@ func TestTheKeyColumnShowsWhatEachCommandIsBoundTo(t *testing.T) {
 	}
 	if m.widths.key != lipgloss.Width("⌃b c") {
 		t.Errorf("key column width = %d, want the widest key", m.widths.key)
+	}
+	c := m.columns(m.listWidth())
+	first, second := ansi.Strip(m.row(0, c)), ansi.Strip(m.row(1, c))
+	if !strings.Contains(first, "New tab  ⌃b c") {
+		t.Errorf("the shortcut does not follow the title inline: %q", first)
+	}
+	if !strings.Contains(first, "working  herdr") {
+		t.Errorf("another row's long source leaves a gap between detail and source: %q", first)
+	}
+	if lipgloss.Width(first[:strings.Index(first, "working")+len("working")]) != lipgloss.Width(second[:strings.Index(second, "idle")+len("idle")]) {
+		t.Errorf("details do not share a right edge: %q and %q", first, second)
+	}
+	if !strings.HasPrefix(strings.TrimLeft(second, " ▌"), "Split pane right") {
+		t.Errorf("a keyless row leaves a shortcut slot: %q", second)
+	}
+	if lipgloss.Width(first[:strings.Index(first, "herdr")]) != lipgloss.Width(second[:strings.Index(second, "herdr")]) {
+		t.Errorf("sources do not share the right edge: %q and %q", first, second)
 	}
 }
 

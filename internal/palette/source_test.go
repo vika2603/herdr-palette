@@ -430,7 +430,7 @@ func TestWhereThePaletteWasOpenedFromIsListedLast(t *testing.T) {
 		if !ok {
 			t.Fatalf("%s is not listed", id)
 		}
-		if !row.Here || !strings.HasSuffix(row.Detail, "here") {
+		if !row.Here || !strings.HasSuffix(row.Search, "here") || strings.HasSuffix(row.Detail, "here") {
 			t.Errorf("%s = %+v, want it marked as where the palette is", id, row)
 		}
 		if row.Close == nil {

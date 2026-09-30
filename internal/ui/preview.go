@@ -59,11 +59,11 @@ type (
 	}
 )
 
-// previewWidth is how wide the preview is drawn, zero on a popup too narrow
-// for one.
+// previewWidth is how wide the preview is drawn, zero when disabled or on a
+// popup too narrow for one.
 func (m model) previewWidth() int {
 	cols := m.cols()
-	if cols < previewMinCols {
+	if !m.previewEnabled || cols < previewMinCols {
 		return 0
 	}
 	return min(max(int(float64(cols)*previewShare), previewMinWidth), previewMaxWidth)
@@ -173,7 +173,7 @@ func (m model) screenPanel(ranked palette.Ranked, width, height int) []string {
 	s := m.styles.plain
 	heading := s.text.Bold(true).Render(strings.TrimPrefix(ranked.Entry.Title, palette.GoTo))
 	if ranked.Status != "" {
-		heading += s.state(ranked.Status).Render("  ● " + ranked.Detail)
+		heading += "  " + m.detail(ranked, detailWidth(ranked), s)
 	} else if ranked.Detail != "" {
 		heading += s.meta.Render("  " + ranked.Detail)
 	}
@@ -211,7 +211,7 @@ func (m model) card(ranked palette.Ranked, width int) []string {
 	}
 	switch {
 	case ranked.Status != "":
-		field("state", ranked.Detail, s.state(ranked.Status))
+		field("state", m.detail(ranked, detailWidth(ranked), s), s.text)
 	case entry.Goes():
 		field("in", ranked.Detail, s.text)
 	case entry.Type == "":

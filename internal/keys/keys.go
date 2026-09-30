@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -89,14 +90,38 @@ func newConfig(actions map[string]string) Config {
 
 // ConfigPath is the file herdr reads, honouring the override it documents.
 func ConfigPath() string {
-	if path := os.Getenv("HERDR_CONFIG_PATH"); path != "" {
+	return configPath(runtime.GOOS, os.Getenv)
+}
+
+func configPath(goos string, getenv func(string) string) string {
+	if path := getenv("HERDR_CONFIG_PATH"); path != "" {
 		return path
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
+	if dir := configDir(goos, getenv); dir != "" {
+		return filepath.Join(dir, "config.toml")
 	}
-	return filepath.Join(home, ".config", "herdr", "config.toml")
+	return ""
+}
+
+// configDir is where herdr keeps its configuration, looked up the way herdr
+// looks it up: XDG_CONFIG_HOME first, then, on Windows, the roaming
+// application data directory, then ~/.config.
+func configDir(goos string, getenv func(string) string) string {
+	if dir := getenv("XDG_CONFIG_HOME"); dir != "" {
+		return filepath.Join(dir, "herdr")
+	}
+	if goos == "windows" {
+		if dir := getenv("APPDATA"); dir != "" {
+			return filepath.Join(dir, "herdr")
+		}
+		if profile := getenv("USERPROFILE"); profile != "" {
+			return filepath.Join(profile, "AppData", "Roaming", "herdr")
+		}
+	}
+	if home := getenv("HOME"); home != "" {
+		return filepath.Join(home, ".config", "herdr")
+	}
+	return ""
 }
 
 // binding matches a key assignment, commented out or not.

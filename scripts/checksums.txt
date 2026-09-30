@@ -1,4 +1,0 @@
-5a063b9123f3dc9a47f14aef2ba8b7cb85b40bd6ec5986752acf3d19ddff4025  palette-darwin-amd64.tar.gz
-c4aa4cb4b698aaa2a71341ec6e2ccb20dc57de48bc2e4d052a22c19505ee3207  palette-darwin-arm64.tar.gz
-fb42f3b4c63df43180c8b5c89538a8a1ddca1992b2747c4f975c48ad587e499e  palette-linux-amd64.tar.gz
-93eb13384f5a48817a378c6e3987c60eb24e900024acbea69377748bfcb8f3e1  palette-linux-arm64.tar.gz

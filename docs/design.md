@@ -354,9 +354,9 @@ cursor on the insertion point.
 ## Running a configured command
 
 A `[[keys.command]]` entry cannot be run by name over the API, so each type is
-reproduced: `shell` is started in a session of its own, and `pane` and `popup`
-open the plugin's `run` pane, which execs the command line under a shell and
-exits with it. The placement is what separates the two — `popup` for herdr's
+reproduced: `shell` is started detached, and `pane` and `popup` open the
+plugin's `run` pane, which execs the command line under a shell and exits with
+it. The placement is what separates the two — `popup` for herdr's
 popup type, and `zoomed` for its pane type, which takes over the layout the way
 herdr's own temporary pane does. A zoomed pane is placed against an existing
 pane and takes its id; a popup covers the active pane and herdr rejects a
@@ -397,10 +397,57 @@ the field collects one of them and has nothing to say about the other.
 herdr's `config.toml` has no API behind it at all — the palette reads it for
 the key column, the configured commands and the theme tokens — so editing it is
 the editor run over the file, in the plugin's own popup, the way a configured
-popup command runs. The editor is named by the shell that runs the line, from
-the environment herdr passed the plugin, rather than resolved here: that is
-where `$EDITOR` is set for herdr's own editing too. The path is the one thing
-composed rather than read, so it is quoted for that shell.
+popup command runs. The editor is the one the environment herdr passed the
+plugin names, `$VISUAL` then `$EDITOR`: that is where it is set for herdr's own
+editing too. A POSIX shell resolves it as it runs the line, falling back to
+`vi`; cmd.exe has no such fallback, so on Windows the palette picks it from the
+same variables, falling back to notepad. The path is the one thing composed
+rather than read, so it is quoted for the shell that runs the line.
+
+## Windows
+
+Each platform difference follows what herdr does there, so a command behaves
+the same from the palette as from a key.
+
+- A command line runs as `%ComSpec% /d /c <line>`, the line exactly as it was
+  written. Go would quote it as one argument, for a program that parses its
+  arguments the C runtime's way, which cmd.exe does not, so the command line
+  is set whole.
+- A detached command gets `CREATE_NO_WINDOW` and `CREATE_NEW_PROCESS_GROUP`.
+  Closing a popup takes down what is attached to its console, and herdr ends
+  the popup's process tree with `TerminateProcess`; the palette exits before
+  the popup closes, so the tree it leaves is not searched, and a console of
+  the command's own keeps it alive. A hidden console rather than none keeps a
+  console program the command starts from opening a window.
+- Whether a process is still running is its exit code, `STILL_ACTIVE`, read
+  through `OpenProcess`, as herdr reads it.
+- herdr's configuration is found as herdr finds it: `XDG_CONFIG_HOME`, then
+  `%APPDATA%`, then `%USERPROFILE%\AppData\Roaming`, then `~/.config`.
+- `./bin/palette` in the manifest runs `bin\palette.exe`: herdr resolves a
+  relative command against the plugin root and the process launcher adds
+  `.exe`. The build step for Windows is its own, `scripts/build.ps1` under
+  Windows PowerShell 5.1, since `build.sh` needs a POSIX shell.
+
+herdr skips SIGHUP on Windows and goes straight to `TerminateProcess`, so the
+gate that holds the exit for a state write has nothing to wait on there. The
+write takes far less than the quarter second herdr leaves before it ends the
+process.
+
+## Releasing
+
+The `release` workflow builds an archive per platform — a `.tar.gz` holding
+`palette`, or on Windows a `.zip` holding `palette.exe` — and publishes them
+with a `checksums.txt` beside them, tagging the commit it runs on with the
+version the manifest names. It commits nothing: a workflow that pushes to the
+branch leaves every local checkout behind it, and a push from one of those
+then has to be a merge or a force. The version is bumped by a commit of its
+own before the workflow is run.
+
+The build scripts fall back to that archive only without a Go toolchain, and
+verify it against the `checksums.txt` of the same release. That catches a
+download cut short or corrupted; a replaced archive and a replaced checksum
+file would come from the same account, which a copy of the checksums in the
+repository would not have protected against either.
 
 ## The palette's own configuration
 

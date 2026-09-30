@@ -125,3 +125,28 @@ func TestThemeTokensAreRead(t *testing.T) {
 		t.Errorf("overlay0 = %q, want the token from [theme.custom]", got)
 	}
 }
+
+// The palette reads the file herdr reads, found the way herdr finds it.
+func TestTheConfigIsWhereHerdrLooks(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		goos string
+		env  map[string]string
+		want string
+	}{
+		{"override", "windows", map[string]string{"HERDR_CONFIG_PATH": `D:\herdr.toml`, "APPDATA": `C:\roaming`}, `D:\herdr.toml`},
+		{"xdg first", "windows", map[string]string{"XDG_CONFIG_HOME": "/xdg", "APPDATA": `C:\roaming`}, filepath.Join("/xdg", "herdr", "config.toml")},
+		{"appdata", "windows", map[string]string{"APPDATA": `C:\roaming`, "HOME": "/home/vika"}, filepath.Join(`C:\roaming`, "herdr", "config.toml")},
+		{"profile", "windows", map[string]string{"USERPROFILE": `C:\Users\vika`}, filepath.Join(`C:\Users\vika`, "AppData", "Roaming", "herdr", "config.toml")},
+		{"home on windows", "windows", map[string]string{"HOME": "/home/vika"}, filepath.Join("/home/vika", ".config", "herdr", "config.toml")},
+		{"home", "darwin", map[string]string{"HOME": "/Users/vika", "APPDATA": `C:\roaming`}, filepath.Join("/Users/vika", ".config", "herdr", "config.toml")},
+		{"xdg", "linux", map[string]string{"XDG_CONFIG_HOME": "/xdg", "HOME": "/home/vika"}, filepath.Join("/xdg", "herdr", "config.toml")},
+		{"nothing", "linux", nil, ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if got := configPath(c.goos, func(name string) string { return c.env[name] }); got != c.want {
+				t.Errorf("configPath = %q, want %q", got, c.want)
+			}
+		})
+	}
+}

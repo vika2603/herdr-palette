@@ -7,10 +7,17 @@ name = "Command Palette"
 version = "0.2.2"
 min_herdr_version = "0.9.0"
 description = "Search and run herdr actions and plugin actions from one popup"
+platforms = ["linux", "macos", "windows"]
+
+# Each platform builds bin/palette its own way; on Windows the binary is
+# bin/palette.exe, which herdr finds from ./bin/palette in the entrypoints.
+[[build]]
 platforms = ["linux", "macos"]
+command = ["./scripts/build.sh"]
 
 [[build]]
-command = ["./scripts/build.sh"]
+platforms = ["windows"]
+command = ["powershell", "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "scripts/build.ps1"]
 
 # herdr draws a pane's title on the border and its manifest requires one, so
 # every pane here carries a zero-width space: it passes the check and leaves

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
+	"runtime"
 	"strings"
 
 	"github.com/vika2603/herdr-client/herdr"
@@ -160,35 +160,20 @@ func activeEnv(c *herdr.PluginInvocationContext) map[string]string {
 var editorWindow = manifest.PopupSize{Percent: 90}
 
 // EditFile opens a file in the user's editor, in a popup of the plugin's own,
-// which is where a configured popup command runs too. The editor is named by
-// the shell that runs it, from the environment herdr passed the plugin, so it
-// is the one that is set there rather than one this plugin decides on.
+// which is where a configured popup command runs too. The editor is the one
+// the environment herdr passed the plugin names, so it is the one that is set
+// there rather than one this plugin decides on.
 func EditFile(ctx context.Context, e Exec, title, path string) error {
 	if path == "" {
 		return fmt.Errorf("%s: there is no file to edit", title)
 	}
 	return run(e.Env.PluginID, configured{
 		title:  title,
-		line:   "${VISUAL:-${EDITOR:-vi}} " + shellQuote(path),
+		line:   editorLine(runtime.GOOS, os.Getenv, path),
 		window: herdr.PluginPanePlacementPopup,
 		width:  editorWindow,
 		height: editorWindow,
 	})(ctx, e)
-}
-
-// shellQuote wraps a path for the shell that runs the command line, which is
-// the one thing about it this plugin composes rather than reads.
-func shellQuote(path string) string {
-	return "'" + strings.ReplaceAll(path, "'", `'\''`) + "'"
-}
-
-// Shell is what a configured command line runs under, matching herdr, which
-// hands the string to a shell rather than splitting it itself.
-func Shell() string {
-	if shell := os.Getenv("SHELL"); shell != "" {
-		return shell
-	}
-	return "/bin/sh"
 }
 
 // PopupSize carries a configured size over to the API, reporting whether one
@@ -207,7 +192,7 @@ func PopupSize(size manifest.PopupSize) (herdr.PopupSize, bool) {
 // as a command that opens a window does, with env added to what the plugin
 // was started with.
 func startDetached(command, dir string, env map[string]string) error {
-	cmd := exec.Command(Shell(), "-c", command)
+	cmd := ShellCommand(context.Background(), command)
 	cmd.Dir = dir
 	cmd.Env = os.Environ()
 	for name, value := range env {

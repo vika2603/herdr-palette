@@ -1,11 +1,11 @@
-//go:build !unix
+//go:build !unix && !windows
 
 package palette
 
 import "os/exec"
 
-// detach has no equivalent outside unix; the manifest ships linux and macos
-// only.
+// detach has no equivalent on a platform other than unix and Windows, which
+// are the ones the manifest ships.
 func detach(*exec.Cmd) {}
 
 // processExists cannot be answered without a signal, so the wait for the popup

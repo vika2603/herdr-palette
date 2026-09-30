@@ -35,11 +35,20 @@ jobs:
     # The platforms the manifest declares, built the way herdr builds on install.
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - run: ./scripts/build.sh
+      - if: runner.os != 'Windows'
+        run: ./scripts/build.sh
+      - if: runner.os == 'Windows'
+        run: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/build.ps1
+      # The tests that need herdr's API skip on Windows, where the fake server
+      # has no socket to listen on; the rest run, and so does vet.
+      - if: runner.os == 'Windows'
+        run: go vet ./...
+      - if: runner.os == 'Windows'
+        run: go test ./...

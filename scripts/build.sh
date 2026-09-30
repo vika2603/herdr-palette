@@ -3,8 +3,9 @@
 # clones the repository and runs this during `herdr plugin install`.
 #
 # Building from source comes first: the result always matches the checkout. The
-# release asset is the fallback for a machine without a Go toolchain, and is
-# only used when its checksum matches the one recorded in this checkout.
+# release archive is the fallback for a machine without a Go toolchain, and is
+# only used when its checksum matches the checksums.txt published beside it,
+# which catches a download cut short or corrupted on the way.
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -35,13 +36,7 @@ x86_64 | amd64) arch=amd64 ;;
 esac
 
 asset="palette-$os-$arch.tar.gz"
-url="https://github.com/vika2603/herdr-palette/releases/download/v$version/$asset"
-
-expected=$(sed -n "s/^\([0-9a-f]\{64\}\)  $asset\$/\1/p" scripts/checksums.txt)
-if [ -z "$expected" ]; then
-	echo "build.sh: scripts/checksums.txt has no entry for $asset" >&2
-	exit 1
-fi
+release="https://github.com/vika2603/herdr-palette/releases/download/v$version"
 
 if command -v curl >/dev/null 2>&1; then
 	fetch() { curl -fsSL -o "$1" "$2"; }
@@ -56,8 +51,18 @@ fi
 tmp=$(mktemp -d bin/.download.XXXXXX)
 trap 'rm -rf "$tmp"' EXIT
 
-if ! fetch "$tmp/$asset" "$url"; then
-	echo "build.sh: could not download $url" >&2
+if ! fetch "$tmp/checksums.txt" "$release/checksums.txt"; then
+	echo "build.sh: could not download $release/checksums.txt" >&2
+	exit 1
+fi
+expected=$(sed -n "s/^\([0-9a-f]\{64\}\)  $asset\$/\1/p" "$tmp/checksums.txt")
+if [ -z "$expected" ]; then
+	echo "build.sh: the checksums of v$version have no entry for $asset" >&2
+	exit 1
+fi
+
+if ! fetch "$tmp/$asset" "$release/$asset"; then
+	echo "build.sh: could not download $release/$asset" >&2
 	exit 1
 fi
 

@@ -1,24 +1,40 @@
-# Cuts a release: builds the binary for every supported platform, records the
-# checksums build.sh verifies against, and publishes the tag.
+# Cuts a release of the version herdr-plugin.toml names: builds an archive for
+# every supported platform, tags the commit the workflow runs on, and publishes
+# the archives with a checksums.txt beside them.
 #
-# The checksums have to reach the repository before the tag exists, because
-# scripts/build.sh reads them out of the checkout rather than off the release.
-# That is why this is dispatched with a version instead of triggered by a tag:
-# the workflow writes the version into the manifest, commits the checksums,
-# and tags the commit it just made.
+# Nothing is committed here. The version is bumped by a commit of its own
+# before the workflow is dispatched, so the branch never moves under a local
+# checkout, and the build scripts verify a download against the checksums.txt
+# of the same release.
 name: release
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: "Version to release, without the leading v (e.g. 0.1.1)"
-        required: true
 
 permissions:
   contents: write
 
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Read the version and refuse an existing tag
+        id: read
+        run: |
+          version=$(sed -n 's/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' herdr-plugin.toml | head -1)
+          if [ -z "$version" ]; then
+            echo "herdr-plugin.toml names no version" >&2
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/v${version}" >/dev/null 2>&1; then
+            echo "v${version} already exists; bump the version in herdr-plugin.toml first" >&2
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -30,7 +46,7 @@ jobs:
       - run: go test -race ./...
 
   build:
-    needs: test
+    needs: [version, test]
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -42,6 +58,10 @@ jobs:
           - goos: linux
             goarch: amd64
           - goos: linux
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+          - goos: windows
             goarch: arm64
     steps:
       - uses: actions/checkout@v7
@@ -55,19 +75,25 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         # The archive holds the binary under the name it runs as, and keeps its
         # executable bit, which upload-artifact would drop from a bare file.
+        # Windows gets a zip, which its PowerShell unpacks with nothing added.
         run: |
           mkdir -p build dist
-          go build -trimpath -o build/palette ./cmd/palette
-          tar -czf "dist/palette-${GOOS}-${GOARCH}.tar.gz" \
-            --owner=0 --group=0 --numeric-owner -C build palette
+          if [ "$GOOS" = windows ]; then
+            go build -trimpath -o build/palette.exe ./cmd/palette
+            (cd build && zip -q "../dist/palette-${GOOS}-${GOARCH}.zip" palette.exe)
+          else
+            go build -trimpath -o build/palette ./cmd/palette
+            tar -czf "dist/palette-${GOOS}-${GOARCH}.tar.gz" \
+              --owner=0 --group=0 --numeric-owner -C build palette
+          fi
       - uses: actions/upload-artifact@v7
         with:
           name: palette-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: dist/palette-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz
+          path: dist/palette-${{ matrix.goos }}-${{ matrix.goarch }}.*
           if-no-files-found: error
 
   publish:
-    needs: build
+    needs: [version, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -75,34 +101,20 @@ jobs:
         with:
           path: dist
           merge-multiple: true
-      - name: Refuse an existing tag
-        env:
-          VERSION: ${{ inputs.version }}
+      - name: Record the checksums
         run: |
-          if git ls-remote --exit-code --tags origin "refs/tags/v${VERSION}" >/dev/null 2>&1; then
-            echo "v${VERSION} already exists" >&2
-            exit 1
-          fi
-      - name: Record the version and the checksums
+          (cd dist && sha256sum palette-*) > dist/checksums.txt
+          cat dist/checksums.txt
+      - name: Tag and release
         env:
-          VERSION: ${{ inputs.version }}
-        run: |
-          (cd dist && sha256sum palette-*.tar.gz) > scripts/checksums.txt
-          sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" herdr-plugin.toml
-          cat scripts/checksums.txt
-      - name: Commit, tag and release
-        env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ needs.version.outputs.version }}
           GH_TOKEN: ${{ github.token }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add herdr-plugin.toml scripts/checksums.txt
-          git diff --cached --quiet || git commit -m "Release ${VERSION}"
           git tag -a "v${VERSION}" -m "Command Palette ${VERSION}"
-          git push origin HEAD:"${GITHUB_REF_NAME}"
           git push origin "v${VERSION}"
           gh release create "v${VERSION}" \
             --title "Command Palette ${VERSION}" \
             --generate-notes \
-            dist/palette-*.tar.gz
+            dist/palette-* dist/checksums.txt

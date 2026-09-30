@@ -119,19 +119,22 @@ func TestATabIsPreviewedThroughOneOfItsPanes(t *testing.T) {
 	}
 	snapshot.Panes[2].Focused = true
 
-	entries := sessionEntries(snapshot)
+	previews := map[string]string{}
+	for _, tab := range Tabs(snapshot) {
+		previews["tab:"+tab.Value] = tab.Pane
+	}
+	for _, workspace := range Workspaces(snapshot) {
+		previews["workspace:"+workspace.Value] = workspace.Pane
+	}
 	for id, want := range map[string]string{
 		"tab:w2:t1":    "w2:p1",
 		"tab:w2:t2":    "w2:p3",
 		"workspace:w2": "w2:p3",
 	} {
-		entry, ok := find(entries, id)
-		if !ok {
-			t.Errorf("%s is not in the list", id)
-			continue
-		}
-		if entry.Pane != want {
-			t.Errorf("%s previews %q, want %q", id, entry.Pane, want)
+		if got, ok := previews[id]; !ok {
+			t.Errorf("%s is not listed", id)
+		} else if got != want {
+			t.Errorf("%s is previewed through %q, want %q", id, got, want)
 		}
 	}
 }

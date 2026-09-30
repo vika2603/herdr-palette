@@ -101,6 +101,21 @@ func herdrEntries() []palette.Entry {
 			},
 		},
 		{
+			ID:      "herdr:workspace.switch",
+			Binding: "workspace_picker",
+			Title:   "switch workspace",
+			Type:    groupHerdr,
+			Choices: &palette.Choices{
+				Label: "Workspace to go to",
+				Empty: "no other workspace is open",
+				List:  sessionChoices(palette.Workspaces),
+			},
+			Run: func(ctx context.Context, e palette.Exec) error {
+				_, err := e.Client.WorkspaceFocus(ctx, herdr.WorkspaceTarget{WorkspaceID: e.Chosen})
+				return err
+			},
+		},
+		{
 			ID:      "herdr:worktree.new",
 			Binding: "new_worktree",
 			Title:   "new worktree workspace",
@@ -200,6 +215,20 @@ func herdrEntries() []palette.Entry {
 					return err
 				}
 				_, err = e.Client.TabClose(ctx, herdr.TabTarget{TabID: id})
+				return err
+			},
+		},
+		{
+			ID:    "herdr:tab.switch",
+			Title: "switch tab",
+			Type:  groupHerdr,
+			Choices: &palette.Choices{
+				Label: "Tab to go to",
+				Empty: "no other tab is open",
+				List:  sessionChoices(palette.Tabs),
+			},
+			Run: func(ctx context.Context, e palette.Exec) error {
+				_, err := e.Client.TabFocus(ctx, herdr.TabTarget{TabID: e.Chosen})
 				return err
 			},
 		},
@@ -601,6 +630,17 @@ func across(node herdr.LayoutNode, direction herdr.SplitDirection) int {
 		return first + second
 	}
 	return max(first, second)
+}
+
+// sessionChoices lists what the snapshot holds, read the way from.
+func sessionChoices(from func(herdr.SessionSnapshot) []palette.Choice) func(context.Context, palette.Exec) ([]palette.Choice, error) {
+	return func(ctx context.Context, e palette.Exec) ([]palette.Choice, error) {
+		snapshot, err := e.Client.SessionSnapshot(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return from(snapshot.Snapshot), nil
+	}
 }
 
 // The two places a pane can be moved to that do not exist yet. They cannot be

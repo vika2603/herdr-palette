@@ -683,7 +683,7 @@ func (m model) footer() string {
 		more = append(more, hint{"⇥", "reply"})
 	}
 	if m.canClose() {
-		more = append(more, closeHint(m.ranked[m.cursor].Entry))
+		more = append(more, closeHint)
 	}
 	if m.choosing != nil {
 		// The command the targets belong to is no longer on the list, so the

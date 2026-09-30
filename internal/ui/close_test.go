@@ -29,7 +29,7 @@ func closeModel(t *testing.T) (model, *[]string) {
 		},
 		Open: []palette.Entry{
 			{ID: "pane:api", Title: "go to api", Type: palette.TypePane, Goes: true, Close: closer("pane:api")},
-			{ID: "workspace:docs", Title: "go to docs", Type: palette.TypeWorkspace, Goes: true, Close: closer("workspace:docs")},
+			{ID: "pane:docs", Title: "go to docs", Type: palette.TypePane, Goes: true, Close: closer("pane:docs")},
 		},
 	}
 	m := newModel(context.Background(), testEnv(t), &herdr.PluginInvocationContext{}, list, nil, theme.Defaults(), Toggle{})
@@ -92,10 +92,7 @@ func TestCtrlXClosesARowAfterAskingAndKeepsThePopupUp(t *testing.T) {
 
 func TestAnyOtherKeyPutsTheCloseQuestionAway(t *testing.T) {
 	m, closed := closeModel(t)
-	selectRow(t, &m, "workspace:docs")
-	if !strings.Contains(m.footer(), "⌃x close workspace") {
-		t.Errorf("footer = %q, want the key that closes the workspace", m.footer())
-	}
+	selectRow(t, &m, "pane:docs")
 	m, _ = send(t, m, ctrlX)
 	m, cmd := send(t, m, runes("x"))
 	if m.confirming != nil || cmd != nil || len(*closed) != 0 {

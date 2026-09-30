@@ -356,20 +356,13 @@ func TestPopupSizeIsOnlySentWhenConfigured(t *testing.T) {
 	}
 }
 
-func TestOpenPanesAndWorkspacesAreListedToGoTo(t *testing.T) {
+func TestOpenPanesAreListedToGoTo(t *testing.T) {
 	server := plugintest.NewServer(t).
 		Reply(herdr.MethodPluginActionList, actionList()).
 		Reply(herdr.MethodPluginList, plugins()).
 		Reply(herdr.MethodSessionSnapshot, snapshot())
 	entries := load(t, server)
 
-	workspace, ok := find(entries, "workspace:w2")
-	if !ok {
-		t.Fatal("the other workspace is not in the list")
-	}
-	if workspace.Type != TypeWorkspace || workspace.Title != "go to palette" {
-		t.Errorf("entry = %+v, want going to the workspace under its own label", workspace)
-	}
 	pane, ok := find(entries, "pane:w2:p1")
 	if !ok {
 		t.Fatal("the open pane is not in the list")
@@ -377,14 +370,49 @@ func TestOpenPanesAndWorkspacesAreListedToGoTo(t *testing.T) {
 	if !strings.Contains(pane.Title, "Zoxide jump") {
 		t.Errorf("pane title = %q, want what the program in it reports", pane.Title)
 	}
-	if pane.Search != "/Users/vika/Workspace" {
-		t.Errorf("pane search text = %q, want the directory it sits in", pane.Search)
+	if want := "palette · 2 · palette › claude · /Users/vika/Workspace"; pane.Search != want {
+		t.Errorf("pane search text = %q, want %q: the workspace, tab and directory it sits in", pane.Search, want)
 	}
 	if pane.Detail != "palette" {
 		t.Errorf("pane detail = %q, want the workspace it sits in", pane.Detail)
 	}
-	if _, ok := find(entries, "tab:w2:t1"); !ok {
-		t.Error("the open tab is not in the list")
+	// A workspace or a tab would mostly be the same place as the pane in it,
+	// so they have lists of their own instead of rows here.
+	for _, id := range []string{"workspace:w2", "tab:w2:t1"} {
+		if _, ok := find(entries, id); ok {
+			t.Errorf("%s is a row of its own", id)
+		}
+	}
+}
+
+// A pane is found by the name of the tab it sits in, which is not on its row.
+func TestAPaneIsFoundByItsTabsName(t *testing.T) {
+	server := plugintest.NewServer(t).
+		Reply(herdr.MethodPluginActionList, actionList()).
+		Reply(herdr.MethodPluginList, plugins()).
+		Reply(herdr.MethodSessionSnapshot, snapshot())
+	ranked := Rank(load(t, server), "claude", nil)
+	if len(ranked) == 0 || ranked[0].Entry.ID != "pane:w2:p1" {
+		t.Fatalf("\"claude\" ranked %v first, want the pane in the tab of that name", ranked)
+	}
+}
+
+func TestWorkspacesAndTabsAreListedWithoutTheCurrentOne(t *testing.T) {
+	s := snapshot().Snapshot
+	s.Workspaces[1].TabCount = 3
+	s.Workspaces[1].ActiveTabID = "w2:t1"
+	s.Workspaces[1].AgentStatus = herdr.AgentStatusBlocked
+	workspaces := Workspaces(s)
+	if len(workspaces) != 1 || workspaces[0].Value != "w2" || workspaces[0].Title != "palette" {
+		t.Fatalf("workspaces = %+v, want only the other one, under its label", workspaces)
+	}
+	if w := workspaces[0]; w.Detail != "blocked · 3 tabs" || w.Status != "blocked" || w.Pane != "w2:p1" {
+		t.Errorf("workspace = %+v, want what its agents do and its tab count, previewed through its pane", w)
+	}
+
+	tabs := Tabs(s)
+	if len(tabs) != 1 || tabs[0].Value != "w2:t1" || tabs[0].Detail != "palette" || tabs[0].Pane != "w2:p1" {
+		t.Errorf("tabs = %+v, want only the other tab, with its workspace and its pane", tabs)
 	}
 }
 
@@ -395,7 +423,7 @@ func TestWhereThePaletteWasOpenedFromIsNotListed(t *testing.T) {
 		Reply(herdr.MethodSessionSnapshot, snapshot())
 	entries := load(t, server)
 
-	for _, id := range []string{"workspace:w1", "tab:w1:t1", "pane:w1:p1"} {
+	for _, id := range []string{"pane:w1:p1"} {
 		if _, ok := find(entries, id); ok {
 			t.Errorf("%s is offered, which goes where the palette already is", id)
 		}
@@ -454,11 +482,11 @@ func TestTheRowsThatGoSomewhereShareAQuery(t *testing.T) {
 
 	for _, text := range []string{"go to", "goto"} {
 		ranked := Rank(entries, text, nil)
-		if len(ranked) != 3 {
-			t.Errorf("%q matched %d rows, want the workspace, the tab and the pane", text, len(ranked))
+		if len(ranked) != 1 {
+			t.Errorf("%q matched %d rows, want the pane", text, len(ranked))
 		}
 		for _, r := range ranked {
-			if r.Entry.Type != TypeWorkspace && r.Entry.Type != TypeTab && r.Entry.Type != TypePane {
+			if r.Entry.Type != TypePane && r.Entry.Type != TypeAgent {
 				t.Errorf("%q matched %q, which runs a command", text, r.Entry.Name())
 			}
 		}

@@ -78,6 +78,8 @@ func server(t *testing.T) *plugintest.Server {
 		Reply(herdr.MethodWorktreeRemove, herdr.WorktreeRemovedResponse{}).
 		Reply(herdr.MethodTabMove, herdr.TabListResponse{}).
 		Reply(herdr.MethodPaneMove, herdr.PaneMoveResponse{}).
+		Reply(herdr.MethodWorkspaceFocus, herdr.WorkspaceInfoResponse{}).
+		Reply(herdr.MethodTabFocus, herdr.TabInfoResponse{}).
 		Reply(herdr.MethodLayoutExport, herdr.LayoutExportResponse{Layout: herdr.LayoutDescription{Root: unevenLayout()}}).
 		Reply(herdr.MethodLayoutSetSplitRatio, herdr.LayoutSplitRatioSetResponse{}).
 		Reply(herdr.MethodPaneFocus, herdr.PaneInfoResponse{}).
@@ -234,6 +236,8 @@ func TestEachEntryCallsItsMethod(t *testing.T) {
 		{id: "herdr:pane.close", method: herdr.MethodPaneClose},
 		{id: "herdr:pane.edit_scrollback", method: herdr.MethodPaneEditScrollback},
 		{id: "herdr:pane.move", collected: step{chosen: "t9"}, method: herdr.MethodPaneMove},
+		{id: "herdr:workspace.switch", collected: step{chosen: "w2"}, method: herdr.MethodWorkspaceFocus},
+		{id: "herdr:tab.switch", collected: step{chosen: "t9"}, method: herdr.MethodTabFocus},
 		{id: "herdr:agent.start", collected: step{chosen: "codex"}, method: herdr.MethodAgentStart},
 		{id: "herdr:agent.rename", collected: step{input: "reviewer"}, method: herdr.MethodAgentRename},
 		{id: "herdr:config.edit", method: herdr.MethodPluginPaneOpen},

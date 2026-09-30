@@ -67,16 +67,24 @@ the row is drawn. The line under the list names the selected row in the
 `namespace: title` form.
 
 A command's title is lowercase, authored that way rather than lowercased when
-drawn. The rows that go to a workspace, tab or pane keep the name that thing
-carries: it is a name, not a command.
+drawn. The rows that go to a pane keep the name it carries: it is a name, not a
+command.
 
 ## Going to what is open
 
-`session.snapshot` is the whole session in one call, so every workspace, tab
-and pane becomes a row that focuses it — `workspace.focus`, `tab.focus`,
-`pane.focus`. What is already focused is left out, the palette having been
-opened from there. A plugin popup is not part of the session's panes, so the
-palette's own window never appears in its list.
+`session.snapshot` is the whole session in one call, so every pane becomes a
+row that focuses it with `pane.focus`. What is already focused is left out,
+the palette having been opened from there. A plugin popup is not part of the
+session's panes, so the palette's own window never appears in its list.
+
+Workspaces and tabs are not rows. Most hold one tab or one pane, so a row for
+each put the same place on the list two or three times, and the pane is what
+a search is usually for. A pane's search text carries the names of the
+workspace and tab it sits in, so either still finds it. `switch workspace` and
+`switch tab` list the rest as targets, from the same snapshot, each previewed
+through the pane it shows; they record the command in the recent order, not
+the place, so `back` returns to panes only. It still reads a `workspace:` or
+`tab:` id an older recent order holds.
 
 These rows sit in the command list rather than behind a command of their own:
 reaching a pane by name is what the palette is used for most, and a step in
@@ -247,10 +255,10 @@ name is also on show above.
 
 ## Closing a row without going there
 
-A row of what is open carries a `Close` beside the `Run` that goes there, and
+A pane's row carries a `Close` beside the `Run` that goes there, and
 `ctrl+x` asks the question a command that cannot be undone asks, with the row
 as its subject. `ctrl+x` because the query field binds nothing to it. What the palette was opened from is not
-a row, so no row closes the pane, tab or workspace the popup is over.
+a row, so no row closes the pane the popup is over.
 
 Unlike a command, closing keeps the popup up: the list is where the next one to
 close is chosen from, and the session's events take the closed row away. It is

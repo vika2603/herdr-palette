@@ -65,7 +65,7 @@ command = "herdr.palette.goto"
 ```
 
 A third action, `herdr.palette.back`, opens no popup at all: it goes straight
-to the workspace, tab or pane the palette last went to, skipping what has been
+to the pane the palette last went to, skipping what has been
 closed since:
 
 ```toml
@@ -140,15 +140,20 @@ seen from a key. Typing the plugin's id finds them as well. A disabled
 plugin's actions are refused with `plugin_disabled`, but herdr lists them all
 the same, so the palette leaves them out itself.
 
-**`workspace:`, `tab:`, `pane:` and `agent:`** are what is open in the session,
-and running one goes there. A pane running an agent shows what it is doing —
+**`pane:` and `agent:`** are the panes open in the session, and running one
+goes there. A pane running an agent shows what it is doing —
 `working · claude`, `blocked · codex` — behind a dot in a colour per status,
 kept current
 while the popup is open, so the palette doubles as a way to reach the agent
 that needs you. An agent that was renamed shows the name it was given there
-instead of what it is, and is found by it. Panes also carry the workspace
-they sit in and their working directory, so typing a project name finds the
-panes inside it. Where the palette was opened from is left out.
+instead of what it is, and is found by it. Panes also carry the workspace and
+tab they sit in and their working directory, so typing a project or a tab's
+name finds the panes inside it. Where the palette was opened from is left out.
+
+Workspaces and tabs are not rows of their own: most hold a single tab or a
+single pane, so a row for each would put the same place on the list two or
+three times. **`switch workspace`** and **`switch tab`** list them instead,
+each with what its agents are doing and a preview of the pane it shows.
 
 A session holds far more panes than there are commands, so there are two ways
 to leave the commands out. They all read "go to …", drawn faint so the name
@@ -283,7 +288,7 @@ the line under the list still names both.
 | `up` / `down`, `ctrl+p` / `ctrl+n` | move the selection |
 | `pgup` / `pgdown` | move a page |
 | `tab` | answer the selected agent when it is blocked |
-| `ctrl+x` | close the selected workspace, tab or pane without going there |
+| `ctrl+x` | close the selected pane without going there |
 | `ctrl+u` | clear the query |
 | `@` | narrow the list to what is open, as the first character |
 | `backspace` | leave a list of targets, once the query is empty |
@@ -301,7 +306,7 @@ A command that cannot be undone — closing a workspace, a tab or a pane,
 removing a worktree — asks before it runs. The line under
 the list names it, `enter` runs it and any other key puts the question away, so
 neither a keystroke meant for the row above nor a click on a row that moved
-closes somebody's work. Closing a row of what is open with `ctrl+x` asks the
+closes somebody's work. Closing a pane from the list with `ctrl+x` asks the
 same way, and leaves the popup up afterwards so the next one can be closed
 from the same list.
 

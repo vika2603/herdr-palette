@@ -239,3 +239,19 @@ func TestARecentlyUsedRowOutranksItsGroup(t *testing.T) {
 		t.Errorf("the list leads with %q, want the row just used", ranked[0].Entry.ID)
 	}
 }
+
+// A letter that starts a word counts for more than one inside a word, so
+// "switch w" means switch workspace rather than the w in switch.
+func TestAWordsStartOutranksItsMiddle(t *testing.T) {
+	entries := []Entry{
+		{ID: "tab", Title: "switch tab", Type: "Herdr"},
+		{ID: "workspace", Title: "switch workspace", Type: "Herdr"},
+	}
+	ranked := Rank(entries, "switch w", nil)
+	if len(ranked) != 2 || ranked[0].Entry.ID != "workspace" {
+		t.Errorf("ranked %v, want switch workspace first", ranked)
+	}
+	if ranked[0].Score <= ranked[1].Score {
+		t.Errorf("scores %d and %d, want the word's start to count for more", ranked[0].Score, ranked[1].Score)
+	}
+}

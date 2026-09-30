@@ -448,7 +448,10 @@ The row it matches is the row as it is drawn, namespace included, so `spr`
 reaches "herdr: split pane right" and the highlighted letters are the ones that
 were searched. fzf's scoring is what separates a run at the start of a word
 from letters scattered through a row, which is the difference the palette
-depends on at the size it has.
+depends on at the size it has. Those bonuses live in tables `algo.Init` fills,
+which fzf's own command line calls on start; the package does not, and
+without it every position scores the same, so `internal/palette` calls it
+once with fzf's default scheme.
 
 The matcher folds no case of its own, so the row is lowercased rune by rune
 before it is scored, which keeps the positions it returns lined up with what is

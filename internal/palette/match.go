@@ -13,8 +13,8 @@ const (
 	// searchPenalty applies when the query only matches with the entry's
 	// search text prepended: what the row shows is the stronger signal. It is
 	// set against the scores fzf returns, where one matched word of a title
-	// is worth roughly fifty.
-	searchPenalty = 40
+	// is worth roughly a hundred.
+	searchPenalty = 80
 	// recentBonus is what the most recently run entry gains. Each older entry
 	// gains one less, down to zero. It orders the list while the query is
 	// empty and every score is zero, and stays small enough next to a match
@@ -24,6 +24,11 @@ const (
 	// line, so the defaults fzf uses for file lists are far more than needed.
 	slab16, slab32 = 2048, 512
 )
+
+// fzf keeps its character classes and position bonuses in tables that Init
+// fills; left unfilled, every position scores the same and a word's start is
+// worth no more than its middle.
+func init() { algo.Init("default") }
 
 // Ranked is one entry with the query's match positions in its name, for
 // highlighting, and the score that ordered it.

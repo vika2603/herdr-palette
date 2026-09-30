@@ -97,11 +97,7 @@ func server(t *testing.T) *plugintest.Server {
 		Reply(herdr.MethodPaneRename, herdr.PaneInfoResponse{}).
 		Reply(herdr.MethodPaneClose, herdr.OKResponse{}).
 		Reply(herdr.MethodPaneEditScrollback, herdr.OKResponse{}).
-		Reply(herdr.MethodAgentStart, herdr.AgentStartedResponse{}).
 		Reply(herdr.MethodAgentRename, herdr.AgentInfoResponse{}).
-		Reply(herdr.MethodServerAgentManifests, herdr.AgentManifestStatusResponse{
-			Manifests: []herdr.AgentManifestInfo{{Agent: "claude"}, {Agent: "codex"}},
-		}).
 		Reply(herdr.MethodPluginPaneOpen, herdr.PluginPaneOpenedResponse{}).
 		Reply(herdr.MethodServerReloadConfig, herdr.ConfigReloadResponse{}).
 		Reply(herdr.MethodPaneRead, herdr.PaneReadResponse{Read: herdr.PaneReadResult{
@@ -238,7 +234,6 @@ func TestEachEntryCallsItsMethod(t *testing.T) {
 		{id: "herdr:pane.move", collected: step{chosen: "t9"}, method: herdr.MethodPaneMove},
 		{id: "herdr:workspace.switch", collected: step{chosen: "w2"}, method: herdr.MethodWorkspaceFocus},
 		{id: "herdr:tab.switch", collected: step{chosen: "t9"}, method: herdr.MethodTabFocus},
-		{id: "herdr:agent.start", collected: step{chosen: "codex"}, method: herdr.MethodAgentStart},
 		{id: "herdr:agent.rename", collected: step{input: "reviewer"}, method: herdr.MethodAgentRename},
 		{id: "herdr:config.edit", method: herdr.MethodPluginPaneOpen},
 		{id: "herdr:server.reload_config", method: herdr.MethodServerReloadConfig},
@@ -331,7 +326,6 @@ func TestEntriesThatNeedContextFailWithoutIt(t *testing.T) {
 		"herdr:pane.rename",
 		"herdr:pane.close",
 		"herdr:pane.edit_scrollback",
-		"herdr:agent.start",
 		"herdr:agent.rename",
 	} {
 		t.Run(id, func(t *testing.T) {
@@ -692,26 +686,6 @@ func TestMovingATabPastTheEndDoesNothing(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-// herdr names an agent after the kind it started, which is what its own UI
-// shows until the agent is renamed.
-func TestStartingAnAgentNamesItAfterTheKindInTheFocusedPane(t *testing.T) {
-	var params herdr.AgentStartParams
-	decode(t, run(t, "herdr:agent.start", step{chosen: "codex"})[0].Params, &params)
-
-	if params.Kind != "codex" || params.Name != "codex" {
-		t.Errorf("started %+v, want the agent that was picked", params)
-	}
-	if params.PaneID != "p1" {
-		t.Errorf("pane = %q, want the one that was focused", params.PaneID)
-	}
-}
-
-func TestStartingAnAgentOffersEveryManifest(t *testing.T) {
-	if got := values(choices(t, "herdr:agent.start")); len(got) != 2 || got[1] != "codex" {
-		t.Errorf("offered %v, want the agents herdr keeps a manifest for", got)
 	}
 }
 

@@ -80,10 +80,19 @@ func scriptDirectory(own, dir string, seen map[string]bool) ([]Entry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("script directory: %w", err)
 	}
-	files, err := os.ReadDir(dir)
+	info, err := os.Stat(dir)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
+	if err != nil {
+		return nil, fmt.Errorf("scripts unavailable: %w", err)
+	}
+	// Windows can report a missing path when ReadDir is given a file. Check
+	// its type before treating a missing directory as an optional empty list.
+	if !info.IsDir() {
+		return nil, fmt.Errorf("scripts unavailable: %s is not a directory", dir)
+	}
+	files, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("scripts unavailable: %w", err)
 	}

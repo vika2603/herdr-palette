@@ -420,8 +420,8 @@ func TestTheNativeCursorTracksTheInsertionPoint(t *testing.T) {
 	if got := ansi.Strip(m.header()); !strings.Contains(got, searchPlaceholder) || strings.Contains(got, "\u258f") {
 		t.Errorf("header = %q, want placeholder text without a painted cursor", got)
 	}
-	if cursor := m.View().Cursor; cursor == nil || cursor.X != 11 || cursor.Y != 0 || cursor.Shape != tea.CursorBar || !cursor.Blink {
-		t.Errorf("empty query cursor = %+v, want a blinking bar at (11, 0)", cursor)
+	if cursor := m.View().Cursor; cursor == nil || cursor.X != 11 || cursor.Y != 0 || cursor.Shape != tea.CursorBlock || !cursor.Blink {
+		t.Errorf("empty query cursor = %+v, want a blinking block at (11, 0)", cursor)
 	}
 
 	m = typeQuery(t, m, "split")
@@ -430,11 +430,11 @@ func TestTheNativeCursorTracksTheInsertionPoint(t *testing.T) {
 	if got := ansi.Strip(m.header()); !strings.Contains(got, "split") {
 		t.Errorf("header = %q, want continuous text", got)
 	}
-	if cursor := m.View().Cursor; cursor == nil || cursor.X != 14 || cursor.Y != 0 || cursor.Shape != tea.CursorBar || !cursor.Blink {
-		t.Errorf("query cursor = %+v, want a blinking bar after spl at (14, 0)", cursor)
+	if cursor := m.View().Cursor; cursor == nil || cursor.X != 14 || cursor.Y != 0 || cursor.Shape != tea.CursorBlock || !cursor.Blink {
+		t.Errorf("query cursor = %+v, want a blinking block after spl at (14, 0)", cursor)
 	}
-	// Reverse video is how the field draws its block, and it is only written
-	// out where the terminal takes styling at all.
+	// Only the native cursor should draw a block; the query must not also
+	// paint a virtual cursor with reverse video.
 	profile := lipgloss.ColorProfile()
 	lipgloss.SetColorProfile(termenv.TrueColor)
 	defer lipgloss.SetColorProfile(profile)

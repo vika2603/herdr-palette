@@ -225,8 +225,6 @@ func (m model) View() tea.View {
 	view.MouseMode = tea.MouseModeCellMotion
 	if visible {
 		view.Cursor = tea.NewCursor(column, 0)
-		view.Cursor.Shape = tea.CursorBar
-		view.Cursor.Blink = true
 	}
 	return view
 }

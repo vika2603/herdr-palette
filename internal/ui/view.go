@@ -114,9 +114,17 @@ const (
 // coming apart.
 const minCols = 6
 
-// searchPlaceholder stands in the empty query line. A list of targets says
-// what it is collecting there instead.
+// searchPlaceholder stands in the empty query line of the command list. A
+// scope names what it lists there instead, and a list of targets what it is
+// collecting.
 const searchPlaceholder = "Search commands"
+
+func placeholder(scope palette.Scope) string {
+	if scope == palette.ScopePalette {
+		return searchPlaceholder
+	}
+	return "Search " + scope.Name
+}
 
 const (
 	// chrome is the row budget the list does not get: the query line, the two
@@ -156,19 +164,18 @@ const (
 // theme that draws no background.
 const selectionMarker = "▌"
 
-// chipSlot is the room the label naming the screen is given, which is the
-// widest label with its padding. The query starts after it whichever label is
-// up, so typing the character that changes the label does not move the text.
-const chipSlot = 9
-
-// queryLead is what precedes the query on its line: a blank, the label's slot
-// and the blank after it.
-const queryLead = 1 + chipSlot + 1
+// queryLead is what precedes the query on its line: a blank, the label naming
+// the screen with its padding, and the blank after it. It follows the label
+// rather than reserving room for the longest one, so the query moves when the
+// label changes; a scope starts on an empty query, and a question's label is up
+// only while nothing is typed into the query.
+func (m model) queryLead() int {
+	label, _ := m.mode()
+	return 1 + len(label) + 2 + 1
+}
 
 // Labels naming the screen.
 const (
-	modePalette = "PALETTE"
-	modeGoTo    = "GO TO"
 	modePick    = "PICK"
 	modeConfirm = "CONFIRM"
 )
@@ -216,10 +223,8 @@ func (m model) mode() (string, bool) {
 		return modeConfirm, true
 	case m.choosing != nil:
 		return modePick, false
-	case strings.HasPrefix(m.query.Value(), GoesPrefix):
-		return modeGoTo, false
 	}
-	return modePalette, false
+	return m.scope.Label(), false
 }
 
 func (m model) header() string {
@@ -228,14 +233,14 @@ func (m model) header() string {
 	if danger {
 		chip = m.styles.chipDanger
 	}
-	lead := " " + chip.Render(" "+label+" ") + strings.Repeat(" ", chipSlot-len(label)-2) + " "
+	lead := " " + chip.Render(" "+label+" ") + " "
 	if m.replying != nil {
 		// What is typed goes to the agent, so the line names it rather than
 		// showing a query nothing is typed into.
 		name := strings.TrimPrefix(m.replying.Entry.Title, palette.GoTo)
 		return truncate(lead+m.styles.plain.text.Bold(true).Render(name), m.cols())
 	}
-	return truncate(lead+m.queryLine(max(m.cols()-queryLead, 1)), m.cols())
+	return truncate(lead+m.queryLine(max(m.cols()-m.queryLead(), 1)), m.cols())
 }
 
 // caret marks the insertion point: a thin bar between two characters rather
@@ -299,7 +304,7 @@ func (m model) topRule() string {
 // of each count says the same.
 func (m model) summary(room int) string {
 	counts := map[string]int{}
-	for _, status := range m.statuses {
+	for _, status := range m.source.Session.Statuses {
 		counts[status]++
 	}
 
@@ -394,6 +399,11 @@ func (m model) columns(width int) columns {
 	}
 	if c.detail < min(m.widths.detail, minDetail) {
 		c.detail = 0
+	}
+	// In a scope of places the label already says what every row is, and the
+	// detail says which pane runs an agent.
+	if m.narrowed() && m.scope.Places() {
+		c.source = 0
 	}
 	room := func() int { return body - span(c.detail) - span(c.source) - span(c.key) }
 	if c.key > 0 && room()+c.detail < minContent {
@@ -505,7 +515,7 @@ func (m model) row(index int, c columns) string {
 // every such row, and the name after them is what tells the rows apart.
 func (m model) title(entry palette.Entry, text string, matched []int, t tone) string {
 	verb := 0
-	if entry.Goes && strings.HasPrefix(entry.Title, palette.GoTo) {
+	if entry.Goes() && strings.HasPrefix(entry.Title, palette.GoTo) {
 		verb = min(len([]rune(palette.GoTo)), len([]rune(text)))
 	}
 	runes := []rune(text)
@@ -617,10 +627,12 @@ func (m model) empty() string {
 	switch {
 	case m.choosing != nil:
 		return "no match"
-	case strings.HasPrefix(m.query.Value(), GoesPrefix):
-		return "nothing open matches"
+	case !m.narrowed():
+		return "no command matches"
+	case m.query.Value() == "":
+		return m.scope.Empty
 	}
-	return "no command matches"
+	return "no " + m.scope.Noun() + " matches"
 }
 
 // hint is one key the footer names, with what it does.
@@ -676,14 +688,24 @@ func (m model) footer() string {
 	left := m.selectedName()
 	act, back := hint{spelling.name("enter"), "run"}, hint{spelling.name("esc"), "close"}
 	var more []hint
-	if m.cursor < len(m.ranked) && m.ranked[m.cursor].Entry.Goes {
-		act.does = "go"
+	if m.cursor < len(m.ranked) {
+		switch entry := m.ranked[m.cursor].Entry; {
+		case entry.Goes():
+			act.does = "go"
+		case entry.Scope.Name != "":
+			act.does = "open"
+		}
 	}
-	if m.choosing == nil && !m.pending && m.cursor < len(m.ranked) && canReply(m.ranked[m.cursor]) {
+	if scope, ok := m.completion(); ok {
+		more = append(more, hint{spelling.name("tab"), scope.Name})
+	} else if m.choosing == nil && !m.pending && m.cursor < len(m.ranked) && canReply(m.ranked[m.cursor]) {
 		more = append(more, hint{spelling.name("tab"), "reply"})
 	}
 	if m.canClose() {
-		more = append(more, closeHint())
+		more = append(more, closeHint(m.ranked[m.cursor].Entry))
+	}
+	if m.scope != m.home {
+		back.does = "back"
 	}
 	if m.choosing != nil {
 		// The command the targets belong to is no longer on the list, so the

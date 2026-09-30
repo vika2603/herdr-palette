@@ -105,15 +105,7 @@ func herdrEntries() []palette.Entry {
 			Binding: "workspace_picker",
 			Title:   "switch workspace",
 			Type:    groupHerdr,
-			Choices: &palette.Choices{
-				Label: "Workspace to go to",
-				Empty: "no other workspace is open",
-				List:  sessionChoices(palette.Workspaces),
-			},
-			Run: func(ctx context.Context, e palette.Exec) error {
-				_, err := e.Client.WorkspaceFocus(ctx, herdr.WorkspaceTarget{WorkspaceID: e.Chosen})
-				return err
-			},
+			Scope:   palette.ScopeWorkspaces,
 		},
 		{
 			ID:      "herdr:worktree.new",
@@ -222,15 +214,7 @@ func herdrEntries() []palette.Entry {
 			ID:    "herdr:tab.switch",
 			Title: "switch tab",
 			Type:  groupHerdr,
-			Choices: &palette.Choices{
-				Label: "Tab to go to",
-				Empty: "no other tab is open",
-				List:  sessionChoices(palette.Tabs),
-			},
-			Run: func(ctx context.Context, e palette.Exec) error {
-				_, err := e.Client.TabFocus(ctx, herdr.TabTarget{TabID: e.Chosen})
-				return err
-			},
+			Scope: palette.ScopeTabs,
 		},
 		{
 			ID:      "herdr:tab.move.previous",
@@ -624,17 +608,6 @@ func agentName(ctx context.Context, e palette.Exec) string {
 		}
 	}
 	return herdr.Value(e.Ctx.FocusedPaneAgent)
-}
-
-// sessionChoices lists what the snapshot holds, read the way from.
-func sessionChoices(from func(herdr.SessionSnapshot) []palette.Choice) func(context.Context, palette.Exec) ([]palette.Choice, error) {
-	return func(ctx context.Context, e palette.Exec) ([]palette.Choice, error) {
-		snapshot, err := e.Client.SessionSnapshot(ctx)
-		if err != nil {
-			return nil, err
-		}
-		return from(snapshot.Snapshot), nil
-	}
 }
 
 // The two places a pane can be moved to that do not exist yet. They cannot be

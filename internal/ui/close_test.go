@@ -27,10 +27,11 @@ func closeModel(t *testing.T) (model, *[]string) {
 		Commands: []palette.Entry{
 			{ID: "close", Title: "close tab", Type: "Herdr", Confirm: true, Run: func(context.Context, palette.Exec) error { return nil }},
 		},
-		Open: []palette.Entry{
-			{ID: "pane:api", Title: "go to api", Type: palette.TypePane, Goes: true, Close: closer("pane:api")},
-			{ID: "pane:docs", Title: "go to docs", Type: palette.TypePane, Goes: true, Close: closer("pane:docs")},
-		},
+		Session: palette.Session{Entries: []palette.Entry{
+			{ID: "pane:api", Title: "go to api", Type: palette.TypePane, Kind: palette.KindPane, Close: closer("pane:api")},
+			{ID: "pane:docs", Title: "go to docs", Type: palette.TypePane, Kind: palette.KindPane, Close: closer("pane:docs")},
+			{ID: "workspace:w2", Title: "go to docs", Type: palette.TypeWorkspace, Kind: palette.KindWorkspace, Close: closer("workspace:w2")},
+		}},
 	}
 	m := newModel(context.Background(), testEnv(t), &herdr.PluginInvocationContext{}, list, nil, theme.Defaults(), Toggle{})
 	m.setSize(96, 14)
@@ -104,7 +105,7 @@ func TestAnyOtherKeyPutsTheCloseQuestionAway(t *testing.T) {
 func TestCtrlXDoesNothingOnACommand(t *testing.T) {
 	m, _ := closeModel(t)
 	selectRow(t, &m, "close")
-	if strings.Contains(m.footer(), closeHint().key) {
+	if strings.Contains(m.footer(), spelling.name("ctrl+x")) {
 		t.Errorf("footer = %q offers to close a command", m.footer())
 	}
 	if m, _ = send(t, m, ctrlX); m.confirming != nil {
@@ -147,13 +148,33 @@ func TestTheSelectionStaysWhereAClosedRowWas(t *testing.T) {
 	at := m.cursor
 
 	var left []palette.Entry
-	for _, e := range m.open {
+	for _, e := range m.source.Session.Entries {
 		if e.ID != "pane:api" {
 			left = append(left, e)
 		}
 	}
-	m, _ = send(t, m, openMsg{open: left})
+	m, _ = send(t, m, openMsg{session: palette.Session{Entries: left}})
 	if m.cursor != min(at, len(m.ranked)-1) {
 		t.Errorf("cursor = %d, want %d where the closed row was", m.cursor, at)
+	}
+}
+
+// The footer names what the key closes, which a workspace's row makes more
+// than the pane it would be on the row of a pane.
+func TestTheFooterSaysWhatCtrlXCloses(t *testing.T) {
+	withSpelling(t, "darwin")
+	m, closed := closeModel(t)
+	m.enter(palette.ScopeWorkspaces)
+	if !strings.Contains(m.footer(), "⌃x close workspace") {
+		t.Errorf("footer = %q, want the key that closes the workspace", m.footer())
+	}
+	m, _ = send(t, m, ctrlX)
+	m, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("enter did not close the workspace")
+	}
+	cmd()
+	if len(*closed) != 1 || (*closed)[0] != "workspace:w2" {
+		t.Errorf("closed %v, want the workspace", *closed)
 	}
 }

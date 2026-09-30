@@ -12,19 +12,17 @@ import (
 )
 
 // List is the palette's rows in two halves. Commands is fixed for as long as
-// the popup is up; Open is what the session holds, which the popup rebuilds as
-// herdr reports changes.
+// the popup is up; Session is what is open, which the popup rebuilds as herdr
+// reports changes.
 type List struct {
 	Commands []Entry
-	Open     []Entry
-	// Statuses is what every agent in the session is doing, for the count the
-	// popup keeps of them.
-	Statuses []string
+	Session  Session
 }
 
-// All is both halves in the order they are shown.
+// All is every row, the commands first.
 func (l List) All() []Entry {
-	return append(append(make([]Entry, 0, len(l.Commands)+len(l.Open)), l.Commands...), l.Open...)
+	open := l.Session.Entries
+	return append(append(make([]Entry, 0, len(l.Commands)+len(open)), l.Commands...), open...)
 }
 
 // Load returns the entries to show: the catalog, the commands configured under
@@ -76,7 +74,7 @@ func Load(
 	if err != nil {
 		failures = append(failures, err)
 	}
-	return List{Commands: commands, Open: session.Entries, Statuses: session.Statuses}, errors.Join(failures...)
+	return List{Commands: commands, Session: session}, errors.Join(failures...)
 }
 
 // installedPlugins maps each installed plugin to what herdr knows about it:
@@ -116,6 +114,7 @@ func pluginEntry(action herdr.PluginActionInfo, name string) Entry {
 		ID:             "plugin:" + pluginID + "/" + actionID,
 		Title:          strings.ToLower(action.Title),
 		Type:           pluginNamespace(pluginID, name),
+		Kind:           KindPlugin,
 		NeedsSelection: onlySelection(action.Contexts),
 		// A plugin action runs in the plugin's own process, so a popup it
 		// cannot open is refused there and never reported back here. There is

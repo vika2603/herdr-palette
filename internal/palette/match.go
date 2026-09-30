@@ -81,7 +81,7 @@ func Rank(entries []Entry, text string, recent []string) []Ranked {
 		if !ok {
 			continue
 		}
-		if index, found := order[entry.ID]; found {
+		if index, found := order[entry.ID]; found && !entry.Here {
 			r.Score += recentBonus - index
 		}
 		ranked = append(ranked, r)
@@ -90,6 +90,9 @@ func Rank(entries []Entry, text string, recent []string) []Ranked {
 	sort.SliceStable(ranked, func(i, j int) bool {
 		if ranked[i].Score != ranked[j].Score {
 			return ranked[i].Score > ranked[j].Score
+		}
+		if a, b := ranked[i].Entry.Here, ranked[j].Entry.Here; a != b {
+			return b
 		}
 		if a, b := group(ranked[i].Entry), group(ranked[j].Entry); a != b {
 			return a < b
@@ -110,7 +113,7 @@ func Rank(entries []Entry, text string, recent []string) []Ranked {
 // for rather than on however many panes happen to be up. A row run recently
 // scores above both, so the way back to a pane just left is still short.
 func group(entry Entry) int {
-	if entry.Goes {
+	if entry.Goes() {
 		return 1
 	}
 	return 0

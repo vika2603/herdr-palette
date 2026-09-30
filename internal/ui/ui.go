@@ -22,8 +22,8 @@ func Run(ctx context.Context, env *plugin.Env, list palette.List, loadErr error,
 	list.Commands = applicable(list.Commands, invocation)
 
 	m := newModel(ctx, env, invocation, list, palette.ReadRecent(env), colours, toggle)
-	if os.Getenv(palette.GoesEnv) != "" {
-		m.start(GoesPrefix)
+	if scope, ok := palette.ParseScope(os.Getenv(palette.ScopeEnv)); ok {
+		m.openIn(scope)
 	}
 	if loadErr != nil {
 		m.failure = loadErr.Error()

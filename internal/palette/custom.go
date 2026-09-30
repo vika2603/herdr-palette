@@ -58,6 +58,7 @@ func entryFor(own string, command configured) Entry {
 		ID:          command.id,
 		Title:       command.title,
 		Type:        TypeCustom,
+		Kind:        KindCustom,
 		Key:         command.key,
 		Description: command.line,
 		Run:         run(own, command),

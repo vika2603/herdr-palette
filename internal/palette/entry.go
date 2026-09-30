@@ -65,10 +65,16 @@ type Entry struct {
 	// selected, the way a plugin action declaring the selection context is
 	// only meaningful with one.
 	NeedsSelection bool
-	// Goes marks a row that focuses something already open rather than running
-	// a command. The query prefix that narrows the list to them is what reads
-	// it.
-	Goes bool
+	// Kind is what the row is, which decides the scopes that list it.
+	Kind Kind
+	// Here marks the row for where the palette was opened from. It is listed
+	// so it can be closed without leaving it, but going there goes nowhere,
+	// so it ranks after the rows its score ties with and gains nothing from
+	// having been run recently.
+	Here bool
+	// Scope is the scope choosing the entry opens, in place of running
+	// anything. The zero Scope for every other entry.
+	Scope Scope
 	// Confirm marks an entry that cannot be undone: the palette asks before
 	// running it, so neither a keystroke meant for the row above nor a click
 	// on a row that moved closes somebody's work.
@@ -105,6 +111,10 @@ func (e Entry) Namespace() string {
 	return strings.ToLower(e.Type) + ": "
 }
 
+// Goes reports whether the row focuses something already open rather than
+// running a command.
+func (e Entry) Goes() bool { return places.Has(e.Kind) }
+
 // Name is how a row reads: the namespace in front of the title, as in
 // "herdr: split pane right". It is both what the row renders and what a query
 // matches, so the letters highlighted in a row are the ones that were
@@ -134,9 +144,3 @@ const TypeCustom = "Command"
 // ContextEnv is the environment variable the action entrypoint uses to pass
 // its invocation context to the popup pane it opens.
 const ContextEnv = "HERDR_PALETTE_CONTEXT"
-
-// GoesEnv is set on the popup opened by the action that goes straight to what
-// is open, which is the same popup with its query already narrowed to those
-// rows. A key bound to it reaches a pane by name without the commands in the
-// way; the palette's own key still opens everything.
-const GoesEnv = "HERDR_PALETTE_GOES"

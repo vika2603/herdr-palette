@@ -7,9 +7,10 @@ The manifest declares five actions, `toggle`, `goto`, `back`, `attend` and
 `bin/palette`; `plugin.Env` tells the process which entrypoint started it.
 
 `toggle` calls `plugin.pane.open` for the `palette` entrypoint, which runs the
-TUI; closing is the popup's own half, below. `goto` opens the same pane with `HERDR_PALETTE_GOES`
-set, which is the popup starting with the query that leaves the commands out —
-a key for reaching a pane by name, separate from the key for running a command.
+TUI; closing is the popup's own half, below. `goto` opens the same pane with
+`HERDR_PALETTE_SCOPE=panes` set, which is the popup starting in the scope of the
+open panes — a key for reaching a pane by name, separate from the key for
+running a command.
 `back` goes to the last place the palette took you, with no popup at all.
 `attend` goes to an agent that is blocked or done, also without a popup, and
 records the pane it was pressed in as the place `back` returns to.
@@ -73,27 +74,67 @@ command.
 ## Going to what is open
 
 `session.snapshot` is the whole session in one call, so every pane becomes a
-row that focuses it with `pane.focus`. What is already focused is left out,
-the palette having been opened from there. A plugin popup is not part of the
+row that focuses it with `pane.focus`. The pane, tab and workspace the palette
+was opened from are rows too, so they can be closed without leaving them. They
+carry `Here` and a detail ending in "here": going there goes nowhere, so such a
+row gains nothing from the recent order, sorts after the rows its score ties
+with, and is not among what needs you. A plugin popup is not part of the
 session's panes, so the palette's own window never appears in its list.
 
-Workspaces and tabs are not rows. Most hold one tab or one pane, so a row for
-each put the same place on the list two or three times, and the pane is what
-a search is usually for. A pane's search text carries the names of the
-workspace and tab it sits in, so either still finds it. `switch workspace` and
-`switch tab` list the rest as targets, from the same snapshot, each previewed
-through the pane it shows; they record the command in the recent order, not
-the place, so `back` returns to panes only. It still reads a `workspace:` or
-`tab:` id an older recent order holds.
+Every other workspace and tab is a row as well, previewed through the pane it
+shows, but not in the command list. Most hold one tab or one pane, so a row for
+each there would put the same place on the list two or three times, and the
+pane is what a search is usually for. A pane's search text carries the names of
+the workspace and tab it sits in, so either still finds it. A row's id names the
+place, `workspace:`, `tab:` or `pane:`, so `back` returns to whichever the
+palette went to last.
 
-These rows sit in the command list rather than behind a command of their own:
+The panes sit in the command list rather than behind a command of their own:
 reaching a pane by name is what the palette is used for most, and a step in
-front of it costs more than the length of the list does. A session does hold
-far more panes than there are commands, so they carry `Goes`, and the `@`
-prefix ranks only those. The prefix is read where the query is ranked rather
-than as a mode of its own, so nothing else in the popup has to know about it,
-and deleting the character undoes it. The `goto` action opens the popup with
-that character already typed.
+front of it costs more than the length of the list does.
+
+## Scopes
+
+Every row has a `Kind`: a herdr command, a configured command, a plugin action,
+a pane, an agent, a tab or a workspace. A scope is a name and a set of kinds,
+and what the popup lists is the rows of the scope that is on, whatever their
+source. The command list is a scope too, `palette`, holding every kind but tabs
+and workspaces. The others are `agents`, `panes` (agents included, since an
+agent runs in a pane), `tabs`, `workspaces`, `plugins`, the actions every
+installed plugin registered, `herdr`, herdr's own commands, and `commands`,
+the ones configured under `[[keys.command]]`, which their rows already name
+`command:`. Searching
+`herdr` in the command list is no substitute for the last: a plugin's id and a
+pane's directory are searched too, and both often carry the word. A new scope
+is a line naming its kinds; the label, the placeholder, the empty line and completion
+follow from its name.
+
+From the command list, `tab` on a query of one word, two letters or more, that
+starts the name of a scope switches to it and empties the query; shorter, a
+letter is too often the start of the name being searched for. Failing a start,
+a word whose letters appear in a scope's name in order, from its first letter,
+completes too, the way the list matches a query: `cmd` reaches `commands`. The
+first letter has to match, or the letters of most names searched for would
+spell out some scope. Each scope carries the line it shows when it holds
+nothing, since why it would depends on the scope: nothing is open, no plugin is
+installed, no command is configured. The footer names
+the scope while `tab` would go there, since the same key answers a waiting
+agent otherwise. `switch workspace` and `switch tab` are entries whose `Scope`
+opens theirs in place of running anything. `backspace` on an empty query and
+`esc` go back to the command list, except that `esc` closes a popup the `goto`
+action opened in its scope, the way it closes the command list.
+
+A scope is not grouped under headings: they tell commands from places, and a
+scope holds rows of a kind. Its rows keep the order the groups give them, what
+needs you first and where the palette went recently next. A scope of places
+also leaves out the source column, since the label says what every row is and
+the detail says which pane runs an agent; `plugins` keeps it for the plugin's
+name.
+
+The query starts a blank after the label, however long the label is, rather
+than after room kept for the longest one. It moves when the label changes,
+which is when a scope starts on an empty query or a question is up and nothing
+is being typed.
 
 A pane running an agent shows under `agent:` instead of `pane:`, with the agent
 and its status next to the row, coloured by the status. A pane is addressed by
@@ -255,10 +296,12 @@ name is also on show above.
 
 ## Closing a row without going there
 
-A pane's row carries a `Close` beside the `Run` that goes there, and
-`ctrl+x` asks the question a command that cannot be undone asks, with the row
-as its subject. `ctrl+x` because the query field binds nothing to it. What the palette was opened from is not
-a row, so no row closes the pane the popup is over.
+A pane's, tab's or workspace's row carries a `Close` beside the `Run` that
+goes there, and `ctrl+x` asks the question a command that cannot be undone
+asks, with the row as its subject. `ctrl+x` because the query field binds
+nothing to it. The footer names what the key closes, since a workspace takes
+every pane in it along. The place the palette was opened from is a row as
+well, so it closes without going anywhere first.
 
 Unlike a command, closing keeps the popup up: the list is where the next one to
 close is chosen from, and the session's events take the closed row away. It is
@@ -529,10 +572,8 @@ run, so recency still puts the way back at the top. The namespace is folded
 before it is compared, since it is a name a plugin gave itself and where it
 sits should not turn on how it capitalised it.
 
-`@` in front of the query ranks only the rows that carry `Goes`, which is
-every row the session put in the list. It is read where the query is ranked
-rather than kept as a mode, so nothing else in the popup has to know about it
-and deleting the character undoes it.
+A scope ranks its rows the same way, so the places in one are ordered by how
+recently the palette went there.
 
 ## Mouse
 

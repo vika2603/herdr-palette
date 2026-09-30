@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/vika2603/herdr-client/herdr"
 	"github.com/vika2603/herdr-client/plugin"
 	"github.com/vika2603/herdr-client/plugin/plugintest"
@@ -31,7 +33,7 @@ func testEntries(ran *[]string) []palette.Entry {
 	}
 	return []palette.Entry{
 		{ID: "a", Title: "split pane right", Type: "Herdr", Run: record("a")},
-		{ID: "b", Title: "open git jump", Type: palette.TypeCustom, Run: record("b")},
+		{ID: "b", Title: "open git jump", Type: palette.TypeCustom, Kind: palette.KindCustom, Run: record("b")},
 		{
 			ID:    "c",
 			Title: "rename workspace",
@@ -570,9 +572,9 @@ func TestRebuildingWhatIsOpenKeepsTheSelection(t *testing.T) {
 		&herdr.PluginInvocationContext{},
 		palette.List{
 			Commands: testEntries(&ran),
-			Open: []palette.Entry{
-				{ID: "pane:w1:p1", Title: "go to shell", Type: "Agent", Goes: true, Detail: "claude · idle"},
-			},
+			Session: palette.Session{Entries: []palette.Entry{
+				{ID: "pane:w1:p1", Title: "go to shell", Type: "Agent", Kind: palette.KindAgent, Detail: "claude · idle"},
+			}},
 		},
 		nil,
 		theme.Defaults(),
@@ -584,10 +586,10 @@ func TestRebuildingWhatIsOpenKeepsTheSelection(t *testing.T) {
 	if len(m.ranked) != 1 {
 		t.Fatalf("the query matched %d rows, want the agent", len(m.ranked))
 	}
-	m.setOpen([]palette.Entry{
-		{ID: "pane:w1:p2", Title: "go to nvim", Type: "Pane", Goes: true, Detail: "palette"},
-		{ID: "pane:w1:p1", Title: "go to shell", Type: "Agent", Goes: true, Detail: "claude · working"},
-	})
+	m.setOpen(palette.Session{Entries: []palette.Entry{
+		{ID: "pane:w1:p2", Title: "go to nvim", Type: "Pane", Kind: palette.KindPane, Detail: "palette"},
+		{ID: "pane:w1:p1", Title: "go to shell", Type: "Agent", Kind: palette.KindAgent, Detail: "claude · working"},
+	}})
 
 	if len(m.ranked) != 2 {
 		t.Fatalf("the rebuilt list has %d rows, want both panes", len(m.ranked))
@@ -755,8 +757,7 @@ func TestPickingATargetForAnEntryThatAlsoAsksForAValue(t *testing.T) {
 
 	m := chooserModel(t, &picked, worktreeChoices)
 	m.env = env
-	m.commands[1].Input = &palette.Input{Label: "Prompt"}
-	m.collect()
+	m.source.Commands[1].Input = &palette.Input{Label: "Prompt"}
 	m.rank()
 
 	m = choose(t, m, "worktree")
@@ -964,21 +965,27 @@ func TestTheFooterNamesTheSelectedRow(t *testing.T) {
 	}
 }
 
-// mixedModel is a palette of commands and rows that go to what is open, which
-// is what the prefix has to tell apart.
+// mixedModel is a palette of commands, a command that opens a scope, and rows
+// of every kind of place, which is what the scopes have to tell apart.
 func mixedModel(t *testing.T) model {
 	t.Helper()
 	var ran []string
+	commands := append(testEntries(&ran),
+		palette.Entry{ID: "switch", Title: "switch workspace", Type: "Herdr", Scope: palette.ScopeWorkspaces},
+		palette.Entry{ID: "plugin:notes/open", Title: "open notes", Type: "notes", Kind: palette.KindPlugin},
+	)
 	m := newModel(
 		context.Background(),
 		testEnv(t),
 		&herdr.PluginInvocationContext{},
 		palette.List{
-			Commands: testEntries(&ran),
-			Open: []palette.Entry{
-				{ID: "pane:p1", Title: "go to shell", Type: "Agent", Goes: true, Detail: "claude · working"},
-				{ID: "pane:p2", Title: "go to git jump", Type: "Pane", Goes: true, Detail: "palette"},
-			},
+			Commands: commands,
+			Session: palette.Session{Entries: []palette.Entry{
+				{ID: "pane:p1", Title: "go to shell", Type: "Agent", Kind: palette.KindAgent, Detail: "claude · working"},
+				{ID: "pane:p2", Title: "go to git jump", Type: "Pane", Kind: palette.KindPane, Detail: "palette"},
+				{ID: "tab:t2", Title: "go to 2", Type: "Tab", Kind: palette.KindTab},
+				{ID: "workspace:w2", Title: "go to docs", Type: "Workspace", Kind: palette.KindWorkspace},
+			}},
 		},
 		nil,
 		theme.Defaults(),
@@ -988,66 +995,200 @@ func mixedModel(t *testing.T) model {
 	return m
 }
 
-// The prefix narrows the list to what it goes to without a step of its own, so
-// reaching a pane by name costs one character rather than a second keystroke.
-func TestThePrefixNarrowsTheListToWhatIsOpen(t *testing.T) {
-	m := mixedModel(t)
+func tab(t *testing.T, m model) model {
+	t.Helper()
+	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyTab})
+	return m
+}
 
-	m = typeQuery(t, m, GoesPrefix)
-	if len(m.ranked) != 2 {
-		t.Fatalf("the prefix matched %d rows, want the two that go somewhere", len(m.ranked))
+// The command list holds the panes but not the tabs and workspaces they sit
+// in, which would mostly be the same place again.
+func TestTheCommandListLeavesTabsAndWorkspacesOut(t *testing.T) {
+	m := mixedModel(t)
+	for _, id := range ids(m.ranked) {
+		if id == "tab:t2" || id == "workspace:w2" {
+			t.Errorf("%s is in the command list", id)
+		}
 	}
-	for _, ranked := range m.ranked {
-		if !ranked.Entry.Goes {
-			t.Errorf("%q runs a command, which the prefix leaves out", ranked.Entry.Name())
+	if !slices.Contains(ids(m.ranked), "pane:p2") {
+		t.Errorf("rows = %v, want the panes among the commands", ids(m.ranked))
+	}
+}
+
+// The start of a scope's name completes to the scope, which lists its rows
+// and nothing else, and what is typed next filters those.
+func TestTabCompletesTheStartOfAScope(t *testing.T) {
+	m := tab(t, typeQuery(t, mixedModel(t), "Pan"))
+	if m.scope != palette.ScopePanes || m.query.Value() != "" {
+		t.Fatalf("scope = %q with query %q, want the panes and an empty query", m.scope.Name, m.query.Value())
+	}
+	if got, want := ids(m.ranked), []string{"pane:p1", "pane:p2"}; !slices.Equal(got, want) {
+		t.Errorf("rows = %v, want %v: an agent's pane is a pane too", got, want)
+	}
+	if !strings.Contains(m.header(), "PANES") {
+		t.Errorf("header = %q, want the scope named", m.header())
+	}
+
+	m = typeQuery(t, m, "shell")
+	if got := ids(m.ranked); !slices.Equal(got, []string{"pane:p1"}) {
+		t.Errorf("rows = %v, want the pane the query names", got)
+	}
+}
+
+// The headings of the command list tell commands from places, which a scope
+// holding one kind of row has no use for.
+func TestAScopeIsNotGrouped(t *testing.T) {
+	m := sessionModel(t, testEnv(t), []string{"pane:working"}, 72, 16)
+	m.enter(palette.ScopeAgents)
+	if got := headings(m); len(got) != 0 {
+		t.Errorf("headings = %v, want none in a scope", got)
+	}
+	// What needs you still comes first, then where the palette went last.
+	if got, want := ids(m.ranked), []string{"pane:blocked", "pane:done", "pane:working"}; !slices.Equal(got, want) {
+		t.Errorf("rows = %v, want %v", got, want)
+	}
+}
+
+func TestEachScopeListsItsKind(t *testing.T) {
+	for query, want := range map[string][]string{
+		"agent":     {"pane:p1"},
+		"tabs":      {"tab:t2"},
+		"workspace": {"workspace:w2"},
+		"plug":      {"plugin:notes/open"},
+		"herdr":     {"c", "a", "switch"},
+		"commands":  {"b"},
+	} {
+		m := tab(t, typeQuery(t, mixedModel(t), query))
+		if got := ids(m.ranked); !slices.Equal(got, want) {
+			t.Errorf("%q<tab> lists %v, want %v", query, got, want)
+		}
+	}
+}
+
+// Tab only completes a word that starts a scope's name and is long enough not
+// to be the start of every other name searched for.
+func TestTabLeavesAQueryThatNamesNoScope(t *testing.T) {
+	for _, query := range []string{"p", "pane x", "shell"} {
+		m := tab(t, typeQuery(t, mixedModel(t), query))
+		if m.narrowed() || m.query.Value() != query {
+			t.Errorf("%q<tab> went to %q with query %q, want the query left as typed", query, m.scope.Name, m.query.Value())
+		}
+	}
+}
+
+// The footer says what tab does before it is pressed, since the same key also
+// answers a waiting agent.
+func TestTheFooterNamesTheScopeTabCompletesTo(t *testing.T) {
+	withSpelling(t, "darwin")
+	m := typeQuery(t, mixedModel(t), "work")
+	if !strings.Contains(m.footer(), "⇥ workspaces") {
+		t.Errorf("footer = %q, want the scope tab goes to", m.footer())
+	}
+}
+
+func TestAnEntryWithAScopeOpensIt(t *testing.T) {
+	m := typeQuery(t, mixedModel(t), "switch workspace")
+	if !strings.Contains(m.footer(), "open") {
+		t.Errorf("footer = %q, want enter to say it opens the scope", m.footer())
+	}
+	m, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd != nil || m.scope != palette.ScopeWorkspaces {
+		t.Fatalf("scope = %q, want the workspaces opened without running anything", m.scope.Name)
+	}
+	if got := ids(m.ranked); !slices.Equal(got, []string{"workspace:w2"}) {
+		t.Errorf("rows = %v, want the workspaces", got)
+	}
+}
+
+// A scope is a step inside the palette: esc and backspace on an empty query
+// both go back to the command list rather than closing the popup.
+func TestLeavingAScopePutsTheCommandsBack(t *testing.T) {
+	for _, key := range []tea.KeyType{tea.KeyEsc, tea.KeyBackspace} {
+		m := tab(t, typeQuery(t, mixedModel(t), "pan"))
+		m, cmd := send(t, m, tea.KeyMsg{Type: key})
+		if cmd != nil {
+			t.Errorf("%s closed the popup from a scope", key)
+		}
+		if m.narrowed() || m.query.Placeholder != searchPlaceholder {
+			t.Errorf("%s left the scope at %q", key, m.scope.Name)
+		}
+		if !slices.Contains(ids(m.ranked), "a") {
+			t.Errorf("%s did not put the commands back: %v", key, ids(m.ranked))
 		}
 	}
 
-	// What follows the prefix filters those rows the way it filters any others.
-	m = typeQuery(t, m, "shell")
-	if len(m.ranked) != 1 || m.ranked[0].Entry.ID != "pane:p1" {
-		t.Errorf("%q matched %d rows, want the agent's pane", GoesPrefix+"shell", len(m.ranked))
+	// With something typed, backspace belongs to the query.
+	m := typeQuery(t, tab(t, typeQuery(t, mixedModel(t), "pan")), "sh")
+	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyBackspace})
+	if m.scope != palette.ScopePanes || m.query.Value() != "s" {
+		t.Errorf("scope = %q with query %q, want the scope kept and a letter deleted", m.scope.Name, m.query.Value())
 	}
 }
 
-// A query that shares a word with a command still leaves the commands out
-// while the prefix is there, and brings them back the moment it goes.
-func TestDeletingThePrefixPutsTheCommandsBack(t *testing.T) {
-	m := typeQuery(t, mixedModel(t), GoesPrefix+"git jump")
-	if len(m.ranked) != 1 || m.ranked[0].Entry.ID != "pane:p2" {
-		t.Fatalf("%q matched %d rows, want the pane rather than the command", GoesPrefix+"git jump", len(m.ranked))
-	}
-
-	for range len(GoesPrefix + "git jump") {
-		m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyBackspace})
-	}
-	m = typeQuery(t, m, "git jump")
-	if len(m.ranked) == 0 || m.ranked[0].Entry.ID != "b" {
-		t.Errorf("the command is not back without the prefix, %d rows matched", len(m.ranked))
-	}
-}
-
-func TestNothingOpenMatchingSaysSo(t *testing.T) {
-	m := typeQuery(t, mixedModel(t), GoesPrefix+"nothing by this name")
+func TestNothingInAScopeMatchingSaysSo(t *testing.T) {
+	m := typeQuery(t, tab(t, typeQuery(t, mixedModel(t), "pan")), "nothing by this name")
 	if len(m.ranked) != 0 {
 		t.Fatalf("the query matched %d rows, want none", len(m.ranked))
 	}
-	if !strings.Contains(m.View(), "nothing open matches") {
+	if !strings.Contains(m.View(), "no pane matches") {
 		t.Errorf("the view does not say what was searched:\n%s", m.View())
 	}
 }
 
-// The entrypoint bound to its own key opens the popup already narrowed, which
-// is the same query typed before the first frame.
-func TestStartingNarrowedToWhatIsOpen(t *testing.T) {
-	m := mixedModel(t)
-	m.start(GoesPrefix)
-
-	if m.query.Value() != GoesPrefix {
-		t.Errorf("query = %q, want the prefix", m.query.Value())
+// A scope of places leaves out the column saying what each row is, which the
+// label says for all of them; a plugin's name is still worth its column.
+func TestAScopeOfPlacesHasNoSourceColumn(t *testing.T) {
+	m := tab(t, typeQuery(t, mixedModel(t), "pan"))
+	if got := ansi.Strip(m.row(0, m.columns(m.listWidth()))); strings.Contains(got, "agent") {
+		t.Errorf("row = %q, want no source column in a scope of panes", got)
 	}
+	m = tab(t, typeQuery(t, mixedModel(t), "plug"))
+	if got := ansi.Strip(m.row(0, m.columns(m.listWidth()))); !strings.Contains(got, "notes") {
+		t.Errorf("row = %q, want the plugin's name", got)
+	}
+}
+
+// An empty scope says why there is nothing in it: nothing of the kind is
+// open, or no plugin put an action in the list.
+func TestAnEmptyScopeSaysWhy(t *testing.T) {
+	var ran []string
+	for scope, want := range map[palette.Scope]string{
+		palette.ScopeAgents:     "no agent is open",
+		palette.ScopePlugins:    "no plugin is installed",
+		palette.ScopeWorkspaces: "no workspace is open",
+	} {
+		m := testModel(t, nil, &ran)
+		m.enter(scope)
+		if !strings.Contains(m.View(), want) {
+			t.Errorf("an empty %s scope does not say %q:\n%s", scope.Name, want, m.View())
+		}
+	}
+
+	m := sized(t, testEntries(&ran)[:1], 72)
+	m.enter(palette.ScopeCommands)
+	if !strings.Contains(m.View(), "no command is configured") {
+		t.Errorf("an empty commands scope does not say none is configured:\n%s", m.View())
+	}
+}
+
+// The popup a key opened in a scope is that scope's: esc closes it, and
+// backspace still reaches the commands.
+func TestOpeningInAScope(t *testing.T) {
+	m := mixedModel(t)
+	m.openIn(palette.ScopePanes)
 	if len(m.ranked) != 2 {
-		t.Errorf("the popup opened on %d rows, want the two that go somewhere", len(m.ranked))
+		t.Fatalf("the popup opened on %d rows, want the two panes", len(m.ranked))
+	}
+	if _, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEsc}); cmd == nil {
+		t.Error("esc did not close a popup opened in a scope")
+	}
+
+	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyBackspace})
+	if m.narrowed() {
+		t.Fatal("backspace did not leave the scope the popup opened in")
+	}
+	if _, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEsc}); cmd == nil {
+		t.Error("esc from the command list did not close the popup")
 	}
 }
 
@@ -1146,7 +1287,7 @@ func TestAClickOffTheRowsPutsTheQuestionAway(t *testing.T) {
 // rebuild can take out from under a question.
 func confirmable(id, title string) palette.Entry {
 	return palette.Entry{
-		ID: id, Title: title, Type: "Pane", Goes: true, Confirm: true,
+		ID: id, Title: title, Type: "Pane", Kind: palette.KindPane, Confirm: true,
 		Run: func(context.Context, palette.Exec) error { return nil },
 	}
 }
@@ -1156,7 +1297,7 @@ func questionModel(t *testing.T, open []palette.Entry) model {
 	var ran []string
 	m := newModel(
 		context.Background(), testEnv(t), &herdr.PluginInvocationContext{},
-		palette.List{Commands: testEntries(&ran), Open: open}, nil, theme.Defaults(), Toggle{})
+		palette.List{Commands: testEntries(&ran), Session: palette.Session{Entries: open}}, nil, theme.Defaults(), Toggle{})
 
 	m.setSize(72, 12)
 	return m
@@ -1175,10 +1316,10 @@ func TestARebuildKeepsAQuestionWhoseRowSurvives(t *testing.T) {
 
 	// The second pane matches the query too, so the rows it is ranked into say
 	// whether the rebuild reached the list at all.
-	m.setOpen([]palette.Entry{
+	m.setOpen(palette.Session{Entries: []palette.Entry{
 		confirmable("pane:p1", "go to shell"),
-		{ID: "pane:p2", Title: "go to another shell", Type: "Pane", Goes: true},
-	})
+		{ID: "pane:p2", Title: "go to another shell", Type: "Pane", Kind: palette.KindPane},
+	}})
 	if m.confirming == nil {
 		t.Error("the question went away although the row it names is still on show")
 	}
@@ -1209,7 +1350,7 @@ func TestAQuestionGoesWithTheRowItNames(t *testing.T) {
 		t.Fatal("the row did not ask before running")
 	}
 
-	m.setOpen(nil)
+	m.setOpen(palette.Session{})
 	if m.confirming != nil {
 		t.Errorf("the question stands over %q, whose row has gone", m.confirming.ID)
 	}
@@ -1253,7 +1394,9 @@ func TestNoLineOutgrowsThePopupOnAnyScreen(t *testing.T) {
 	var ran []string
 	for _, cols := range []int{6, 10, 16, 20, 24, 40, 72} {
 		empty := typeQuery(t, sized(t, testEntries(&ran), cols), "nothing by this name")
-		goes := typeQuery(t, sized(t, testEntries(&ran), cols), GoesPrefix+"nothing by this name")
+		scoped := sized(t, testEntries(&ran), cols)
+		scoped.enter(palette.ScopeWorkspaces)
+		scoped = typeQuery(t, scoped, "nothing by this name")
 
 		asking := sized(t, []palette.Entry{{
 			ID: "close", Title: "close workspace", Type: "Herdr", Confirm: true,
@@ -1264,7 +1407,7 @@ func TestNoLineOutgrowsThePopupOnAnyScreen(t *testing.T) {
 			t.Fatalf("at %d columns the row did not ask before running", cols)
 		}
 
-		for what, m := range map[string]model{"empty": empty, "@ empty": goes, "asking": asking} {
+		for what, m := range map[string]model{"empty": empty, "scope empty": scoped, "asking": asking} {
 			for i, line := range strings.Split(m.View(), "\n") {
 				if width := lipgloss.Width(line); width > cols {
 					t.Errorf("%s at %d columns: line %d is %d wide: %q", what, cols, i, width, line)

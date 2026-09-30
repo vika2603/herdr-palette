@@ -26,10 +26,7 @@ type ranMsg struct {
 // popup shows.
 type (
 	changedMsg struct{}
-	openMsg    struct {
-		open     []palette.Entry
-		statuses []string
-	}
+	openMsg    struct{ session palette.Session }
 )
 
 // choicesMsg carries what an entry can act on, once herdr has answered with
@@ -57,14 +54,14 @@ type model struct {
 	env        *plugin.Env
 	invocation *herdr.PluginInvocationContext
 
-	// commands is fixed while the popup is up, open is what the session holds,
-	// and entries is the two of them as the list is ranked.
-	commands []palette.Entry
-	open     []palette.Entry
-	entries  []palette.Entry
-	// statuses is what every agent in the session is doing, counted on the
-	// rule under the query.
-	statuses []string
+	// source is the commands, fixed while the popup is up, and what the
+	// session holds. targets is what an entry can act on while that is up.
+	source  palette.List
+	targets []palette.Entry
+	// scope is what the rows are drawn from, and home the scope the popup was
+	// opened in: esc closes the popup from there rather than leaving it.
+	scope palette.Scope
+	home  palette.Scope
 	// changes carries a signal per batch of herdr events, at most one waiting.
 	changes <-chan struct{}
 	recent  []string
@@ -143,7 +140,6 @@ func newModel(
 	query := textinput.New()
 	query.Prompt = ""
 	query.Placeholder = searchPlaceholder
-	query.Width = queryWidth(defaultCols)
 	// The cursor keeps the terminal's own colours: drawn in the accent it is a
 	// second block of the label's colour right beside the label.
 	query.PlaceholderStyle = styles.plain.faint
@@ -153,9 +149,9 @@ func newModel(
 		ctx:        ctx,
 		env:        env,
 		invocation: invocation,
-		commands:   list.Commands,
-		open:       list.Open,
-		statuses:   list.Statuses,
+		source:     list,
+		scope:      palette.ScopePalette,
+		home:       palette.ScopePalette,
 		prefix:     toggle.Prefix,
 		recent:     recent,
 		query:      query,
@@ -164,7 +160,7 @@ func newModel(
 		state:      &stateGate{},
 	}
 	m.changes = watch(ctx, env)
-	m.collect()
+	m.query.Width = m.queryWidth()
 	m.rank()
 	return m
 }
@@ -174,16 +170,37 @@ func newModel(
 // drawing all of it wraps the line and pushes every row below it down.
 func (m *model) setSize(width, height int) {
 	m.width, m.height = width, height
-	m.query.Width = queryWidth(m.cols())
+	m.query.Width = m.queryWidth()
 	m.reveal()
 }
 
-// start fills the query before the first frame, which is how the popup opens
-// already narrowed to what the key that opened it asked for.
-func (m *model) start(text string) {
-	m.query.SetValue(text)
+// openIn opens the popup in a scope before the first frame, which is how it
+// opens already narrowed to what the key that opened it asked for.
+func (m *model) openIn(scope palette.Scope) {
+	m.home = scope
+	m.enter(scope)
+}
+
+// enter draws the rows from the scope. The word that named it is not a query
+// for what is in it, so the query starts over.
+func (m *model) enter(scope palette.Scope) {
+	m.scope = scope
+	m.query.SetValue("")
+	m.query.Placeholder = placeholder(scope)
+	m.query.Width = m.queryWidth()
+	m.failure, m.notice = "", ""
 	m.rank()
 }
+
+// leave puts the command list back. Once the scope the popup opened in has
+// been left, esc closes the popup the way it does from the command list.
+func (m *model) leave() {
+	m.home = palette.ScopePalette
+	m.enter(palette.ScopePalette)
+}
+
+// narrowed reports whether a scope other than the command list is on.
+func (m model) narrowed() bool { return m.scope != palette.ScopePalette }
 
 // Init starts following the session. The field's own blink is left out: the
 // query line draws its caret itself, and it does not blink.
@@ -249,8 +266,7 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.reload(), listen(m.changes))
 
 	case openMsg:
-		m.statuses = msg.statuses
-		m.setOpen(msg.open)
+		m.setOpen(msg.session)
 		if m.replying != nil {
 			return m, m.followReply()
 		}
@@ -412,10 +428,14 @@ func (m model) keyList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch msg.String() {
 	case "esc":
-		// A list of targets is a step inside the palette, so esc goes back to
-		// the commands rather than closing the popup.
+		// A list of targets or a scope is a step inside the palette, so esc
+		// goes back to the commands rather than closing the popup.
 		if m.choosing != nil {
 			m.abandon()
+			return m, nil
+		}
+		if m.scope != m.home {
+			m.leave()
 			return m, nil
 		}
 		return m, tea.Quit
@@ -434,11 +454,16 @@ func (m model) keyList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		return m.choose()
 	case "tab":
-		// On an agent that is waiting tab moves the keyboard over to the
+		// A query that starts the name of a scope completes to it. Otherwise,
+		// on an agent that is waiting, tab moves the keyboard over to the
 		// agent. Elsewhere it types nothing and does nothing.
 		//
 		// Not while a command is out: its answer would close the popup or
 		// put a list up under the agent's screen.
+		if scope, ok := m.completion(); ok {
+			m.enter(scope)
+			return m, nil
+		}
 		if m.choosing == nil && !m.pending && m.cursor < len(m.ranked) && canReply(m.ranked[m.cursor]) {
 			return m.startReply()
 		}
@@ -454,6 +479,10 @@ func (m model) keyList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// belongs to the field, which is what the rest of this falls to.
 		if m.choosing != nil && m.query.Value() == "" {
 			m.abandon()
+			return m, nil
+		}
+		if m.narrowed() && m.query.Value() == "" {
+			m.leave()
 			return m, nil
 		}
 	}
@@ -479,6 +508,10 @@ func (m model) choose() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	entry := m.ranked[m.cursor].Entry
+	if entry.Scope.Name != "" {
+		m.enter(entry.Scope)
+		return m, nil
+	}
 	// The list an entry picks its target from is not itself the act, so the
 	// question waits until there is something to ask about.
 	if entry.Confirm && entry.Choices == nil {
@@ -517,7 +550,7 @@ func (m *model) choices(msg choicesMsg) {
 		m.choosing = &chooser{entry: msg.entry, query: msg.query}
 		m.query.SetValue("")
 		m.query.Placeholder = msg.entry.Choices.Label
-		m.entries = palette.ChoiceEntries(msg.entry, msg.choices)
+		m.targets = palette.ChoiceEntries(msg.entry, msg.choices)
 		m.failure, m.notice = "", ""
 		m.rank()
 	}
@@ -529,12 +562,11 @@ func (m *model) choices(msg choicesMsg) {
 // put the targets back up, or close the popup on the way out of them.
 func (m *model) abandon() {
 	m.query.SetValue(m.choosing.query)
-	m.query.Placeholder = searchPlaceholder
-	m.choosing = nil
+	m.query.Placeholder = placeholder(m.scope)
+	m.choosing, m.targets = nil, nil
 	m.failure, m.notice = "", ""
 	m.epoch++
 	m.pending = false
-	m.collect()
 	m.rank()
 }
 
@@ -585,7 +617,7 @@ func (m model) reload() tea.Cmd {
 		if err != nil {
 			return nil
 		}
-		return openMsg{open: session.Entries, statuses: session.Statuses}
+		return openMsg{session: session}
 	}
 }
 
@@ -593,11 +625,9 @@ func (m model) reload() tea.Cmd {
 // is on, which would otherwise jump under the user as an agent changes state.
 // While a list of targets is up the rows are not the session's, so the rebuilt
 // ones are kept for the way back instead of being shown.
-func (m *model) setOpen(open []palette.Entry) {
-	// While a list of targets is up the rows are not the session's, so the
-	// rebuilt ones are kept for the way back instead of being shown.
+func (m *model) setOpen(session palette.Session) {
+	m.source.Session = session
 	if m.choosing != nil {
-		m.open = open
 		return
 	}
 
@@ -607,8 +637,6 @@ func (m *model) setOpen(open []palette.Entry) {
 	}
 	offset, at := m.offset, m.cursor
 
-	m.open = open
-	m.collect()
 	m.rank()
 
 	// A selected row that has gone, such as one just closed, leaves the
@@ -634,24 +662,39 @@ func (m *model) setOpen(open []palette.Entry) {
 	}
 }
 
-func (m *model) collect() {
-	m.entries = append(append(make([]palette.Entry, 0, len(m.commands)+len(m.open)), m.commands...), m.open...)
+// candidates is what the query is ranked against: an entry's targets while
+// they are up, and the scope's rows otherwise, read afresh so a rebuilt session
+// shows in them.
+func (m model) candidates() []palette.Entry {
+	if m.choosing != nil {
+		return m.targets
+	}
+	return m.source.Rows(m.scope)
+}
+
+// completion is the scope tab would complete the query to. Only the command
+// list narrows: inside a scope or a list of targets there is nothing to
+// complete to.
+func (m model) completion() (palette.Scope, bool) {
+	if m.narrowed() || m.choosing != nil || m.pending {
+		return palette.Scope{}, false
+	}
+	return palette.Complete(m.query.Value())
 }
 
 func (m *model) rank() {
-	entries, text := m.entries, m.query.Value()
-	if rest, only := strings.CutPrefix(text, GoesPrefix); only {
-		// The prefix narrows the list to what it goes to rather than opening a
-		// screen of its own: what follows it filters those rows the way it
-		// filters any others, and deleting it puts the commands back.
-		entries, text = goesOnly(entries), rest
-	}
+	entries, text := m.candidates(), m.query.Value()
 
 	m.ranked = palette.Rank(entries, text, m.recent)
 	// A list nobody has searched yet is laid out in groups; a query's matches
 	// are one list in the order they matched, which the groups would break.
 	if strings.TrimSpace(text) == "" && m.choosing == nil {
 		m.ranked, m.lines = grouped(m.ranked)
+		// A scope holds rows of a kind, where headings that tell commands from
+		// places say nothing; the order they give is kept.
+		if m.narrowed() {
+			m.lines = ungrouped(len(m.ranked))
+		}
 	} else {
 		m.lines = ungrouped(len(m.ranked))
 	}
@@ -698,24 +741,8 @@ func (m *model) settle() {
 // queryWidth is how much of a long query is on show: the columns left once the
 // label in front of it and the cursor's own have been taken. Without it the
 // line grows past the popup and wraps, which pushes every row below it down.
-func queryWidth(cols int) int {
-	return max(cols-queryLead-1, 1)
-}
-
-// GoesPrefix narrows the list to the rows that go somewhere already open. It
-// is one character rather than a step of its own, so reaching a pane by name
-// stays a single keystroke longer than typing the name.
-const GoesPrefix = "@"
-
-// goesOnly keeps the rows that focus something rather than run a command.
-func goesOnly(entries []palette.Entry) []palette.Entry {
-	out := make([]palette.Entry, 0, len(entries))
-	for _, entry := range entries {
-		if entry.Goes {
-			out = append(out, entry)
-		}
-	}
-	return out
+func (m model) queryWidth() int {
+	return max(m.cols()-m.queryLead()-1, 1)
 }
 
 func clamp(index, length int) int {

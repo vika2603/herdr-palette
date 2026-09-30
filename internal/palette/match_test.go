@@ -206,9 +206,9 @@ func TestAMatchInTheSearchTextIsReported(t *testing.T) {
 // the palette opens on what it is for.
 func TestAnEmptyQueryLeadsWithTheCommands(t *testing.T) {
 	entries := []Entry{
-		{ID: "pane:p1", Title: "go to shell", Type: "Agent", Goes: true},
+		{ID: "pane:p1", Title: "go to shell", Type: "Agent", Kind: KindAgent},
 		{ID: "herdr:tab.new", Title: "new tab", Type: "Herdr"},
-		{ID: "pane:p2", Title: "go to nvim", Type: "Pane", Goes: true},
+		{ID: "pane:p2", Title: "go to nvim", Type: "Pane", Kind: KindPane},
 		{ID: "config:x", Title: "open git jump", Type: TypeCustom},
 	}
 
@@ -217,10 +217,10 @@ func TestAnEmptyQueryLeadsWithTheCommands(t *testing.T) {
 		t.Fatalf("Rank() kept %d of %d rows on an empty query", len(ranked), len(entries))
 	}
 	for i, r := range ranked {
-		if r.Entry.Goes && i < 2 {
+		if r.Entry.Goes() && i < 2 {
 			t.Errorf("row %d (%q) goes somewhere, want the commands first", i, r.Entry.Name())
 		}
-		if !r.Entry.Goes && i >= 2 {
+		if !r.Entry.Goes() && i >= 2 {
 			t.Errorf("row %d (%q) runs a command, want it above the rows that go somewhere", i, r.Entry.Name())
 		}
 	}
@@ -231,7 +231,7 @@ func TestAnEmptyQueryLeadsWithTheCommands(t *testing.T) {
 func TestARecentlyUsedRowOutranksItsGroup(t *testing.T) {
 	entries := []Entry{
 		{ID: "herdr:tab.new", Title: "new tab", Type: "Herdr"},
-		{ID: "pane:p1", Title: "go to shell", Type: "Agent", Goes: true},
+		{ID: "pane:p1", Title: "go to shell", Type: "Agent", Kind: KindAgent},
 	}
 
 	ranked := Rank(entries, "", []string{"pane:p1"})

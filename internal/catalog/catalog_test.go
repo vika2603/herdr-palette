@@ -232,8 +232,6 @@ func TestEachEntryCallsItsMethod(t *testing.T) {
 		{id: "herdr:pane.close", method: herdr.MethodPaneClose},
 		{id: "herdr:pane.edit_scrollback", method: herdr.MethodPaneEditScrollback},
 		{id: "herdr:pane.move", collected: step{chosen: "t9"}, method: herdr.MethodPaneMove},
-		{id: "herdr:workspace.switch", collected: step{chosen: "w2"}, method: herdr.MethodWorkspaceFocus},
-		{id: "herdr:tab.switch", collected: step{chosen: "t9"}, method: herdr.MethodTabFocus},
 		{id: "herdr:agent.rename", collected: step{input: "reviewer"}, method: herdr.MethodAgentRename},
 		{id: "herdr:config.edit", method: herdr.MethodPluginPaneOpen},
 		{id: "herdr:server.reload_config", method: herdr.MethodServerReloadConfig},
@@ -355,8 +353,10 @@ func TestEntriesAreWellFormed(t *testing.T) {
 			t.Errorf("%s has no title", e.ID)
 		case e.Type == "":
 			t.Errorf("%s has no group", e.ID)
-		case e.Run == nil:
+		case e.Run == nil && e.Scope.Name == "":
 			t.Errorf("%s has no command", e.ID)
+		case e.Run != nil && e.Scope.Name != "":
+			t.Errorf("%s both runs a command and opens a scope", e.ID)
 		case seen[e.ID]:
 			t.Errorf("%s is listed twice, so the recent order would key both", e.ID)
 		case e.Choices != nil && (e.Choices.Label == "" || e.Choices.Empty == "" || e.Choices.List == nil):
@@ -729,5 +729,18 @@ func TestEditingTheConfigOpensTheFileHerdrReads(t *testing.T) {
 
 	if !strings.HasSuffix(params.Env[palette.RunEnv], "'/tmp/herdr-config.toml'") {
 		t.Errorf("opened %q, want herdr's own configuration file", params.Env[palette.RunEnv])
+	}
+}
+
+// Switching workspace or tab lists what there is to go to rather than asking
+// for a target of its own, so the rows are the ones the scope shows.
+func TestSwitchingOpensTheScopeOfWhatItGoesTo(t *testing.T) {
+	for id, want := range map[string]palette.Scope{
+		"herdr:workspace.switch": palette.ScopeWorkspaces,
+		"herdr:tab.switch":       palette.ScopeTabs,
+	} {
+		if got := entry(t, id).Scope; got != want {
+			t.Errorf("%s opens %q, want %q", id, got.Name, want.Name)
+		}
 	}
 }

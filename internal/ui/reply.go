@@ -26,9 +26,11 @@ type replySentMsg struct{ err error }
 
 // canReply reports whether the row is an agent waiting on a question, which
 // is the one thing the palette hands the keyboard over for: a working agent
-// is reached with a prompt, and one that is done has nothing to answer.
+// is reached with a prompt, and one that is done has nothing to answer. A tab
+// or a workspace carries the status of the agents in it and a pane to preview
+// it through, which need not be the agent that is waiting.
 func canReply(ranked palette.Ranked) bool {
-	return ranked.Entry.Goes && ranked.Entry.Pane != "" &&
+	return ranked.Entry.Kind == palette.KindAgent && ranked.Entry.Pane != "" &&
 		herdr.AgentStatus(ranked.Status) == herdr.AgentStatusBlocked
 }
 
@@ -151,7 +153,7 @@ func replyKeys(msg tea.KeyMsg) []string {
 // agent that is no longer waiting has been answered, so the keyboard goes
 // back to the list; one that has gone is said to have gone.
 func (m *model) followReply() tea.Cmd {
-	for _, entry := range m.open {
+	for _, entry := range m.source.Session.Entries {
 		if entry.ID != m.replying.Entry.ID {
 			continue
 		}

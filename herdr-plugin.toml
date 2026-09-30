@@ -65,8 +65,8 @@ description = "Open the command palette, or close it when it is open"
 contexts = ["global", "workspace", "tab", "pane"]
 command = ["./bin/palette"]
 
-# The same popup, opened with its query already narrowed to what is open. Bound
-# to a key of its own it reaches a pane by name with no commands in the way.
+# The same popup, opened in the scope of the open panes. Bound to a key of its
+# own it reaches a pane by name with no commands in the way.
 [[actions]]
 id = "goto"
 title = "Go to an open pane"

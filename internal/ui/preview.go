@@ -212,7 +212,7 @@ func (m model) card(ranked palette.Ranked, width int) []string {
 	switch {
 	case ranked.Status != "":
 		field("state", ranked.Detail, s.state(ranked.Status))
-	case entry.Goes:
+	case entry.Goes():
 		field("in", ranked.Detail, s.text)
 	case entry.Type == "":
 		// A target picked from a list: what its row says beside it.
@@ -228,7 +228,7 @@ func (m model) card(ranked palette.Ranked, width int) []string {
 	if entry.Confirm {
 		field("confirm", "asks before it runs", s.text)
 	}
-	if !entry.Goes && entry.Type != "" && entry.Search != "" {
+	if !entry.Goes() && entry.Type != "" && entry.Search != "" {
 		field("from", entry.Search, s.meta)
 	}
 	if entry.Description != "" {

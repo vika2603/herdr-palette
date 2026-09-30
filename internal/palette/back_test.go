@@ -147,7 +147,7 @@ func TestBackReportsAFocusThatFails(t *testing.T) {
 // The action follows the ids the palette wrote down, so the rows that go
 // somewhere and the ids this action reads have to keep agreeing.
 func TestBackFollowsTheIDsTheRowsThatGoSomewhereCarry(t *testing.T) {
-	for _, entry := range sessionEntries(snapshot().Snapshot) {
+	for _, entry := range paneEntries(snapshot().Snapshot) {
 		if _, ok := backTargetOf(entry.ID); !ok {
 			t.Errorf("%q goes somewhere the action cannot go back to", entry.ID)
 		}

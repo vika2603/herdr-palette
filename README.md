@@ -52,12 +52,19 @@ Inside the popup a key reads as a terminal passes it on, so `ctrl+shift+p` is
   `switch workspace` and `switch tab`, and searching what the panes printed.
 - **`command:`** your `[[keys.command]]` entries, run the way herdr runs them.
 - **A plugin's name** every action that plugin registered.
-- **`pane:` / `agent:`** the open panes, with what each agent is doing. Type
-  `@` first to list only these; a pane is also found by its tab's, workspace's
-  or directory's name.
+- **`pane:` / `agent:`** the open panes, with what each agent is doing. A
+  pane is also found by its tab's, workspace's or directory's name.
+
+Type the start of `agents`, `panes`, `tabs`, `workspaces`, `plugins`, `herdr`
+or `commands` (your `[[keys.command]]` entries), two letters or more, or its
+letters in order such as `cmd` or `wsp`, and press `tab` to list only those; the label in front of the query
+names the scope. Tabs and workspaces are listed only in their scope, which
+`switch tab` and `switch workspace` open too. `herdr.palette.goto` opens the
+popup in `panes`.
 
 Before you type, the list is grouped into what needs you, what you ran
-recently, the commands and what is open. From 110 columns wide the popup shows
+recently, what you can run and what is open. The pane you opened the palette from
+is listed last, marked `here`, so `ctrl+x` closes it without leaving it. From 110 columns wide the popup shows
 a preview of the selected pane or command.
 
 ## Keys in the popup
@@ -68,11 +75,11 @@ a preview of the selected pane or command.
 | `enter` | run the selection |
 | `up` / `down`, `ctrl+p` / `ctrl+n` | move the selection |
 | `pgup` / `pgdown` | move a page |
-| `tab` | answer the selected agent when it is blocked; `esc` gives the keyboard back |
-| `ctrl+x` | close the selected pane without going there |
+| `tab` | list only the scope the query starts the name of; otherwise answer the selected agent when it is blocked, and `esc` gives the keyboard back |
+| `ctrl+x` | close the selected pane, tab or workspace without going there |
 | `ctrl+u` | clear the query |
-| `backspace` | leave a list of targets, once the query is empty |
-| `esc` | close the popup, or leave a list of targets |
+| `backspace` | leave a scope or a list of targets, once the query is empty |
+| `esc` | close the popup, or leave a scope or a list of targets |
 | `ctrl+c`, the `toggle` key | close the popup |
 
 A command that cannot be undone asks first: `enter` runs it, any other key

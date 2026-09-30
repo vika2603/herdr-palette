@@ -21,23 +21,23 @@ func (l line) isHeading() bool { return l.row < 0 }
 const (
 	groupNeedsYou = iota
 	groupRecent
-	groupCommands
+	groupActions
 	groupOpen
 	groupCount
 )
 
-var groupHeadings = [groupCount]string{"NEEDS YOU", "RECENT", "COMMANDS", "OPEN"}
+var groupHeadings = [groupCount]string{"NEEDS YOU", "RECENT", "ACTIONS", "OPEN"}
 
 func groupOf(ranked palette.Ranked) int {
 	status := herdr.AgentStatus(ranked.Status)
 	switch {
-	case ranked.Entry.Goes && (status == herdr.AgentStatusBlocked || status == herdr.AgentStatusDone):
+	case ranked.Entry.Goes() && !ranked.Entry.Here && (status == herdr.AgentStatusBlocked || status == herdr.AgentStatusDone):
 		return groupNeedsYou
 	case ranked.Score > 0:
 		// An empty query scores nothing but how recently a row ran.
 		return groupRecent
-	case !ranked.Entry.Goes:
-		return groupCommands
+	case !ranked.Entry.Goes():
+		return groupActions
 	}
 	return groupOpen
 }

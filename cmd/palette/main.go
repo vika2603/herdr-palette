@@ -62,10 +62,10 @@ func onOpen(ctx context.Context, env *plugin.Env) error {
 	return open(ctx, env, nil)
 }
 
-// onGoto opens the same popup with its query already narrowed to what is open,
-// so a key bound to it reaches a pane by name with no commands in the way.
+// onGoto opens the same popup in the panes scope, so a key bound to it
+// reaches a pane by name with no commands in the way.
 func onGoto(ctx context.Context, env *plugin.Env) error {
-	return open(ctx, env, map[string]string{palette.GoesEnv: "1"})
+	return open(ctx, env, map[string]string{palette.ScopeEnv: palette.ScopePanes.Name})
 }
 
 // onBack goes to the last place the palette went to, with no popup in

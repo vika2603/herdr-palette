@@ -60,5 +60,14 @@ func (m model) close(entry palette.Entry) tea.Cmd {
 }
 
 // closeHint names what the key closes, since esc closes the popup and the two
-// would otherwise read the same.
-func closeHint() hint { return hint{spelling.name("ctrl+x"), "close pane"} }
+// would otherwise read the same. An agent's row closes the pane it runs in.
+func closeHint(entry palette.Entry) hint {
+	what := "pane"
+	switch entry.Kind {
+	case palette.KindTab:
+		what = "tab"
+	case palette.KindWorkspace:
+		what = "workspace"
+	}
+	return hint{spelling.name("ctrl+x"), "close " + what}
+}

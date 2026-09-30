@@ -149,13 +149,14 @@ func TestAnAnsweredAgentGivesTheKeyboardBack(t *testing.T) {
 	_, m := replyServer(t)
 	m, _ = press(t, m, tea.KeyMsg{Type: tea.KeyTab})
 
-	open := sessionList().Open
+	session := sessionList().Session
+	open := session.Entries
 	for i := range open {
 		if open[i].ID == "pane:blocked" {
 			open[i].Status, open[i].Detail = "working", "working · codex"
 		}
 	}
-	m, _ = send(t, m, openMsg{open: open})
+	m, _ = send(t, m, openMsg{session: session})
 	if m.replying != nil {
 		t.Fatal("the keyboard stayed with an agent that is no longer waiting")
 	}

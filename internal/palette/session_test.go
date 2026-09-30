@@ -35,7 +35,7 @@ func TestARenamedAgentShowsTheNameItWasGiven(t *testing.T) {
 	snapshot := agentSnapshot()
 	snapshot.Agents = []herdr.AgentInfo{{PaneID: "w1:p1", Agent: new("claude"), Name: new("reviewer")}}
 
-	agent, ok := find(sessionEntries(snapshot), "pane:w1:p1")
+	agent, ok := find(paneEntries(snapshot), "pane:w1:p1")
 	if !ok {
 		t.Fatal("the agent's pane is not in the list")
 	}
@@ -45,7 +45,7 @@ func TestARenamedAgentShowsTheNameItWasGiven(t *testing.T) {
 }
 
 func TestAPaneRunningAnAgentSaysWhatItIsDoing(t *testing.T) {
-	entries := sessionEntries(agentSnapshot())
+	entries := paneEntries(agentSnapshot())
 
 	agent, ok := find(entries, "pane:w1:p1")
 	if !ok {
@@ -64,12 +64,13 @@ func TestAPaneRunningAnAgentSaysWhatItIsDoing(t *testing.T) {
 	}
 }
 
-// The query prefix that leaves the commands out ranks the rows that carry
-// Goes, so a row the session put in the list without it cannot be reached
-// that way.
+// A row's kind decides the scopes that list it, so a session row of a kind
+// that does not go somewhere would read as a command.
 func TestEveryRowOfTheSessionGoesSomewhere(t *testing.T) {
-	for _, entry := range sessionEntries(agentSnapshot()) {
-		if !entry.Goes {
+	snapshot := agentSnapshot()
+	rows := append(paneEntries(snapshot), tabEntries(snapshot)...)
+	for _, entry := range append(rows, workspaceEntries(snapshot)...) {
+		if !entry.Goes() {
 			t.Errorf("%q does not say it goes somewhere", entry.Name())
 		}
 	}
@@ -77,7 +78,7 @@ func TestEveryRowOfTheSessionGoesSomewhere(t *testing.T) {
 
 // The status is drawn next to the row, so it is searched with it.
 func TestAnAgentIsFoundByItsStatus(t *testing.T) {
-	ranked := Rank(sessionEntries(agentSnapshot()), "working", nil)
+	ranked := Rank(paneEntries(agentSnapshot()), "working", nil)
 
 	if len(ranked) != 1 {
 		t.Fatalf("a query for the status matched %d rows, want the working agent", len(ranked))
@@ -120,11 +121,8 @@ func TestATabIsPreviewedThroughOneOfItsPanes(t *testing.T) {
 	snapshot.Panes[2].Focused = true
 
 	previews := map[string]string{}
-	for _, tab := range Tabs(snapshot) {
-		previews["tab:"+tab.Value] = tab.Pane
-	}
-	for _, workspace := range Workspaces(snapshot) {
-		previews["workspace:"+workspace.Value] = workspace.Pane
+	for _, row := range append(tabEntries(snapshot), workspaceEntries(snapshot)...) {
+		previews[row.ID] = row.Pane
 	}
 	for id, want := range map[string]string{
 		"tab:w2:t1":    "w2:p1",

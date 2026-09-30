@@ -87,7 +87,7 @@ func load(t *testing.T, server *plugintest.Server) []Entry {
 	if err != nil {
 		t.Fatalf("Load() = %v", err)
 	}
-	return list.All()
+	return list.Rows(ScopePalette)
 }
 
 func find(entries []Entry, id string) (Entry, bool) {
@@ -377,10 +377,10 @@ func TestOpenPanesAreListedToGoTo(t *testing.T) {
 		t.Errorf("pane detail = %q, want the workspace it sits in", pane.Detail)
 	}
 	// A workspace or a tab would mostly be the same place as the pane in it,
-	// so they have lists of their own instead of rows here.
+	// so they are in scopes of their own rather than in the command list.
 	for _, id := range []string{"workspace:w2", "tab:w2:t1"} {
 		if _, ok := find(entries, id); ok {
-			t.Errorf("%s is a row of its own", id)
+			t.Errorf("%s is in the command list", id)
 		}
 	}
 }
@@ -397,36 +397,54 @@ func TestAPaneIsFoundByItsTabsName(t *testing.T) {
 	}
 }
 
-func TestWorkspacesAndTabsAreListedWithoutTheCurrentOne(t *testing.T) {
+func TestWorkspacesAndTabsAreListed(t *testing.T) {
 	s := snapshot().Snapshot
 	s.Workspaces[1].TabCount = 3
 	s.Workspaces[1].ActiveTabID = "w2:t1"
 	s.Workspaces[1].AgentStatus = herdr.AgentStatusBlocked
-	workspaces := Workspaces(s)
-	if len(workspaces) != 1 || workspaces[0].Value != "w2" || workspaces[0].Title != "palette" {
-		t.Fatalf("workspaces = %+v, want only the other one, under its label", workspaces)
+	workspaces := workspaceEntries(s)
+	w, ok := find(workspaces, "workspace:w2")
+	if len(workspaces) != 2 || !ok || w.Title != GoTo+"palette" {
+		t.Fatalf("workspaces = %+v, want both, under their labels", workspaces)
 	}
-	if w := workspaces[0]; w.Detail != "blocked · 3 tabs" || w.Status != "blocked" || w.Pane != "w2:p1" {
+	if w.Detail != "blocked · 3 tabs" || w.Status != "blocked" || w.Pane != "w2:p1" || w.Here {
 		t.Errorf("workspace = %+v, want what its agents do and its tab count, previewed through its pane", w)
 	}
 
-	tabs := Tabs(s)
-	if len(tabs) != 1 || tabs[0].Value != "w2:t1" || tabs[0].Detail != "palette" || tabs[0].Pane != "w2:p1" {
-		t.Errorf("tabs = %+v, want only the other tab, with its workspace and its pane", tabs)
+	tabs := tabEntries(s)
+	tab, ok := find(tabs, "tab:w2:t1")
+	if len(tabs) != 2 || !ok || tab.Detail != "palette" || tab.Pane != "w2:p1" {
+		t.Errorf("tabs = %+v, want both, the other one with its workspace and its pane", tabs)
 	}
 }
 
-func TestWhereThePaletteWasOpenedFromIsNotListed(t *testing.T) {
-	server := plugintest.NewServer(t).
-		Reply(herdr.MethodPluginActionList, actionList()).
-		Reply(herdr.MethodPluginList, plugins()).
-		Reply(herdr.MethodSessionSnapshot, snapshot())
-	entries := load(t, server)
-
-	for _, id := range []string{"pane:w1:p1"} {
-		if _, ok := find(entries, id); ok {
-			t.Errorf("%s is offered, which goes where the palette already is", id)
+// Where the palette was opened from is listed so it can be closed from there,
+// marked as such, but it is never where a keystroke goes first: going there
+// goes nowhere, even when it is where the palette went last.
+func TestWhereThePaletteWasOpenedFromIsListedLast(t *testing.T) {
+	s := snapshot().Snapshot
+	rows := append(paneEntries(s), tabEntries(s)...)
+	rows = append(rows, workspaceEntries(s)...)
+	for _, id := range []string{"pane:w1:p1", "tab:w1:t1", "workspace:w1"} {
+		row, ok := find(rows, id)
+		if !ok {
+			t.Fatalf("%s is not listed", id)
 		}
+		if !row.Here || !strings.HasSuffix(row.Detail, "here") {
+			t.Errorf("%s = %+v, want it marked as where the palette is", id, row)
+		}
+		if row.Close == nil {
+			t.Errorf("%s cannot be closed from the list", id)
+		}
+	}
+
+	panes := paneEntries(s)
+	ranked := Rank(panes, "", []string{"pane:w1:p1", "pane:w2:p1"})
+	if got := ranked[0].Entry.ID; got != "pane:w2:p1" {
+		t.Errorf("first row is %q, want the other pane ahead of the one the palette is in", got)
+	}
+	if got := Rank(panes, "here", nil); len(got) != 1 || got[0].Entry.ID != "pane:w1:p1" {
+		t.Errorf("\"here\" matched %v, want the pane the palette is in", got)
 	}
 }
 
@@ -482,8 +500,8 @@ func TestTheRowsThatGoSomewhereShareAQuery(t *testing.T) {
 
 	for _, text := range []string{"go to", "goto"} {
 		ranked := Rank(entries, text, nil)
-		if len(ranked) != 1 {
-			t.Errorf("%q matched %d rows, want the pane", text, len(ranked))
+		if len(ranked) != 2 {
+			t.Errorf("%q matched %d rows, want the two panes", text, len(ranked))
 		}
 		for _, r := range ranked {
 			if r.Entry.Type != TypePane && r.Entry.Type != TypeAgent {
@@ -521,4 +539,33 @@ func TestABackgroundCommandRunsInTheFocusedPanesDirectory(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Error("the command did not run in the focused pane's directory")
+}
+
+// A tab or a workspace closes from its row the way a pane does, through the
+// herdr call that closes that kind of place.
+func TestClosingATabOrAWorkspaceFromItsRow(t *testing.T) {
+	s := snapshot().Snapshot
+	rows := append(tabEntries(s), workspaceEntries(s)...)
+	for _, c := range []struct {
+		id, method, target string
+	}{
+		{"tab:w2:t1", herdr.MethodTabClose, "w2:t1"},
+		{"workspace:w2", herdr.MethodWorkspaceClose, "w2"},
+	} {
+		row, _ := find(rows, c.id)
+		server := plugintest.NewServer(t).Reply(c.method, herdr.OKResponse{})
+		if err := row.Close(context.Background(), Exec{Client: server.Env().Client()}); err != nil {
+			t.Fatalf("%s: Close() = %v", c.id, err)
+		}
+		calls := server.Calls()
+		last := calls[len(calls)-1]
+		var params struct {
+			TabID       string `json:"tab_id"`
+			WorkspaceID string `json:"workspace_id"`
+		}
+		decode(t, last.Params, &params)
+		if last.Method != c.method || params.TabID+params.WorkspaceID != c.target {
+			t.Errorf("%s called %q on %+v, want %q on %s", c.id, last.Method, params, c.method, c.target)
+		}
+	}
 }

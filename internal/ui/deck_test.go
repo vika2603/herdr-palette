@@ -28,13 +28,12 @@ func sessionList() palette.List {
 			{ID: "split", Title: "split pane right", Type: "Herdr", Key: "prefix+v"},
 			{ID: "jump", Title: "open git jump", Type: palette.TypeCustom},
 		},
-		Open: []palette.Entry{
-			{ID: "pane:done", Title: "go to api", Type: "Agent", Goes: true, Detail: "done · claude", Status: "done", Pane: "p-done"},
-			{ID: "pane:working", Title: "go to billing", Type: "Agent", Goes: true, Detail: "working · claude", Status: "working", Pane: "p-working"},
-			{ID: "pane:blocked", Title: "go to frontend", Type: "Agent", Goes: true, Detail: "blocked · codex", Status: "blocked", Pane: "p-blocked"},
-			{ID: "workspace:docs", Title: "go to docs", Type: "Workspace", Goes: true},
-		},
-		Statuses: []string{"blocked", "done", "working", "working"},
+		Session: palette.Session{Entries: []palette.Entry{
+			{ID: "pane:done", Title: "go to api", Type: "Agent", Kind: palette.KindAgent, Detail: "done · claude", Status: "done", Pane: "p-done"},
+			{ID: "pane:working", Title: "go to billing", Type: "Agent", Kind: palette.KindAgent, Detail: "working · claude", Status: "working", Pane: "p-working"},
+			{ID: "pane:blocked", Title: "go to frontend", Type: "Agent", Kind: palette.KindAgent, Detail: "blocked · codex", Status: "blocked", Pane: "p-blocked"},
+			{ID: "workspace:docs", Title: "go to docs", Type: "Workspace", Kind: palette.KindWorkspace},
+		}, Statuses: []string{"blocked", "done", "working", "working"}},
 	}
 }
 
@@ -58,11 +57,11 @@ func headings(m model) []string {
 func TestAnEmptyQueryGroupsTheList(t *testing.T) {
 	m := sessionModel(t, testEnv(t), []string{"jump"}, 72, 16)
 
-	if got, want := headings(m), []string{"NEEDS YOU", "RECENT", "COMMANDS", "OPEN"}; !slices.Equal(got, want) {
+	if got, want := headings(m), []string{"NEEDS YOU", "RECENT", "ACTIONS", "OPEN"}; !slices.Equal(got, want) {
 		t.Errorf("headings = %v, want %v", got, want)
 	}
 	// A blocked agent cannot go on until it is answered, so it leads.
-	if got, want := ids(m.ranked), []string{"pane:blocked", "pane:done", "jump", "split", "pane:working", "workspace:docs"}; !slices.Equal(got, want) {
+	if got, want := ids(m.ranked), []string{"pane:blocked", "pane:done", "jump", "split", "pane:working"}; !slices.Equal(got, want) {
 		t.Errorf("rows = %v, want %v", got, want)
 	}
 	if m.cursor != 0 {
@@ -139,11 +138,13 @@ func TestTheRuleCountsTheAgentsByState(t *testing.T) {
 func TestTheLabelNamesTheScreen(t *testing.T) {
 	var picked string
 	m := chooserModel(t, &picked, worktreeChoices)
-	if got := m.header(); !strings.Contains(got, modePalette) {
-		t.Errorf("header = %q, want %s", got, modePalette)
+	if got := m.header(); !strings.Contains(got, "PALETTE") {
+		t.Errorf("header = %q, want PALETTE", got)
 	}
-	if got := typeQuery(t, m, GoesPrefix).header(); !strings.Contains(got, modeGoTo) {
-		t.Errorf("header = %q after the prefix, want %s", got, modeGoTo)
+	scoped := m
+	scoped.enter(palette.ScopeWorkspaces)
+	if got := scoped.header(); !strings.Contains(got, "WORKSPACES") {
+		t.Errorf("header = %q in a scope, want WORKSPACES", got)
 	}
 	if got := choose(t, m, "worktree").header(); !strings.Contains(got, modePick) {
 		t.Errorf("header = %q on a list of targets, want %s", got, modePick)
@@ -156,16 +157,17 @@ func TestTheLabelNamesTheScreen(t *testing.T) {
 	}
 }
 
-// The query starts in the same column whatever label is up, so the character
-// that changes the label does not move what is being typed.
-func TestTheQueryStaysPutWhenTheLabelChanges(t *testing.T) {
-	m := sessionModel(t, testEnv(t), nil, 72, 12)
-	column := func(query string) int {
-		header := ansi.Strip(typeQuery(t, m, query).header())
-		return lipgloss.Width(header[:strings.Index(header, query)])
-	}
-	if under, over := column("x"), column(GoesPrefix+"x"); under != over {
-		t.Errorf("the query starts at %d under %s and at %d under %s", under, modePalette, over, modeGoTo)
+// The label takes the room it needs and no more: the query starts a blank
+// after it, whichever scope is on.
+func TestTheQueryStartsRightAfterTheLabel(t *testing.T) {
+	for _, scope := range []palette.Scope{palette.ScopePalette, palette.ScopePanes, palette.ScopeWorkspaces} {
+		m := sessionModel(t, testEnv(t), nil, 72, 12)
+		m.enter(scope)
+		header := ansi.Strip(typeQuery(t, m, "x").header())
+		got := lipgloss.Width(header[:strings.Index(header, "x")])
+		if want := len(" "+scope.Label()+" ") + 2; got != want {
+			t.Errorf("under %s the query starts at %d, want %d", scope.Label(), got, want)
+		}
 	}
 }
 
@@ -334,7 +336,7 @@ func TestARebuildKeepsTheWindowWhereItWas(t *testing.T) {
 	}
 	offset, cursor := m.offset, m.cursor
 
-	m.setOpen(list.Open)
+	m.setOpen(list.Session)
 	if m.offset != offset || m.cursor != cursor {
 		t.Errorf("after a rebuild offset = %d and cursor = %d, want %d and %d", m.offset, m.cursor, offset, cursor)
 	}
@@ -406,5 +408,21 @@ func TestALongQueryKeepsTheCaretOnShow(t *testing.T) {
 	}
 	if header := ansi.Strip(m.header()); !strings.Contains(header, caret+"abcdefgh") {
 		t.Errorf("header = %q after home, want the caret at the start", header)
+	}
+}
+
+// The agent the palette was opened from needs nobody to go to it, so it does
+// not lead the list however long it has been waiting.
+func TestWhereThePaletteIsDoesNotNeedYou(t *testing.T) {
+	list := sessionList()
+	for i := range list.Session.Entries {
+		if list.Session.Entries[i].ID == "pane:blocked" {
+			list.Session.Entries[i].Here = true
+		}
+	}
+	m := newModel(context.Background(), testEnv(t), &herdr.PluginInvocationContext{}, list, nil, theme.Defaults(), Toggle{})
+	m.setSize(72, 16)
+	if got := m.ranked[0].Entry.ID; got != "pane:done" {
+		t.Errorf("first row is %q, want the finished agent ahead of the one the palette is in", got)
 	}
 }

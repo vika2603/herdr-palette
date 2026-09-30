@@ -95,7 +95,10 @@ func TestAShellCommandSeesWhereTheKeyWasPressed(t *testing.T) {
 		command = `echo %HERDR_ACTIVE_WORKSPACE_ID% %HERDR_ACTIVE_TAB_ID% %HERDR_ACTIVE_PANE_ID% %HERDR_ACTIVE_PANE_CWD%> "` + out + `"`
 	}
 	entries := customEntries("herdr.palette", []keys.Custom{{Type: keys.TypeShell, Command: command}})
-	if err := entries[0].Run(context.Background(), Exec{Ctx: focusedContext()}); err != nil {
+	// The command runs in the focused pane's directory, so it has to exist.
+	ctx, dir := focusedContext(), t.TempDir()
+	ctx.FocusedPaneCwd = &dir
+	if err := entries[0].Run(context.Background(), Exec{Ctx: ctx}); err != nil {
 		t.Fatalf("Run() = %v", err)
 	}
 
@@ -109,7 +112,7 @@ func TestAShellCommandSeesWhereTheKeyWasPressed(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	// cmd.exe's echo ends the line, which printf does not.
-	if got, want := strings.TrimSpace(string(seen)), "w1 w1:t2 w1:p3 /tmp"; got != want {
+	if got, want := strings.TrimSpace(string(seen)), "w1 w1:t2 w1:p3 "+dir; got != want {
 		t.Errorf("the command saw %q, want %q", got, want)
 	}
 }

@@ -71,7 +71,7 @@ func herdrEntries() []palette.Entry {
 			Type:    groupHerdr,
 			Input: &palette.Input{
 				Label:   "Workspace name",
-				Initial: func(c *herdr.PluginInvocationContext) string { return herdr.Value(c.WorkspaceLabel) },
+				Initial: func(_ context.Context, e palette.Exec) string { return herdr.Value(e.Ctx.WorkspaceLabel) },
 			},
 			Run: func(ctx context.Context, e palette.Exec) error {
 				id, err := need(e.Ctx.WorkspaceID, errNoWorkspace)
@@ -192,7 +192,7 @@ func herdrEntries() []palette.Entry {
 			Type:    groupHerdr,
 			Input: &palette.Input{
 				Label:   "Tab name",
-				Initial: func(c *herdr.PluginInvocationContext) string { return herdr.Value(c.TabLabel) },
+				Initial: func(_ context.Context, e palette.Exec) string { return herdr.Value(e.Ctx.TabLabel) },
 			},
 			Run: func(ctx context.Context, e palette.Exec) error {
 				id, err := need(e.Ctx.TabID, errNoTab)
@@ -459,7 +459,7 @@ func herdrEntries() []palette.Entry {
 			Type:  groupHerdr,
 			Input: &palette.Input{
 				Label:   "Agent name",
-				Initial: func(c *herdr.PluginInvocationContext) string { return herdr.Value(c.FocusedPaneAgent) },
+				Initial: agentName,
 			},
 			Run: func(ctx context.Context, e palette.Exec) error {
 				if e.Ctx.FocusedPaneAgent == nil {
@@ -630,6 +630,25 @@ func across(node herdr.LayoutNode, direction herdr.SplitDirection) int {
 		return first + second
 	}
 	return max(first, second)
+}
+
+// agentName is the name the focused agent goes by: the one it was given,
+// which only the session snapshot carries — the invocation context names what
+// the agent is — or what it is when it was given none, which is how herdr
+// shows an agent without a name.
+func agentName(ctx context.Context, e palette.Exec) string {
+	if id := herdr.Value(e.Ctx.FocusedPaneID); id != "" {
+		if snapshot, err := e.Client.SessionSnapshot(ctx); err == nil {
+			for _, agent := range snapshot.Snapshot.Agents {
+				if agent.PaneID == id {
+					if name := herdr.Value(agent.Name); name != "" {
+						return name
+					}
+				}
+			}
+		}
+	}
+	return herdr.Value(e.Ctx.FocusedPaneAgent)
 }
 
 // sessionChoices lists what the snapshot holds, read the way from.

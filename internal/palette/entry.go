@@ -27,10 +27,11 @@ type Exec struct {
 
 // Input describes the second step of an entry that cannot run on its own,
 // such as a rename. Initial fills the field so a rename starts from the
-// current label.
+// current label. It runs while the palette is up, with the client, so it can
+// ask herdr for what the invocation context does not carry.
 type Input struct {
 	Label   string
-	Initial func(*herdr.PluginInvocationContext) string
+	Initial func(context.Context, Exec) string
 }
 
 // Entry is one row of the palette.
@@ -118,11 +119,11 @@ func (e Entry) Name() string {
 
 // Initial is the text the input field starts with, empty when the entry takes
 // no input or defines no initial value.
-func (e Entry) Initial(ctx *herdr.PluginInvocationContext) string {
+func (e Entry) Initial(ctx context.Context, x Exec) string {
 	if e.Input == nil || e.Input.Initial == nil {
 		return ""
 	}
-	return e.Input.Initial(ctx)
+	return e.Input.Initial(ctx, x)
 }
 
 // TypeCustom is the namespace of the commands configured under

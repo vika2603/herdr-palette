@@ -275,10 +275,10 @@ func TestRenameSendsTheTypedValue(t *testing.T) {
 }
 
 func TestRenameStartsFromTheCurrentLabel(t *testing.T) {
-	if got := entry(t, "herdr:workspace.rename").Initial(fullContext()); got != "workspace one" {
+	if got := entry(t, "herdr:workspace.rename").Initial(context.Background(), palette.Exec{Ctx: fullContext()}); got != "workspace one" {
 		t.Errorf("initial value = %q, want the current workspace label", got)
 	}
-	if got := entry(t, "herdr:tab.rename").Initial(fullContext()); got != "tab one" {
+	if got := entry(t, "herdr:tab.rename").Initial(context.Background(), palette.Exec{Ctx: fullContext()}); got != "tab one" {
 		t.Errorf("initial value = %q, want the current tab label", got)
 	}
 }
@@ -730,9 +730,18 @@ func TestRenamingAnAgentRefusesAPaneWithoutOne(t *testing.T) {
 	}
 }
 
-func TestRenamingAnAgentStartsFromWhatItIs(t *testing.T) {
-	if got := entry(t, "herdr:agent.rename").Initial(fullContext()); got != "claude" {
-		t.Errorf("initial value = %q, want the agent running in the focused pane", got)
+// The invocation context names what the agent is, not the name it was given,
+// which is what the rename starts from; one given no name goes by what it is.
+func TestRenamingAnAgentStartsFromItsName(t *testing.T) {
+	client := server(t).Env(plugintest.StateDir(t.TempDir())).Client()
+
+	named := fullContext()
+	named.FocusedPaneID, named.FocusedPaneAgent = new("p9"), new("codex")
+	if got := entry(t, "herdr:agent.rename").Initial(context.Background(), palette.Exec{Client: client, Ctx: named}); got != "reviewer" {
+		t.Errorf("initial value = %q, want the name the agent was given", got)
+	}
+	if got := entry(t, "herdr:agent.rename").Initial(context.Background(), palette.Exec{Client: client, Ctx: fullContext()}); got != "claude" {
+		t.Errorf("initial value = %q, want what an agent with no name is", got)
 	}
 }
 

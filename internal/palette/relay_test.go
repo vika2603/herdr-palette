@@ -144,7 +144,7 @@ func TestRelayPromptHandsOverWhatTheFieldShows(t *testing.T) {
 		Type:  "Herdr",
 		Input: &Input{
 			Label:   "Tab name",
-			Initial: func(c *herdr.PluginInvocationContext) string { return herdr.Value(c.TabLabel) },
+			Initial: func(_ context.Context, e Exec) string { return herdr.Value(e.Ctx.TabLabel) },
 		},
 	}
 	if err := RelayPrompt(context.Background(), env.Client(), env, entry, invocation); err != nil {

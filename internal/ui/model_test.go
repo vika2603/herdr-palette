@@ -38,7 +38,7 @@ func testEntries(ran *[]string) []palette.Entry {
 			Type:  "Herdr",
 			Input: &palette.Input{
 				Label:   "Workspace name",
-				Initial: func(c *herdr.PluginInvocationContext) string { return "current" },
+				Initial: func(context.Context, palette.Exec) string { return "current" },
 			},
 			Run: record("c"),
 		},

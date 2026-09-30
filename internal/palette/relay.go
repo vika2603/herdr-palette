@@ -80,7 +80,7 @@ func RelayPrompt(ctx context.Context, client *herdr.Client, env *plugin.Env, ent
 		Prompt: &Prompt{
 			Title:   entry.Title,
 			Label:   entry.Input.Label,
-			Initial: entry.Initial(invocation),
+			Initial: entry.Initial(ctx, Exec{Client: client, Ctx: invocation, Env: env}),
 		},
 	})
 }

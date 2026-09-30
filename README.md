@@ -15,11 +15,12 @@ herdr plugin install vika2603/herdr-palette
 ```
 
 Install builds the binary from source when a Go toolchain is present, and
-otherwise downloads the binary attached to the release that matches the
+otherwise downloads the archive attached to the release that matches the
 manifest version, accepting it only if its SHA-256 matches
 [`scripts/checksums.txt`](scripts/checksums.txt) in the checkout. Release
-binaries are built by the `release` workflow for macOS and Linux on amd64 and
-arm64.
+archives are built by the `release` workflow for macOS and Linux on amd64 and
+arm64; each `palette-<os>-<arch>.tar.gz` unpacks to a single executable named
+`palette`.
 
 Or, from a checkout — `herdr plugin link` runs no build command, so `just link`
 builds the working tree first:

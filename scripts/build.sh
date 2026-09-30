@@ -34,7 +34,7 @@ x86_64 | amd64) arch=amd64 ;;
 *) echo "build.sh: no release binary for $(uname -m); install Go and retry" >&2; exit 1 ;;
 esac
 
-asset="palette-$os-$arch"
+asset="palette-$os-$arch.tar.gz"
 url="https://github.com/vika2603/herdr-palette/releases/download/v$version/$asset"
 
 expected=$(sed -n "s/^\([0-9a-f]\{64\}\)  $asset\$/\1/p" scripts/checksums.txt)
@@ -52,27 +52,28 @@ else
 	exit 1
 fi
 
-if ! fetch "$target.tmp" "$url"; then
-	rm -f "$target.tmp"
+# Unpacked next to the target, so the final mv is a rename on one filesystem.
+tmp=$(mktemp -d bin/.download.XXXXXX)
+trap 'rm -rf "$tmp"' EXIT
+
+if ! fetch "$tmp/$asset" "$url"; then
 	echo "build.sh: could not download $url" >&2
 	exit 1
 fi
 
 if command -v sha256sum >/dev/null 2>&1; then
-	actual=$(sha256sum "$target.tmp" | cut -d' ' -f1)
+	actual=$(sha256sum "$tmp/$asset" | cut -d' ' -f1)
 elif command -v shasum >/dev/null 2>&1; then
-	actual=$(shasum -a 256 "$target.tmp" | cut -d' ' -f1)
+	actual=$(shasum -a 256 "$tmp/$asset" | cut -d' ' -f1)
 else
-	rm -f "$target.tmp"
 	echo "build.sh: no sha256 tool to verify the download" >&2
 	exit 1
 fi
 
 if [ "$actual" != "$expected" ]; then
-	rm -f "$target.tmp"
 	echo "build.sh: checksum mismatch for $asset" >&2
 	exit 1
 fi
 
-chmod +x "$target.tmp"
-mv "$target.tmp" "$target"
+tar -xzf "$tmp/$asset" -C "$tmp" palette
+mv "$tmp/palette" "$target"

@@ -53,13 +53,17 @@ jobs:
           CGO_ENABLED: "0"
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+        # The archive holds the binary under the name it runs as, and keeps its
+        # executable bit, which upload-artifact would drop from a bare file.
         run: |
-          mkdir -p dist
-          go build -trimpath -o "dist/palette-${GOOS}-${GOARCH}" ./cmd/palette
+          mkdir -p build dist
+          go build -trimpath -o build/palette ./cmd/palette
+          tar -czf "dist/palette-${GOOS}-${GOARCH}.tar.gz" \
+            --owner=0 --group=0 --numeric-owner -C build palette
       - uses: actions/upload-artifact@v7
         with:
           name: palette-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: dist/palette-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/palette-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz
           if-no-files-found: error
 
   publish:
@@ -83,8 +87,7 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
         run: |
-          chmod +x dist/palette-*
-          (cd dist && sha256sum palette-*) > scripts/checksums.txt
+          (cd dist && sha256sum palette-*.tar.gz) > scripts/checksums.txt
           sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" herdr-plugin.toml
           cat scripts/checksums.txt
       - name: Commit, tag and release
@@ -102,4 +105,4 @@ jobs:
           gh release create "v${VERSION}" \
             --title "Command Palette ${VERSION}" \
             --generate-notes \
-            dist/palette-*
+            dist/palette-*.tar.gz

@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
@@ -214,11 +215,20 @@ func (m model) rows() int {
 	return 1
 }
 
-func (m model) View() string {
+func (m model) View() tea.View {
 	lines := []string{m.header(), m.topRule()}
 	lines = append(lines, m.body()...)
 	lines = append(lines, m.rule(), m.footer())
-	return strings.Join(lines, "\n")
+	column := m.queryCursorColumn()
+	visible := m.replying == nil && m.confirming == nil && m.width > column && m.height >= len(lines)
+	view := tea.NewView(strings.Join(lines, "\n"))
+	view.MouseMode = tea.MouseModeCellMotion
+	if visible {
+		view.Cursor = tea.NewCursor(column, 0)
+		view.Cursor.Shape = tea.CursorBar
+		view.Cursor.Blink = true
+	}
+	return view
 }
 
 // mode is the label naming the screen on show, and whether that screen is
@@ -251,27 +261,29 @@ func (m model) header() string {
 	return truncate(lead+m.queryLine(max(m.cols()-m.queryLead(), 1)), m.cols())
 }
 
-// caret marks the insertion point: a thin bar between two characters rather
-// than the block the field draws, which covers the character it sits on and
-// reads as a second label beside the one naming the screen.
-const caret = "\u258f"
-
-// queryLine is the query in room columns with the caret at the insertion
-// point, or the placeholder after the caret while nothing is typed. The field
-// keeps the text and where the caret is; only the drawing is done here.
+// queryLine draws text continuously. View.Cursor supplies the native cursor
+// to the framework so input methods can locate the insertion point.
 func (m model) queryLine(room int) string {
 	s := m.styles.plain
 	runes := []rune(m.query.Value())
 	if len(runes) == 0 {
-		return s.text.Render(caret) + s.faint.Render(truncate(m.query.Placeholder, max(room-1, 1)))
+		return s.faint.Render(truncate(m.query.Placeholder, room))
 	}
 	at := min(max(m.query.Position(), 0), len(runes))
 	from, to := window(runes, at, room)
-	return s.text.Render(string(runes[from:at])) + s.text.Render(caret) + s.text.Render(string(runes[at:to]))
+	return s.text.Render(string(runes[from:to]))
+}
+
+func (m model) queryCursorColumn() int {
+	runes := []rune(m.query.Value())
+	at := min(max(m.query.Position(), 0), len(runes))
+	from, _ := window(runes, at, max(m.cols()-m.queryLead(), 1))
+	return m.queryLead() + lipgloss.Width(string(runes[from:at]))
 }
 
 // window is the part of the query on show, which is all of it until it
-// outgrows the line. The caret stays inside it and takes a column of its own.
+// outgrows the line. One column remains available for the native cursor when
+// the insertion point is at the end of the value.
 func window(runes []rune, at, room int) (from, to int) {
 	for from < at && lipgloss.Width(string(runes[from:at]))+1 > room {
 		from++

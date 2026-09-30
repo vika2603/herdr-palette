@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
 	"github.com/vika2603/herdr-client/herdr"
 	"github.com/vika2603/herdr-client/plugin"
 
@@ -143,7 +143,7 @@ func newModel(
 	query.Placeholder = searchPlaceholder
 	// The cursor keeps the terminal's own colours: drawn in the accent it is a
 	// second block of the label's colour right beside the label.
-	query.PlaceholderStyle = styles.plain.faint
+	query.SetVirtualCursor(false)
 	query.Focus()
 
 	m := model{
@@ -162,7 +162,7 @@ func newModel(
 		previewEnabled: true,
 	}
 	m.changes = watch(ctx, env)
-	m.query.Width = m.queryWidth()
+	m.query.SetWidth(m.queryWidth())
 	m.rank()
 	return m
 }
@@ -172,7 +172,7 @@ func newModel(
 // drawing all of it wraps the line and pushes every row below it down.
 func (m *model) setSize(width, height int) {
 	m.width, m.height = width, height
-	m.query.Width = m.queryWidth()
+	m.query.SetWidth(m.queryWidth())
 	m.reveal()
 }
 
@@ -189,7 +189,7 @@ func (m *model) enter(scope palette.Scope) {
 	m.scope = scope
 	m.query.SetValue("")
 	m.query.Placeholder = placeholder(scope)
-	m.query.Width = m.queryWidth()
+	m.query.SetWidth(m.queryWidth())
 	m.failure, m.notice = "", ""
 	m.rank()
 }
@@ -204,8 +204,8 @@ func (m *model) leave() {
 // narrowed reports whether a scope other than the command list is on.
 func (m model) narrowed() bool { return m.scope != palette.ScopePalette }
 
-// Init starts following the session. The field's own blink is left out: the
-// query line draws its caret itself, and it does not blink.
+// Init starts following the session. The terminal blinks the native cursor;
+// the text field's virtual cursor is not drawn.
 func (m model) Init() tea.Cmd { return listen(m.changes) }
 
 // Update answers a message, and asks for the preview again once the pane it
@@ -324,11 +324,27 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.choices(msg)
 		return m, nil
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		return m.key(msg)
 
-	case tea.MouseMsg:
-		return m.mouse(msg)
+	case tea.PasteMsg:
+		if m.closer.armed {
+			m.closer.armed = false
+			return m, nil
+		}
+		if m.replying != nil {
+			return m.pasteReply(msg.Content)
+		}
+		if m.confirming != nil {
+			m.confirming = nil
+			return m, nil
+		}
+		return m.editQuery(msg)
+
+	case tea.MouseClickMsg:
+		return m.mouse(msg.Mouse())
+	case tea.MouseWheelMsg:
+		return m.mouse(msg.Mouse())
 	}
 	return m, nil
 }
@@ -340,19 +356,19 @@ const wheelStep = 3
 // The pointer on its own moves nothing: the selection belongs to the keyboard,
 // and a row taken over by where the pointer came to rest is a row the next
 // enter would run unread.
-func (m model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+func (m model) mouse(msg tea.Mouse) (tea.Model, tea.Cmd) {
 	// The agent's screen is not a list, and a click is not an answer to it.
-	if msg.Action != tea.MouseActionPress || m.replying != nil {
+	if m.replying != nil {
 		return m, nil
 	}
 	switch msg.Button {
-	case tea.MouseButtonWheelUp:
+	case tea.MouseWheelUp:
 		m.move(-wheelStep)
 		return m, nil
-	case tea.MouseButtonWheelDown:
+	case tea.MouseWheelDown:
 		m.move(wheelStep)
 		return m, nil
-	case tea.MouseButtonLeft:
+	case tea.MouseLeft:
 		index, ok := m.rowAt(msg.X, msg.Y)
 		if !ok {
 			// A click off the rows is not an answer, so it puts the question
@@ -395,8 +411,8 @@ func (m model) rowAt(x, y int) (int, bool) {
 	return m.lines[at].row, true
 }
 
-func (m model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if msg.Type == tea.KeyCtrlC {
+func (m model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if msg.String() == "ctrl+c" {
 		return m, tea.Quit
 	}
 	// The key that opened the palette closes it. It comes here rather than
@@ -414,7 +430,7 @@ func (m model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m.keyList(msg)
 }
 
-func (m model) keyList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m model) keyList(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// A row waiting to be confirmed takes the next keystroke whatever it is:
 	// enter runs it, anything else puts the question away. Nothing reaches
 	// the query in between, so the answer cannot be typed into it by mistake.
@@ -498,6 +514,10 @@ func (m model) keyList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	return m.editQuery(msg)
+}
+
+func (m model) editQuery(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	before := m.query.Value()
 	m.query, cmd = m.query.Update(msg)

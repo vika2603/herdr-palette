@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/vika2603/herdr-client/herdr"
@@ -88,7 +88,7 @@ func saw(t *testing.T, server *plugintest.Server, method string) bool {
 func typeQuery(t *testing.T, m model, text string) model {
 	t.Helper()
 	for _, r := range text {
-		m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m, _ = send(t, m, tea.KeyPressMsg{Code: r, Text: string(r)})
 	}
 	return m
 }
@@ -121,7 +121,7 @@ func TestEnterRunsTheSelectedCommand(t *testing.T) {
 	var ran []string
 	m := typeQuery(t, testModel(t, nil, &ran), "git jump")
 
-	_, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd := send(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
 		t.Fatal("enter produced no command")
 	}
@@ -137,7 +137,7 @@ func TestARunCommandIsRecordedAsRecent(t *testing.T) {
 	var ran []string
 	m := typeQuery(t, testModel(t, nil, &ran), "git jump")
 
-	_, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd := send(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 	cmd()
 
 	if got := palette.ReadRecent(m.env); len(got) == 0 || got[0] != "b" {
@@ -163,7 +163,7 @@ func TestAnEntryThatNeedsAValueIsHandedOverToTheField(t *testing.T) {
 	m.setSize(72, 12)
 	m = typeQuery(t, m, "rename")
 
-	_, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd := send(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
 		t.Fatal("enter produced no command")
 	}
@@ -197,7 +197,7 @@ func TestAFailedCommandKeepsThePopupOpen(t *testing.T) {
 	if m.failure == "" {
 		t.Error("the failure is not shown, so the keystroke looks lost")
 	}
-	if !strings.Contains(m.View(), "deadline") {
+	if !strings.Contains(m.View().Content, "deadline") {
 		t.Error("the view does not carry the failure")
 	}
 }
@@ -209,10 +209,10 @@ func TestEnterWithNoMatchDoesNothing(t *testing.T) {
 	if len(m.ranked) != 0 {
 		t.Fatalf("the query matched %d entries, want none", len(m.ranked))
 	}
-	if _, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter}); cmd != nil {
+	if _, cmd := send(t, m, tea.KeyPressMsg{Code: tea.KeyEnter}); cmd != nil {
 		t.Error("enter ran something although nothing matched")
 	}
-	if !strings.Contains(m.View(), "no command matches") {
+	if !strings.Contains(m.View().Content, "no command matches") {
 		t.Error("the view does not say the query matched nothing")
 	}
 }
@@ -224,18 +224,18 @@ func TestSteppingOffTheEndGoesRound(t *testing.T) {
 	m := testModel(t, nil, &ran)
 	last := len(m.ranked) - 1
 
-	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyUp})
+	m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyUp})
 	if m.cursor != last {
 		t.Errorf("cursor = %d, want the last row %d", m.cursor, last)
 	}
 
-	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyDown})
+	m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyDown})
 	if m.cursor != 0 {
 		t.Errorf("cursor = %d, want the first row", m.cursor)
 	}
 
 	for range len(m.ranked) + 3 {
-		m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyDown})
+		m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyDown})
 	}
 	if m.cursor < 0 || m.cursor > last {
 		t.Errorf("cursor = %d, want a row of the list", m.cursor)
@@ -248,12 +248,12 @@ func TestAPageStopsAtTheEnds(t *testing.T) {
 	m := wheelModel(t)
 	last := len(m.ranked) - 1
 
-	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyPgUp})
+	m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyPgUp})
 	if m.cursor != 0 {
 		t.Errorf("cursor = %d, want the first row", m.cursor)
 	}
 	for range 5 {
-		m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyPgDown})
+		m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyPgDown})
 	}
 	if m.cursor != last {
 		t.Errorf("cursor = %d, want the last row %d", m.cursor, last)
@@ -264,7 +264,7 @@ func TestEscClosesThePopup(t *testing.T) {
 	var ran []string
 	m := testModel(t, nil, &ran)
 
-	if _, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEsc}); cmd == nil {
+	if _, cmd := send(t, m, tea.KeyPressMsg{Code: tea.KeyEsc}); cmd == nil {
 		t.Error("esc did not close the popup")
 	}
 }
@@ -274,7 +274,7 @@ func TestTheToggleKeyClosesThePopup(t *testing.T) {
 	m := testModel(t, nil, &ran)
 	m.closer = newCloser(Toggle{Binding: "alt+space"})
 
-	if _, cmd := send(t, m, tea.KeyMsg{Type: tea.KeySpace, Alt: true}); cmd == nil {
+	if _, cmd := send(t, m, tea.KeyPressMsg{Code: ' ', Mod: tea.ModAlt}); cmd == nil {
 		t.Error("the toggle key did not close the popup")
 	}
 }
@@ -284,18 +284,29 @@ func TestAToggleChordClosesThePopup(t *testing.T) {
 	m := testModel(t, nil, &ran)
 	m.closer = newCloser(Toggle{Binding: "prefix+space", Prefix: "ctrl+b"})
 
-	m, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyCtrlB})
+	m, cmd := send(t, m, tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
 	if cmd != nil {
 		t.Fatal("the prefix on its own closed the popup")
 	}
-	if _, cmd := send(t, m, tea.KeyMsg{Type: tea.KeySpace}); cmd == nil {
+	if _, cmd := send(t, m, tea.KeyPressMsg{Code: ' ', Text: " "}); cmd == nil {
 		t.Error("the key after the prefix did not close the popup")
+	}
+}
+
+func TestAPasteConsumesAnArmedTogglePrefix(t *testing.T) {
+	var ran []string
+	m := testModel(t, nil, &ran)
+	m.closer = newCloser(Toggle{Binding: "prefix+space", Prefix: "ctrl+b"})
+	m, _ = send(t, m, tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
+	m, _ = send(t, m, tea.PasteMsg{Content: "query"})
+	if m.closer.armed || m.query.Value() != "" {
+		t.Fatalf("paste after prefix: armed=%v query=%q, want the chord consumed without editing", m.closer.armed, m.query.Value())
 	}
 }
 
 func TestTheViewShowsTheRowsAsTheyAreSearched(t *testing.T) {
 	var ran []string
-	view := testModel(t, nil, &ran).View()
+	view := testModel(t, nil, &ran).View().Content
 
 	for _, want := range []string{"split pane right", "open git jump", "command", "run", "close"} {
 		if !strings.Contains(view, want) {
@@ -343,19 +354,19 @@ func wheelModel(t *testing.T) model {
 	return m
 }
 
-func wheel(button tea.MouseButton) tea.MouseMsg {
-	return tea.MouseMsg{Action: tea.MouseActionPress, Button: button}
+func wheel(button tea.MouseButton) tea.MouseWheelMsg {
+	return tea.MouseWheelMsg{Button: button}
 }
 
 func TestTheWheelMovesTheSelection(t *testing.T) {
 	m := wheelModel(t)
 
-	m, _ = send(t, m, wheel(tea.MouseButtonWheelDown))
+	m, _ = send(t, m, wheel(tea.MouseWheelDown))
 	if m.cursor != wheelStep {
 		t.Errorf("cursor = %d after one notch down, want %d", m.cursor, wheelStep)
 	}
 
-	m, _ = send(t, m, wheel(tea.MouseButtonWheelUp))
+	m, _ = send(t, m, wheel(tea.MouseWheelUp))
 	if m.cursor != 0 {
 		t.Errorf("cursor = %d after one notch up, want 0", m.cursor)
 	}
@@ -364,7 +375,7 @@ func TestTheWheelMovesTheSelection(t *testing.T) {
 func TestTheWheelScrollsTheWindow(t *testing.T) {
 	m := wheelModel(t)
 	for range 3 {
-		m, _ = send(t, m, wheel(tea.MouseButtonWheelDown))
+		m, _ = send(t, m, wheel(tea.MouseWheelDown))
 	}
 	if m.cursor != len(m.ranked)-1 {
 		t.Fatalf("cursor = %d, want the last row", m.cursor)
@@ -380,9 +391,8 @@ func TestAClickRunsTheRowItLandsOn(t *testing.T) {
 
 	// The third row: the query line and the rule come first, and the rows
 	// before it belong to commands that ask for a value.
-	_, cmd := send(t, m, tea.MouseMsg{
-		Action: tea.MouseActionPress,
-		Button: tea.MouseButtonLeft,
+	_, cmd := send(t, m, tea.MouseClickMsg{
+		Button: tea.MouseLeft,
 		Y:      headerRows + 2,
 	})
 	if cmd == nil {
@@ -399,9 +409,8 @@ func TestAClickOutsideTheListDoesNothing(t *testing.T) {
 	m := testModel(t, nil, &ran)
 
 	for _, y := range []int{0, headerRows - 1, headerRows + len(m.ranked)} {
-		if _, cmd := send(t, m, tea.MouseMsg{
-			Action: tea.MouseActionPress,
-			Button: tea.MouseButtonLeft,
+		if _, cmd := send(t, m, tea.MouseClickMsg{
+			Button: tea.MouseLeft,
 			Y:      y,
 		}); cmd != nil {
 			t.Errorf("a click on row %d ran something", y)
@@ -412,7 +421,7 @@ func TestAClickOutsideTheListDoesNothing(t *testing.T) {
 func TestTheScrollbarShowsTheWindow(t *testing.T) {
 	m := wheelModel(t)
 
-	view := m.View()
+	view := m.View().Content
 	if !strings.Contains(view, "┃") || !strings.Contains(view, "│") {
 		t.Fatalf("the scrollbar is missing from a list longer than the window:\n%s", view)
 	}
@@ -424,12 +433,12 @@ func TestTheScrollbarShowsTheWindow(t *testing.T) {
 	}
 
 	for range 4 {
-		m, _ = send(t, m, wheel(tea.MouseButtonWheelDown))
+		m, _ = send(t, m, wheel(tea.MouseWheelDown))
 	}
-	lines = strings.Split(m.View(), "\n")
+	lines = strings.Split(m.View().Content, "\n")
 	last := lines[headerRows+m.rows()-1]
 	if !strings.HasSuffix(last, "┃") {
-		t.Errorf("the thumb does not reach the bottom on the last page:\n%s", m.View())
+		t.Errorf("the thumb does not reach the bottom on the last page:\n%s", m.View().Content)
 	}
 }
 
@@ -439,10 +448,10 @@ func TestNoScrollbarWhenEverythingFits(t *testing.T) {
 
 	// The footer draws a rule of its own between the keys, so the rows are
 	// what is looked at.
-	rows := strings.Split(m.View(), "\n")[headerRows : headerRows+m.rows()]
+	rows := strings.Split(m.View().Content, "\n")[headerRows : headerRows+m.rows()]
 	for _, row := range rows {
 		if strings.Contains(row, "┃") || strings.Contains(row, "│") {
-			t.Errorf("a list that fits drew a scrollbar:\n%s", m.View())
+			t.Errorf("a list that fits drew a scrollbar:\n%s", m.View().Content)
 		}
 	}
 }
@@ -457,7 +466,7 @@ func TestTheKeyColumnShowsWhatEachCommandIsBoundTo(t *testing.T) {
 	m := newModel(context.Background(), testEnv(t), &herdr.PluginInvocationContext{}, palette.List{Commands: entries}, nil, theme.Defaults(), Toggle{Prefix: "ctrl+b"})
 	m.setSize(80, 12)
 
-	view := m.View()
+	view := m.View().Content
 	if !strings.Contains(view, "⌃b c") {
 		t.Errorf("the key is missing from the row:\n%s", view)
 	}
@@ -511,7 +520,7 @@ func TestAPluginActionIsRelayedWithoutRunning(t *testing.T) {
 	m := newModel(context.Background(), env, &herdr.PluginInvocationContext{}, palette.List{Commands: entries}, nil, theme.Defaults(), Toggle{})
 	m.setSize(60, 12)
 
-	_, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd := send(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
 		t.Fatal("enter produced no command")
 	}
@@ -544,7 +553,7 @@ func TestAUIBusyRefusalIsRelayed(t *testing.T) {
 	m := newModel(context.Background(), env, &herdr.PluginInvocationContext{}, palette.List{Commands: entries}, nil, theme.Defaults(), Toggle{})
 	m.setSize(60, 12)
 
-	_, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd := send(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 	if msg, ok := cmd().(ranMsg); !ok || msg.err != nil {
 		t.Fatalf("a refused command reported %v instead of being handed over", cmd())
 	}
@@ -573,7 +582,7 @@ func TestARowMatchedOnTextItDoesNotShowShowsThatText(t *testing.T) {
 	)
 	m.setSize(72, 12)
 
-	view := typeQuery(t, m, "herdr.machine").View()
+	view := typeQuery(t, m, "herdr.machine").View().Content
 
 	if !strings.Contains(view, "herdr.machine") {
 		t.Errorf("the row does not say what the query matched:\n%s", view)
@@ -668,7 +677,7 @@ func choose(t *testing.T, m model, query string) model {
 	t.Helper()
 	m = typeQuery(t, m, query)
 
-	_, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd := send(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
 		t.Fatal("enter produced no command")
 	}
@@ -702,7 +711,7 @@ func TestPickingATargetRunsTheCommandWithIt(t *testing.T) {
 	var picked string
 	m := typeQuery(t, choose(t, chooserModel(t, &picked, worktreeChoices), "worktree"), "fix")
 
-	_, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd := send(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
 		t.Fatal("enter produced no command")
 	}
@@ -719,7 +728,7 @@ func TestAPickedTargetRecordsTheCommandAsRecent(t *testing.T) {
 	var picked string
 	m := choose(t, chooserModel(t, &picked, worktreeChoices), "worktree")
 
-	_, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd := send(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 	cmd()
 
 	if got := palette.ReadRecent(m.env); len(got) == 0 || got[0] != "open" {
@@ -731,7 +740,7 @@ func TestEscLeavesTheTargetsForTheCommandList(t *testing.T) {
 	var picked string
 	m := choose(t, chooserModel(t, &picked, worktreeChoices), "worktree")
 
-	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyEsc})
 	if m.choosing != nil {
 		t.Fatal("the targets are still up")
 	}
@@ -779,7 +788,7 @@ func TestPickingATargetForAnEntryThatAlsoAsksForAValue(t *testing.T) {
 	m.rank()
 
 	m = choose(t, m, "worktree")
-	_, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd := send(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 	if msg, ok := cmd().(ranMsg); !ok || msg.err != nil {
 		t.Fatalf("handing the entry over returned %v", cmd())
 	}
@@ -818,7 +827,7 @@ func wideModel(t *testing.T, cols int) model {
 func TestNoLineOutgrowsThePopup(t *testing.T) {
 	for _, cols := range []int{6, 8, 16, 24, 40, 72} {
 		m := wideModel(t, cols)
-		for i, line := range strings.Split(m.View(), "\n") {
+		for i, line := range strings.Split(m.View().Content, "\n") {
 			if width := lipgloss.Width(line); width > cols {
 				t.Errorf("at %d columns line %d is %d wide: %q", cols, i, width, line)
 			}
@@ -834,8 +843,8 @@ func TestTheKeyColumnGivesWayOnANarrowPopup(t *testing.T) {
 	if got := narrow.columns(narrow.listWidth()).key; got != 0 {
 		t.Errorf("key column = %d on a popup too narrow for it, want none", got)
 	}
-	if !strings.Contains(narrow.View(), "\u4e3b\u5de5\u4f5c\u533a") {
-		t.Errorf("the detail lost its room to the key column:\n%s", narrow.View())
+	if !strings.Contains(narrow.View().Content, "\u4e3b\u5de5\u4f5c\u533a") {
+		t.Errorf("the detail lost its room to the key column:\n%s", narrow.View().Content)
 	}
 }
 
@@ -893,18 +902,18 @@ func TestARowThatCannotBeUndoneAsksFirst(t *testing.T) {
 	var ran []string
 	m := confirmModel(t, &ran)
 
-	m, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	m, cmd := send(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd != nil {
 		t.Fatal("the first enter ran the command instead of asking")
 	}
 	if m.confirming == nil {
 		t.Fatal("the command is not waiting to be confirmed")
 	}
-	if !strings.Contains(m.View(), "close pane?") {
-		t.Errorf("the footer does not ask about the row:\n%s", m.View())
+	if !strings.Contains(m.View().Content, "close pane?") {
+		t.Errorf("the footer does not ask about the row:\n%s", m.View().Content)
 	}
 
-	m, cmd = send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	m, cmd = send(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
 		t.Fatal("the second enter did not run the command")
 	}
@@ -919,9 +928,9 @@ func TestARowThatCannotBeUndoneAsksFirst(t *testing.T) {
 
 func TestAnyOtherKeyPutsTheQuestionAway(t *testing.T) {
 	var ran []string
-	m, _ := send(t, confirmModel(t, &ran), tea.KeyMsg{Type: tea.KeyEnter})
+	m, _ := send(t, confirmModel(t, &ran), tea.KeyPressMsg{Code: tea.KeyEnter})
 
-	m, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	m, cmd := send(t, m, tea.KeyPressMsg{Code: 'x', Text: "x"})
 	if cmd != nil || len(ran) != 0 {
 		t.Error("a key that is not enter ran the command")
 	}
@@ -942,8 +951,8 @@ func TestBackspaceLeavesTheTargetsWhenTheQueryIsEmpty(t *testing.T) {
 		t.Fatal("the targets are not up")
 	}
 
-	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("ab")})
-	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyBackspace})
+	m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyExtended, Text: "ab"})
+	m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyBackspace})
 	if m.choosing == nil {
 		t.Fatal("backspace left the targets although the query had something to delete")
 	}
@@ -951,8 +960,8 @@ func TestBackspaceLeavesTheTargetsWhenTheQueryIsEmpty(t *testing.T) {
 		t.Errorf("query = %q, want the field to have taken the backspace", m.query.Value())
 	}
 
-	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyBackspace})
-	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyBackspace})
+	m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyBackspace})
+	m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyBackspace})
 	if m.choosing != nil {
 		t.Error("backspace on an empty query did not leave the targets")
 	}
@@ -965,9 +974,9 @@ func TestTheFooterNamesTheSelectedRow(t *testing.T) {
 	// The widths are chosen against the keys as macOS spells them.
 	withSpelling(t, "darwin")
 	m := wideModel(t, 72)
-	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyUp})
+	m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyUp})
 
-	rows := strings.Join(strings.Split(m.View(), "\n")[headerRows:headerRows+m.rows()], "\n")
+	rows := strings.Join(strings.Split(m.View().Content, "\n")[headerRows:headerRows+m.rows()], "\n")
 	if strings.Contains(rows, "herdr-palette") {
 		t.Fatalf("the row was not cut, so the footer has nothing to add:\n%s", rows)
 	}
@@ -1015,7 +1024,7 @@ func mixedModel(t *testing.T) model {
 
 func tab(t *testing.T, m model) model {
 	t.Helper()
-	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyTab})
+	m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyTab})
 	return m
 }
 
@@ -1109,7 +1118,7 @@ func TestAnEntryWithAScopeOpensIt(t *testing.T) {
 	if !strings.Contains(m.footer(), "open") {
 		t.Errorf("footer = %q, want enter to say it opens the scope", m.footer())
 	}
-	m, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	m, cmd := send(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd != nil || m.scope != palette.ScopeWorkspaces {
 		t.Fatalf("scope = %q, want the workspaces opened without running anything", m.scope.Name)
 	}
@@ -1121,9 +1130,10 @@ func TestAnEntryWithAScopeOpensIt(t *testing.T) {
 // A scope is a step inside the palette: esc and backspace on an empty query
 // both go back to the command list rather than closing the popup.
 func TestLeavingAScopePutsTheCommandsBack(t *testing.T) {
-	for _, key := range []tea.KeyType{tea.KeyEsc, tea.KeyBackspace} {
+	for _, code := range []rune{tea.KeyEsc, tea.KeyBackspace} {
+		key := tea.KeyPressMsg{Code: code}
 		m := tab(t, typeQuery(t, mixedModel(t), "pan"))
-		m, cmd := send(t, m, tea.KeyMsg{Type: key})
+		m, cmd := send(t, m, key)
 		if cmd != nil {
 			t.Errorf("%s closed the popup from a scope", key)
 		}
@@ -1137,7 +1147,7 @@ func TestLeavingAScopePutsTheCommandsBack(t *testing.T) {
 
 	// With something typed, backspace belongs to the query.
 	m := typeQuery(t, tab(t, typeQuery(t, mixedModel(t), "pan")), "sh")
-	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyBackspace})
+	m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyBackspace})
 	if m.scope != palette.ScopePanes || m.query.Value() != "s" {
 		t.Errorf("scope = %q with query %q, want the scope kept and a letter deleted", m.scope.Name, m.query.Value())
 	}
@@ -1148,8 +1158,8 @@ func TestNothingInAScopeMatchingSaysSo(t *testing.T) {
 	if len(m.ranked) != 0 {
 		t.Fatalf("the query matched %d rows, want none", len(m.ranked))
 	}
-	if !strings.Contains(m.View(), "no pane matches") {
-		t.Errorf("the view does not say what was searched:\n%s", m.View())
+	if !strings.Contains(m.View().Content, "no pane matches") {
+		t.Errorf("the view does not say what was searched:\n%s", m.View().Content)
 	}
 }
 
@@ -1177,15 +1187,15 @@ func TestAnEmptyScopeSaysWhy(t *testing.T) {
 	} {
 		m := testModel(t, nil, &ran)
 		m.enter(scope)
-		if !strings.Contains(m.View(), want) {
-			t.Errorf("an empty %s scope does not say %q:\n%s", scope.Name, want, m.View())
+		if !strings.Contains(m.View().Content, want) {
+			t.Errorf("an empty %s scope does not say %q:\n%s", scope.Name, want, m.View().Content)
 		}
 	}
 
 	m := sized(t, testEntries(&ran)[:1], 72)
 	m.enter(palette.ScopeCommands)
-	if !strings.Contains(m.View(), "no command is configured") {
-		t.Errorf("an empty commands scope does not say none is configured:\n%s", m.View())
+	if !strings.Contains(m.View().Content, "no command is configured") {
+		t.Errorf("an empty commands scope does not say none is configured:\n%s", m.View().Content)
 	}
 }
 
@@ -1197,15 +1207,15 @@ func TestOpeningInAScope(t *testing.T) {
 	if len(m.ranked) != 2 {
 		t.Fatalf("the popup opened on %d rows, want the two panes", len(m.ranked))
 	}
-	if _, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEsc}); cmd == nil {
+	if _, cmd := send(t, m, tea.KeyPressMsg{Code: tea.KeyEsc}); cmd == nil {
 		t.Error("esc did not close a popup opened in a scope")
 	}
 
-	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyBackspace})
+	m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyBackspace})
 	if m.narrowed() {
 		t.Fatal("backspace did not leave the scope the popup opened in")
 	}
-	if _, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEsc}); cmd == nil {
+	if _, cmd := send(t, m, tea.KeyPressMsg{Code: tea.KeyEsc}); cmd == nil {
 		t.Error("esc from the command list did not close the popup")
 	}
 }
@@ -1220,7 +1230,7 @@ func TestALongQueryStaysOnOneLine(t *testing.T) {
 		m.setSize(cols, 12)
 		m = typeQuery(t, m, strings.Repeat("abcdefgh ", 12))
 
-		for i, line := range strings.Split(m.View(), "\n") {
+		for i, line := range strings.Split(m.View().Content, "\n") {
 			if width := lipgloss.Width(line); width > cols {
 				t.Errorf("at %d columns line %d is %d wide: %q", cols, i, width, line)
 			}
@@ -1248,7 +1258,7 @@ func TestACommandAlreadyRunningIsNotRunAgain(t *testing.T) {
 	var cmds []tea.Cmd
 	for range 3 {
 		var cmd tea.Cmd
-		m, cmd = send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+		m, cmd = send(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 		cmds = append(cmds, cmd)
 	}
 	for _, cmd := range cmds {
@@ -1260,8 +1270,8 @@ func TestACommandAlreadyRunningIsNotRunAgain(t *testing.T) {
 	if runs != 1 {
 		t.Errorf("three keystrokes ran the command %d times, want once", runs)
 	}
-	if !strings.Contains(m.View(), "working") {
-		t.Errorf("the footer does not say the keystroke landed:\n%s", m.View())
+	if !strings.Contains(m.View().Content, "working") {
+		t.Errorf("the footer does not say the keystroke landed:\n%s", m.View().Content)
 	}
 }
 
@@ -1269,10 +1279,10 @@ func TestACommandAlreadyRunningIsNotRunAgain(t *testing.T) {
 // keyboard do not disagree about what a second press means.
 func TestAClickOnTheWaitingRowConfirmsIt(t *testing.T) {
 	var ran []string
-	m, _ := send(t, confirmModel(t, &ran), tea.KeyMsg{Type: tea.KeyEnter})
+	m, _ := send(t, confirmModel(t, &ran), tea.KeyPressMsg{Code: tea.KeyEnter})
 
-	m, cmd := send(t, m, tea.MouseMsg{
-		Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, Y: headerRows,
+	m, cmd := send(t, m, tea.MouseClickMsg{
+		Button: tea.MouseLeft, Y: headerRows,
 	})
 	if cmd == nil {
 		t.Fatal("the click did not run the command it was asked about")
@@ -1288,10 +1298,10 @@ func TestAClickOnTheWaitingRowConfirmsIt(t *testing.T) {
 
 func TestAClickOffTheRowsPutsTheQuestionAway(t *testing.T) {
 	var ran []string
-	m, _ := send(t, confirmModel(t, &ran), tea.KeyMsg{Type: tea.KeyEnter})
+	m, _ := send(t, confirmModel(t, &ran), tea.KeyPressMsg{Code: tea.KeyEnter})
 
-	m, cmd := send(t, m, tea.MouseMsg{
-		Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, Y: 0,
+	m, cmd := send(t, m, tea.MouseClickMsg{
+		Button: tea.MouseLeft, Y: 0,
 	})
 	if cmd != nil || len(ran) != 0 {
 		t.Error("a click off the rows ran the command")
@@ -1327,7 +1337,7 @@ func TestARebuildKeepsAQuestionWhoseRowSurvives(t *testing.T) {
 	m := questionModel(t, []palette.Entry{confirmable("pane:p1", "Go To shell")})
 	m = typeQuery(t, m, "shell")
 
-	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 	if m.confirming == nil {
 		t.Fatal("the row did not ask before running")
 	}
@@ -1363,7 +1373,7 @@ func TestAQuestionGoesWithTheRowItNames(t *testing.T) {
 	m := questionModel(t, []palette.Entry{confirmable("pane:p1", "Go To shell")})
 	m = typeQuery(t, m, "shell")
 
-	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 	if m.confirming == nil {
 		t.Fatal("the row did not ask before running")
 	}
@@ -1385,7 +1395,7 @@ func TestAnAnswerFromAScreenAlreadyLeftIsDropped(t *testing.T) {
 	entry := m.choosing.entry
 	stale := m.epoch
 
-	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyEsc})
 	if m.choosing != nil || m.pending {
 		t.Fatalf("esc left choosing=%v pending=%v, want the command list", m.choosing != nil, m.pending)
 	}
@@ -1420,13 +1430,13 @@ func TestNoLineOutgrowsThePopupOnAnyScreen(t *testing.T) {
 			ID: "close", Title: "close workspace", Type: "Herdr", Confirm: true,
 			Run: func(context.Context, palette.Exec) error { return nil },
 		}}, cols)
-		asking, _ = send(t, asking, tea.KeyMsg{Type: tea.KeyEnter})
+		asking, _ = send(t, asking, tea.KeyPressMsg{Code: tea.KeyEnter})
 		if asking.confirming == nil {
 			t.Fatalf("at %d columns the row did not ask before running", cols)
 		}
 
 		for what, m := range map[string]model{"empty": empty, "scope empty": scoped, "asking": asking} {
-			for i, line := range strings.Split(m.View(), "\n") {
+			for i, line := range strings.Split(m.View().Content, "\n") {
 				if width := lipgloss.Width(line); width > cols {
 					t.Errorf("%s at %d columns: line %d is %d wide: %q", what, cols, i, width, line)
 				}
@@ -1476,8 +1486,8 @@ func TestAClickBelowTheDrawnRowsDoesNothing(t *testing.T) {
 		if index, ok := m.rowAt(0, y); ok {
 			t.Errorf("y=%d is read as row %d, which was never drawn", y, index)
 		}
-		if _, cmd := send(t, m, tea.MouseMsg{
-			Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, Y: y,
+		if _, cmd := send(t, m, tea.MouseClickMsg{
+			Button: tea.MouseLeft, Y: y,
 		}); cmd != nil {
 			t.Errorf("a click at y=%d ran something", y)
 		}
@@ -1494,7 +1504,7 @@ func TestAFailureFromAScreenAlreadyLeftIsStillReported(t *testing.T) {
 	m := choose(t, chooserModel(t, &picked, worktreeChoices), "worktree")
 	stale := m.epoch
 
-	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyEsc})
 	m, _ = send(t, m, ranMsg{epoch: stale, err: errors.New("worktree busy")})
 
 	if m.failure != "worktree busy" {
@@ -1515,13 +1525,13 @@ func TestTheQuestionKeepsItsMarkOnANarrowPopup(t *testing.T) {
 	}}
 
 	wide := sized(t, entries, 72)
-	wide, _ = send(t, wide, tea.KeyMsg{Type: tea.KeyEnter})
+	wide, _ = send(t, wide, tea.KeyPressMsg{Code: tea.KeyEnter})
 	if !strings.Contains(wide.footer(), "herdr: close workspace?") {
 		t.Errorf("a popup with room for it dropped the namespace: %q", wide.footer())
 	}
 
 	narrow := sized(t, entries, 30)
-	narrow, _ = send(t, narrow, tea.KeyMsg{Type: tea.KeyEnter})
+	narrow, _ = send(t, narrow, tea.KeyPressMsg{Code: tea.KeyEnter})
 	footer := narrow.footer()
 	if !strings.Contains(footer, "close workspace?") {
 		t.Errorf("the question lost its mark rather than its namespace: %q", footer)

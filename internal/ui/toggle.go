@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // Toggle is the key bound to the toggle action, as config.toml spells it, and
@@ -56,19 +56,20 @@ func newCloser(toggle Toggle) closer {
 // key belonged to the chord rather than to the list: the prefix itself, or
 // whatever followed it, the way herdr's own prefix mode takes the key after
 // the prefix.
-func (c *closer) press(msg tea.KeyMsg) (closes, taken bool) {
+func (c *closer) press(msg tea.KeyPressMsg) (closes, taken bool) {
 	if c.key == "" {
 		return false, false
 	}
 	name := msg.String()
+	legacy, _ := keyName(msg.Keystroke())
 	if c.prefix == "" {
-		return name == c.key, false
+		return name == c.key || legacy == c.key, false
 	}
 	if c.armed {
 		c.armed = false
-		return name == c.key, true
+		return name == c.key || legacy == c.key, true
 	}
-	if name == c.prefix {
+	if name == c.prefix || legacy == c.prefix {
 		c.armed = true
 		return false, true
 	}
@@ -94,12 +95,10 @@ var namedCharacters = map[string]rune{
 	"plus":         '+',
 }
 
-// keyName is the name bubbletea gives the key a binding spells, once herdr has
-// passed it to the popup's terminal. The popup asks for no keyboard protocol,
-// so herdr encodes a key for it the way a legacy terminal does: alt is an
-// escape in front, ctrl with a character is the control character, which has
-// no room for shift, and cmd or super has no encoding at all. A binding that
-// cannot arrive is reported as not ok.
+// keyName is the name bubbletea gives the key a binding spells after herdr's
+// legacy terminal encoding: alt is an escape in front, ctrl with a character
+// is a control character with no room for shift, and cmd or super has no
+// encoding at all. A binding that cannot arrive is reported as not ok.
 func keyName(spelling string) (string, bool) {
 	var ctrl, alt, shift bool
 	var name string
@@ -176,18 +175,40 @@ func keyName(spelling string) (string, bool) {
 // characterName is what bubbletea calls a character key after herdr's legacy
 // encoding of it.
 func characterName(ch rune, ctrl, alt, shift bool) string {
+	mod := tea.KeyMod(0)
+	if alt {
+		mod |= tea.ModAlt
+	}
 	if ctrl {
 		if code, ok := controlCode(ch); ok {
-			return tea.Key{Type: tea.KeyType(code), Alt: alt}.String()
+			key := tea.Key{Mod: mod}
+			switch code {
+			case 0:
+				key.Code, key.Mod = tea.KeySpace, mod|tea.ModCtrl
+			case 9:
+				key.Code = tea.KeyTab
+			case 13:
+				key.Code = tea.KeyEnter
+			case 27:
+				key.Code = tea.KeyEsc
+			case 28, 29, 30, 31:
+				key.Code, key.Mod = rune(code+64), mod|tea.ModCtrl
+			default:
+				key.Code, key.Mod = rune(code+96), mod|tea.ModCtrl
+			}
+			return key.String()
 		}
 		// herdr sends the character itself for a ctrl combination with no
 		// control character, so the modifier is lost on the way.
 	} else if shift && ch >= 'a' && ch <= 'z' {
 		ch -= 'a' - 'A'
 	}
-	key := tea.Key{Type: tea.KeyRunes, Runes: []rune{ch}, Alt: alt}
+	key := tea.Key{Code: ch, Mod: mod}
+	if !alt {
+		key.Text = string(ch)
+	}
 	if ch == ' ' {
-		key.Type = tea.KeySpace
+		key.Code = tea.KeySpace
 	}
 	return key.String()
 }

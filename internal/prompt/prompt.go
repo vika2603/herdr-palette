@@ -1,12 +1,9 @@
 // Package prompt is the field the palette collects a value in: one line, in a
 // popup of its own, with the terminal's own cursor on the insertion point.
 //
-// The cursor is what makes this a package rather than a screen of the palette.
 // macOS input methods place their candidate window at the terminal cursor, and
 // herdr forwards a pane's cursor to the outer terminal only while the pane
-// shows one. A field that hides the cursor and paints its caret as cell
-// content, which is what the Bubble Tea field does, cannot be typed into with
-// an input method.
+// shows one. This small prompt keeps that cursor visible at the insertion point.
 package prompt
 
 import (

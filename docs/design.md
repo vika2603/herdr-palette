@@ -32,11 +32,12 @@ the key never invokes the action. It arrives inside the popup as terminal
 input, and the popup quits when it is the key bound to `toggle`.
 
 Which key that is comes from the same configuration the key column is read
-from. The popup asks for no keyboard protocol, so herdr encodes a key for it
-the way a legacy terminal does: alt is an escape in front, ctrl with a
+from. Herdr's legacy key encoding makes alt an escape in front, ctrl with a
 character is the control character, shift held with ctrl has no encoding and
 is lost, and cmd or super never arrive. The binding is translated to the name
 bubbletea gives that encoding and compared with what each keystroke reports.
+Native v2 events that retain modifiers are also compared through their legacy
+equivalent, so a binding works with either input encoding.
 A `prefix+` chord arrives as two keys, so the popup holds the prefix and takes
 the key that follows, the way herdr's own prefix mode does.
 
@@ -394,13 +395,13 @@ same handover, one hop longer: the palette writes the entry down with a
 the entry back with the value and asks for `exec` again, which runs it once the
 field's popup is gone in turn.
 
-The field is not a Bubble Tea screen, and that is the point. Bubble Tea hides
-the terminal cursor for the lifetime of the program and paints its caret as
-cell content. herdr forwards a pane's cursor to the outer terminal only while
-the pane shows one, and macOS input methods place their candidate window at
-that cursor, so a Bubble Tea field cannot be typed into with an input method.
-`internal/prompt` therefore edits the line itself, keeping the terminal's own
-cursor on the insertion point.
+`internal/prompt` edits this small field directly, keeping the terminal's own
+cursor on the insertion point. The palette's search field uses Bubble Tea v2's
+native `View.Cursor`, with a blinking bar and a position measured in terminal
+cells after horizontal scrolling. No caret character is inserted into the
+query. Herdr can then forward the visible cursor to the outer terminal, where
+input methods use it to place their candidate windows. The framework handles
+cursor positioning, visibility and cleanup for the palette.
 
 ## Running a configured command
 
@@ -628,7 +629,7 @@ recently the palette went there.
 
 ## Mouse
 
-The program runs with `tea.WithMouseCellMotion`, which reports clicks and the
+The view uses `tea.MouseModeCellMotion`, which reports clicks and the
 wheel, and the pointer only while a button is down. The bare pointer is not
 wanted: the selection belongs to the keyboard, and all motion mode would let a
 touch of the trackpad carry it to whatever row the pointer came to rest on, so

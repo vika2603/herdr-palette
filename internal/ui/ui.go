@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"os"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/vika2603/herdr-client/herdr"
 	"github.com/vika2603/herdr-client/plugin"
 
@@ -46,7 +46,7 @@ func Run(ctx context.Context, env *plugin.Env, list palette.List, loadErr error,
 	// out one interval before the popup shows anything. The palette is up for
 	// a keystroke or two and draws a screen of text; the fastest rate the
 	// renderer accepts halves that wait and costs nothing it has to draw.
-	program := tea.NewProgram(m, tea.WithContext(ctx), tea.WithMouseCellMotion(), tea.WithFPS(120))
+	program := tea.NewProgram(m, tea.WithContext(ctx), tea.WithFPS(120))
 	_, err := program.Run()
 	m.state.close()
 	if ctx.Err() != nil {

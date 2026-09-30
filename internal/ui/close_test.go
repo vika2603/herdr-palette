@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/vika2603/herdr-client/herdr"
 
 	"github.com/vika2603/herdr-palette/internal/palette"
@@ -50,7 +50,7 @@ func selectRow(t *testing.T, m *model, id string) {
 	t.Fatalf("no row %q", id)
 }
 
-var ctrlX = tea.KeyMsg{Type: tea.KeyCtrlX}
+var ctrlX = tea.KeyPressMsg{Code: 'x', Mod: tea.ModCtrl}
 
 func TestCtrlXClosesARowAfterAskingAndKeepsThePopupUp(t *testing.T) {
 	withSpelling(t, "darwin")
@@ -68,7 +68,7 @@ func TestCtrlXClosesARowAfterAskingAndKeepsThePopupUp(t *testing.T) {
 		t.Errorf("footer = %q, want the question", got)
 	}
 
-	m, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	m, cmd := send(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
 		t.Fatal("enter did not close the pane")
 	}
@@ -119,11 +119,11 @@ func TestACommandAskedAfterACloseStillRunsAsACommand(t *testing.T) {
 	m, closed := closeModel(t)
 	selectRow(t, &m, "pane:api")
 	m, _ = send(t, m, ctrlX)
-	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyEsc})
 
 	selectRow(t, &m, "close")
-	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
-	_, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
+	_, cmd := send(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
 		t.Fatal("the command did not run")
 	}
@@ -169,7 +169,7 @@ func TestTheFooterSaysWhatCtrlXCloses(t *testing.T) {
 		t.Errorf("footer = %q, want the key that closes the workspace", m.footer())
 	}
 	m, _ = send(t, m, ctrlX)
-	m, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	m, cmd := send(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
 		t.Fatal("enter did not close the workspace")
 	}

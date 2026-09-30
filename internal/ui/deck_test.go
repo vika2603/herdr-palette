@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/muesli/termenv"
@@ -114,7 +114,7 @@ func TestMovingOntoAGroupBringsItsHeading(t *testing.T) {
 	if m.offset != 0 {
 		t.Errorf("offset = %d on the first row, want its heading on show", m.offset)
 	}
-	if got := strings.Split(m.View(), "\n")[headerRows]; !strings.Contains(got, "NEEDS YOU") {
+	if got := strings.Split(m.View().Content, "\n")[headerRows]; !strings.Contains(got, "NEEDS YOU") {
 		t.Errorf("first line of a %d-line window = %q, want the heading", rows, got)
 	}
 }
@@ -151,7 +151,7 @@ func TestTheLabelNamesTheScreen(t *testing.T) {
 	}
 
 	var ran []string
-	confirm, _ := send(t, confirmModel(t, &ran), tea.KeyMsg{Type: tea.KeyEnter})
+	confirm, _ := send(t, confirmModel(t, &ran), tea.KeyPressMsg{Code: tea.KeyEnter})
 	if got := confirm.header(); !strings.Contains(got, modeConfirm) {
 		t.Errorf("header = %q while asking, want %s", got, modeConfirm)
 	}
@@ -182,7 +182,7 @@ func TestPreviewCanBeToggledWithoutLeavingTheList(t *testing.T) {
 	server, env := previewServer(t, "screen")
 	m := typeQuery(t, sessionModel(t, env, nil, 120, 14), "frontend")
 	selected, query, stale := m.ranked[m.cursor].Entry.ID, m.query.Value(), m.previewSeq
-	m, cmd := send(t, m, tea.KeyMsg{Type: tea.KeyCtrlO})
+	m, cmd := send(t, m, tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
 	if cmd != nil || m.previewTarget() != "" || m.previewEnabled {
 		t.Error("disabled preview scheduled a passive pane read")
 	}
@@ -207,16 +207,16 @@ func TestPreviewCanBeToggledWithoutLeavingTheList(t *testing.T) {
 			t.Errorf("line %d width = %d, want %d", i, got, m.cols())
 		}
 	}
-	m, cmd = send(t, m, tea.KeyMsg{Type: tea.KeyCtrlO})
+	m, cmd = send(t, m, tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
 	if !m.previewEnabled || m.previewTarget() != "p-blocked" || cmd == nil || m.previewWidth() == 0 {
 		t.Error("showing preview did not schedule a fresh read for the selected pane")
 	}
 	if m.ranked[m.cursor].Entry.ID != selected || m.query.Value() != query || !strings.Contains(ansi.Strip(m.footer()), "hide preview") {
 		t.Error("showing preview lost the selection, query or toggle hint")
 	}
-	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyCtrlO})
+	m, _ = send(t, m, tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
 
-	m, cmd = send(t, m, tea.KeyMsg{Type: tea.KeyTab})
+	m, cmd = send(t, m, tea.KeyPressMsg{Code: tea.KeyTab})
 	if m.replying == nil || m.previewTarget() != "p-blocked" || cmd == nil {
 		t.Error("disabled side preview also disabled answering the blocked agent")
 	}
@@ -254,7 +254,7 @@ func TestTheSelectedAgentsScreenIsPreviewed(t *testing.T) {
 		t.Errorf("read %+v, want the visible screen of the selected pane", params)
 	}
 
-	view := m.View()
+	view := m.View().Content
 	if !strings.Contains(view, "Allow Codex to apply this edit?") {
 		t.Errorf("the preview does not show the pane's screen:\n%s", view)
 	}
@@ -283,7 +283,7 @@ func TestMovingOffAPaneDropsItsPendingRead(t *testing.T) {
 	m := sessionModel(t, env, nil, 120, 14)
 	stale := m.previewSeq
 
-	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyDown})
+	m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyDown})
 	if m.previewSeq == stale {
 		t.Fatal("moving to another pane did not move the preview on")
 	}
@@ -316,7 +316,7 @@ func TestNoLineOutgrowsAWidePopup(t *testing.T) {
 	for _, cols := range []int{previewMinCols, 140, 200} {
 		m := sessionModel(t, testEnv(t), nil, cols, 12)
 		m.preview = preview{pane: "p-blocked", text: strings.Repeat("宽", 200) + "\n\tindented\x1b[31m red"}
-		for i, line := range strings.Split(m.View(), "\n") {
+		for i, line := range strings.Split(m.View().Content, "\n") {
 			if width := lipgloss.Width(line); width > cols {
 				t.Errorf("at %d columns line %d is %d wide: %q", cols, i, width, line)
 			}
@@ -337,7 +337,7 @@ func TestAShortWidePopupDrawsThePreview(t *testing.T) {
 	for _, height := range []int{3, 4, 5, 6} {
 		m := sessionModel(t, testEnv(t), nil, 120, height)
 		m.preview = preview{pane: m.previewTarget(), text: "one\ntwo\nthree"}
-		if lines := strings.Split(m.View(), "\n"); len(lines) != m.rows()+chrome {
+		if lines := strings.Split(m.View().Content, "\n"); len(lines) != m.rows()+chrome {
 			t.Errorf("at height %d the view is %d lines, want %d", height, len(lines), m.rows()+chrome)
 		}
 	}
@@ -348,7 +348,7 @@ func TestAShortWidePopupDrawsThePreview(t *testing.T) {
 func TestAOneLineWindowShowsTheSelectedRow(t *testing.T) {
 	m := sessionModel(t, testEnv(t), nil, 72, 5)
 	m = typeQuery(t, m, "x")
-	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyBackspace})
+	m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyBackspace})
 
 	if len(headings(m)) == 0 {
 		t.Fatal("the empty query did not lay the list out in groups")
@@ -415,17 +415,23 @@ func TestWrapKeepsEveryWordWithinTheWidth(t *testing.T) {
 	}
 }
 
-func TestTheCaretIsABarAtTheInsertionPoint(t *testing.T) {
+func TestTheNativeCursorTracksTheInsertionPoint(t *testing.T) {
 	m := sessionModel(t, testEnv(t), nil, 72, 12)
-	if got := ansi.Strip(m.header()); !strings.Contains(got, caret+searchPlaceholder) {
-		t.Errorf("header = %q, want the caret in front of the placeholder", got)
+	if got := ansi.Strip(m.header()); !strings.Contains(got, searchPlaceholder) || strings.Contains(got, "\u258f") {
+		t.Errorf("header = %q, want placeholder text without a painted cursor", got)
+	}
+	if cursor := m.View().Cursor; cursor == nil || cursor.X != 11 || cursor.Y != 0 || cursor.Shape != tea.CursorBar || !cursor.Blink {
+		t.Errorf("empty query cursor = %+v, want a blinking bar at (11, 0)", cursor)
 	}
 
 	m = typeQuery(t, m, "split")
-	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyLeft})
-	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyLeft})
-	if got := ansi.Strip(m.header()); !strings.Contains(got, "spl"+caret+"it") {
-		t.Errorf("header = %q, want the caret between the characters it sits between", got)
+	m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyLeft})
+	m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyLeft})
+	if got := ansi.Strip(m.header()); !strings.Contains(got, "split") {
+		t.Errorf("header = %q, want continuous text", got)
+	}
+	if cursor := m.View().Cursor; cursor == nil || cursor.X != 14 || cursor.Y != 0 || cursor.Shape != tea.CursorBar || !cursor.Blink {
+		t.Errorf("query cursor = %+v, want a blinking bar after spl at (14, 0)", cursor)
 	}
 	// Reverse video is how the field draws its block, and it is only written
 	// out where the terminal takes styling at all.
@@ -441,17 +447,35 @@ func TestALongQueryKeepsTheCaretOnShow(t *testing.T) {
 	m := sessionModel(t, testEnv(t), nil, 32, 12)
 	m = typeQuery(t, m, strings.Repeat("abcdefgh ", 8)+"end")
 	header := ansi.Strip(m.header())
-	if !strings.Contains(header, "end"+caret) {
+	if !strings.Contains(header, "end") || m.View().Cursor == nil || m.View().Cursor.X >= 32 {
 		t.Errorf("header = %q, want the end of the query and the caret after it", header)
 	}
 	if w := lipgloss.Width(m.header()); w > 32 {
 		t.Errorf("header is %d wide", w)
 	}
 	for range 80 {
-		m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyHome})
+		m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyHome})
 	}
-	if header := ansi.Strip(m.header()); !strings.Contains(header, caret+"abcdefgh") {
+	if header := ansi.Strip(m.header()); !strings.Contains(header, "abcdefgh") || m.View().Cursor == nil || m.View().Cursor.X != 11 {
 		t.Errorf("header = %q after home, want the caret at the start", header)
+	}
+}
+
+func TestTheNativeCursorUsesCellWidthForCJKInput(t *testing.T) {
+	m := typeQuery(t, sessionModel(t, testEnv(t), nil, 72, 12), "宽a")
+	if cursor := m.View().Cursor; cursor == nil || cursor.X != 14 || cursor.Y != 0 {
+		t.Errorf("cursor after wide character and ASCII = %+v, want (14, 0)", cursor)
+	}
+	m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyLeft})
+	if cursor := m.View().Cursor; cursor == nil || cursor.X != 13 || cursor.Y != 0 {
+		t.Errorf("cursor after wide character = %+v, want (13, 0)", cursor)
+	}
+}
+
+func TestTheNativeCursorIsHiddenWhenTheFrameIsTooShort(t *testing.T) {
+	m := sessionModel(t, testEnv(t), nil, 72, 1)
+	if cursor := m.View().Cursor; cursor != nil {
+		t.Errorf("one-row frame cursor = %+v, want no off-screen cursor", cursor)
 	}
 }
 

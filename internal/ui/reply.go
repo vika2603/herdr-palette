@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/vika2603/herdr-client/herdr"
 
 	"github.com/vika2603/herdr-palette/internal/palette"
@@ -67,11 +67,22 @@ func (m *model) restartPreview(wait time.Duration) tea.Cmd {
 // keyReply takes a keystroke while the keyboard is the agent's. Esc is the
 // palette's own, so a key meant to leave never tells the agent no; the rest
 // that herdr can deliver go to the agent as they were pressed.
-func (m model) keyReply(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m model) keyReply(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if msg.String() == "esc" {
 		return m, m.stopReply("")
 	}
 	keys := replyKeys(msg)
+	if len(keys) == 0 {
+		return m, nil
+	}
+	m.failure = ""
+	m.queued = append(m.queued, keys...)
+	return m, m.flushReply()
+}
+
+// pasteReply sends bracketed paste through the same ordered queue as keys.
+func (m model) pasteReply(text string) (tea.Model, tea.Cmd) {
+	keys := replyTextKeys(text)
 	if len(keys) == 0 {
 		return m, nil
 	}
@@ -110,33 +121,14 @@ var replyNamed = map[string]bool{
 // ctrl with a letter is passed on too, which is how an agent is interrupted;
 // ctrl+c stays the palette's, which closes it. An alt chord is dropped rather
 // than sent as its bare key, which on a numbered dialog would pick an option.
-//
-// A paste arrives as one message of characters, line breaks and tabs among
-// them. herdr refuses a whole call over one key it cannot spell, so those are
-// sent as the keys they stand for and any other control character is left
-// out.
-func replyKeys(msg tea.KeyMsg) []string {
-	if msg.Alt {
+func replyKeys(msg tea.KeyPressMsg) []string {
+	if msg.Mod&tea.ModAlt != 0 {
 		return nil
 	}
-	switch msg.Type {
-	case tea.KeyRunes:
-		keys := make([]string, 0, len(msg.Runes))
-		for _, r := range msg.Runes {
-			switch {
-			case r == ' ':
-				keys = append(keys, "space")
-			case r == '\n' || r == '\r':
-				keys = append(keys, "enter")
-			case r == '\t':
-				keys = append(keys, "tab")
-			case r < 0x20 || r == 0x7f:
-			default:
-				keys = append(keys, string(r))
-			}
-		}
-		return keys
-	case tea.KeySpace:
+	if msg.Text != "" {
+		return replyTextKeys(msg.Text)
+	}
+	if msg.Code == tea.KeySpace && msg.Mod == 0 {
 		return []string{"space"}
 	}
 	name := msg.String()
@@ -147,6 +139,26 @@ func replyKeys(msg tea.KeyMsg) []string {
 		return []string{name}
 	}
 	return nil
+}
+
+// A paste can contain line breaks and tabs. Herdr refuses a whole call over
+// one key it cannot spell, so unsupported control characters are left out.
+func replyTextKeys(text string) []string {
+	keys := make([]string, 0, len([]rune(text)))
+	for _, r := range text {
+		switch {
+		case r == ' ':
+			keys = append(keys, "space")
+		case r == '\n' || r == '\r':
+			keys = append(keys, "enter")
+		case r == '\t':
+			keys = append(keys, "tab")
+		case r < 0x20 || r == 0x7f:
+		default:
+			keys = append(keys, string(r))
+		}
+	}
+	return keys
 }
 
 // followReply keeps the agent being answered in step with the session. An

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/vika2603/herdr-client/herdr"
 	"github.com/vika2603/herdr-client/plugin/plugintest"
@@ -41,12 +41,12 @@ func sent(t *testing.T, server *plugintest.Server) [][]string {
 	return out
 }
 
-func press(t *testing.T, m model, msg tea.KeyMsg) (model, tea.Cmd) {
+func press(t *testing.T, m model, msg tea.KeyPressMsg) (model, tea.Cmd) {
 	t.Helper()
 	return send(t, m, msg)
 }
 
-func runes(text string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(text)} }
+func runes(text string) tea.KeyPressMsg { return tea.KeyPressMsg{Text: text} }
 
 func TestTabHandsTheKeyboardToABlockedAgent(t *testing.T) {
 	withSpelling(t, "darwin")
@@ -58,7 +58,7 @@ func TestTabHandsTheKeyboardToABlockedAgent(t *testing.T) {
 		t.Errorf("footer = %q, want the key that answers the agent", m.footer())
 	}
 
-	m, _ = press(t, m, tea.KeyMsg{Type: tea.KeyTab})
+	m, _ = press(t, m, tea.KeyPressMsg{Code: tea.KeyTab})
 	if m.replying == nil {
 		t.Fatal("tab on a blocked agent did not hand it the keyboard")
 	}
@@ -68,7 +68,7 @@ func TestTabHandsTheKeyboardToABlockedAgent(t *testing.T) {
 	if m.previewTarget() != "p-blocked" {
 		t.Errorf("preview target = %q on a popup too narrow for a preview, want the agent's screen", m.previewTarget())
 	}
-	view := m.View()
+	view := m.View().Content
 	if strings.Contains(view, "NEEDS YOU") {
 		t.Errorf("the list is still on show while answering:\n%s", view)
 	}
@@ -82,7 +82,7 @@ func TestTabHandsTheKeyboardToABlockedAgent(t *testing.T) {
 func TestOnlyABlockedAgentCanBeAnswered(t *testing.T) {
 	_, m := replyServer(t)
 	m.step(1) // the done agent
-	m, _ = press(t, m, tea.KeyMsg{Type: tea.KeyTab})
+	m, _ = press(t, m, tea.KeyPressMsg{Code: tea.KeyTab})
 	if m.replying != nil {
 		t.Errorf("tab on %q handed it the keyboard", m.ranked[m.cursor].Entry.ID)
 	}
@@ -90,14 +90,14 @@ func TestOnlyABlockedAgentCanBeAnswered(t *testing.T) {
 
 func TestKeysGoToTheAgentInTheOrderPressed(t *testing.T) {
 	server, m := replyServer(t)
-	m, _ = press(t, m, tea.KeyMsg{Type: tea.KeyTab})
+	m, _ = press(t, m, tea.KeyPressMsg{Code: tea.KeyTab})
 
 	m, first := press(t, m, runes("1"))
 	if first == nil {
 		t.Fatal("a key was not sent")
 	}
 	// Pressed while the first is on its way: it waits rather than racing it.
-	m, second := press(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	m, second := press(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 	if second != nil {
 		t.Fatal("a second key was sent while the first was still on its way")
 	}
@@ -120,8 +120,8 @@ func TestKeysGoToTheAgentInTheOrderPressed(t *testing.T) {
 
 func TestEscLeavesWithoutTellingTheAgent(t *testing.T) {
 	server, m := replyServer(t)
-	m, _ = press(t, m, tea.KeyMsg{Type: tea.KeyTab})
-	m, cmd := press(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	m, _ = press(t, m, tea.KeyPressMsg{Code: tea.KeyTab})
+	m, cmd := press(t, m, tea.KeyPressMsg{Code: tea.KeyEsc})
 	if m.replying != nil {
 		t.Fatal("esc did not give the keyboard back")
 	}
@@ -137,8 +137,8 @@ func TestEscLeavesWithoutTellingTheAgent(t *testing.T) {
 
 func TestCtrlCStillClosesThePalette(t *testing.T) {
 	_, m := replyServer(t)
-	m, _ = press(t, m, tea.KeyMsg{Type: tea.KeyTab})
-	if _, cmd := press(t, m, tea.KeyMsg{Type: tea.KeyCtrlC}); cmd == nil || cmd() != tea.Quit() {
+	m, _ = press(t, m, tea.KeyPressMsg{Code: tea.KeyTab})
+	if _, cmd := press(t, m, tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}); cmd == nil || cmd() != tea.Quit() {
 		t.Error("ctrl+c while answering did not close the palette")
 	}
 }
@@ -147,7 +147,7 @@ func TestCtrlCStillClosesThePalette(t *testing.T) {
 // left to answer, so the list comes back.
 func TestAnAnsweredAgentGivesTheKeyboardBack(t *testing.T) {
 	_, m := replyServer(t)
-	m, _ = press(t, m, tea.KeyMsg{Type: tea.KeyTab})
+	m, _ = press(t, m, tea.KeyPressMsg{Code: tea.KeyTab})
 
 	session := sessionList().Session
 	open := session.Entries
@@ -167,18 +167,18 @@ func TestAnAnsweredAgentGivesTheKeyboardBack(t *testing.T) {
 
 func TestAKeyIsSpelledTheWayHerdrSendsIt(t *testing.T) {
 	for _, tc := range []struct {
-		msg  tea.KeyMsg
+		msg  tea.KeyPressMsg
 		want []string
 	}{
 		{runes("1"), []string{"1"}},
 		{runes("y n"), []string{"y", "space", "n"}},
-		{tea.KeyMsg{Type: tea.KeySpace}, []string{"space"}},
-		{tea.KeyMsg{Type: tea.KeyEnter}, []string{"enter"}},
-		{tea.KeyMsg{Type: tea.KeyShiftTab}, []string{"shift+tab"}},
-		{tea.KeyMsg{Type: tea.KeyDown}, []string{"down"}},
-		{tea.KeyMsg{Type: tea.KeyBackspace}, []string{"backspace"}},
-		{tea.KeyMsg{Type: tea.KeyCtrlD}, []string{"ctrl+d"}},
-		{tea.KeyMsg{Type: tea.KeyF5}, nil},
+		{tea.KeyPressMsg{Code: tea.KeySpace, Text: " "}, []string{"space"}},
+		{tea.KeyPressMsg{Code: tea.KeyEnter}, []string{"enter"}},
+		{tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}, []string{"shift+tab"}},
+		{tea.KeyPressMsg{Code: tea.KeyDown}, []string{"down"}},
+		{tea.KeyPressMsg{Code: tea.KeyBackspace}, []string{"backspace"}},
+		{tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl}, []string{"ctrl+d"}},
+		{tea.KeyPressMsg{Code: tea.KeyF5}, nil},
 	} {
 		if got := replyKeys(tc.msg); !slices.Equal(got, tc.want) {
 			t.Errorf("replyKeys(%q) = %v, want %v", tc.msg.String(), got, tc.want)
@@ -187,11 +187,11 @@ func TestAKeyIsSpelledTheWayHerdrSendsIt(t *testing.T) {
 }
 
 func TestAnAltChordAndAPasteAreSentAsHerdrCanTakeThem(t *testing.T) {
-	if got := replyKeys(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("1"), Alt: true}); got != nil {
+	if got := replyKeys(tea.KeyPressMsg{Code: '1', Mod: tea.ModAlt}); got != nil {
 		t.Errorf("alt+1 sent %v, want nothing: a bare 1 picks an option", got)
 	}
-	paste := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("yes\nno\tx\x01"), Paste: true}
-	if got, want := replyKeys(paste), []string{"y", "e", "s", "enter", "n", "o", "tab", "x"}; !slices.Equal(got, want) {
+	paste := tea.PasteMsg{Content: "yes\nno\tx\x01"}
+	if got, want := replyTextKeys(paste.Content), []string{"y", "e", "s", "enter", "n", "o", "tab", "x"}; !slices.Equal(got, want) {
 		t.Errorf("paste sent %v, want %v", got, want)
 	}
 }
@@ -199,7 +199,7 @@ func TestAnAltChordAndAPasteAreSentAsHerdrCanTakeThem(t *testing.T) {
 func TestTabDoesNotAnswerWhileACommandIsOut(t *testing.T) {
 	_, m := replyServer(t)
 	m.pending = true
-	m, _ = press(t, m, tea.KeyMsg{Type: tea.KeyTab})
+	m, _ = press(t, m, tea.KeyPressMsg{Code: tea.KeyTab})
 	if m.replying != nil {
 		t.Error("tab handed the keyboard over while a command was still out")
 	}
@@ -209,7 +209,7 @@ func TestTabDoesNotAnswerWhileACommandIsOut(t *testing.T) {
 // a key runs beside the refresh rather than restarting it.
 func TestAKeyDoesNotRestartTheRefresh(t *testing.T) {
 	_, m := replyServer(t)
-	m, _ = press(t, m, tea.KeyMsg{Type: tea.KeyTab})
+	m, _ = press(t, m, tea.KeyPressMsg{Code: tea.KeyTab})
 	seq := m.previewSeq
 
 	m, _ = send(t, m, replySentMsg{})
@@ -231,7 +231,7 @@ func TestAKeyDoesNotRestartTheRefresh(t *testing.T) {
 
 func TestASlowReadDoesNotOverwriteALaterOne(t *testing.T) {
 	_, m := replyServer(t)
-	m, _ = press(t, m, tea.KeyMsg{Type: tea.KeyTab})
+	m, _ = press(t, m, tea.KeyPressMsg{Code: tea.KeyTab})
 	seq := m.previewSeq
 	m, _ = send(t, m, previewMsg{seq: seq, read: 2, pane: "p-blocked", text: "new", echo: true})
 	m, _ = send(t, m, previewMsg{seq: seq, read: 1, pane: "p-blocked", text: "old", echo: true})

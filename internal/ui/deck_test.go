@@ -433,8 +433,6 @@ func TestTheNativeCursorTracksTheInsertionPoint(t *testing.T) {
 	if cursor := m.View().Cursor; cursor == nil || cursor.X != 14 || cursor.Y != 0 || cursor.Shape != tea.CursorBlock || !cursor.Blink {
 		t.Errorf("query cursor = %+v, want a blinking block after spl at (14, 0)", cursor)
 	}
-	// Only the native cursor should draw a block; the query must not also
-	// paint a virtual cursor with reverse video.
 	profile := lipgloss.ColorProfile()
 	lipgloss.SetColorProfile(termenv.TrueColor)
 	defer lipgloss.SetColorProfile(profile)

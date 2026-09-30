@@ -49,6 +49,7 @@ func press(t *testing.T, m model, msg tea.KeyMsg) (model, tea.Cmd) {
 func runes(text string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(text)} }
 
 func TestTabHandsTheKeyboardToABlockedAgent(t *testing.T) {
+	withSpelling(t, "darwin")
 	_, m := replyServer(t)
 	if !canReply(m.ranked[m.cursor]) {
 		t.Fatalf("the first row is %q, want the blocked agent", m.ranked[m.cursor].Entry.ID)

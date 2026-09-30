@@ -52,6 +52,7 @@ func selectRow(t *testing.T, m *model, id string) {
 var ctrlX = tea.KeyMsg{Type: tea.KeyCtrlX}
 
 func TestCtrlXClosesARowAfterAskingAndKeepsThePopupUp(t *testing.T) {
+	withSpelling(t, "darwin")
 	m, closed := closeModel(t)
 	selectRow(t, &m, "pane:api")
 	if !strings.Contains(m.footer(), "⌃x close pane") {
@@ -103,7 +104,7 @@ func TestAnyOtherKeyPutsTheCloseQuestionAway(t *testing.T) {
 func TestCtrlXDoesNothingOnACommand(t *testing.T) {
 	m, _ := closeModel(t)
 	selectRow(t, &m, "close")
-	if strings.Contains(m.footer(), "⌃x") {
+	if strings.Contains(m.footer(), closeHint().key) {
 		t.Errorf("footer = %q offers to close a command", m.footer())
 	}
 	if m, _ = send(t, m, ctrlX); m.confirming != nil {

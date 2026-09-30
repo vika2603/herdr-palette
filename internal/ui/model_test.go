@@ -450,6 +450,7 @@ func TestTheKeyColumnShowsWhatEachCommandIsBoundTo(t *testing.T) {
 		{ID: "a", Title: "New tab", Type: "herdr", Key: "prefix+c"},
 		{ID: "b", Title: "Split pane right", Type: "herdr"},
 	}
+	withSpelling(t, "darwin")
 	m := newModel(context.Background(), testEnv(t), &herdr.PluginInvocationContext{}, palette.List{Commands: entries}, nil, theme.Defaults(), Toggle{Prefix: "ctrl+b"})
 	m.setSize(60, 12)
 
@@ -942,6 +943,8 @@ func TestBackspaceLeavesTheTargetsWhenTheQueryIsEmpty(t *testing.T) {
 // column; the footer shares with neither, so what the row had to cut is
 // readable there.
 func TestTheFooterNamesTheSelectedRow(t *testing.T) {
+	// The widths are chosen against the keys as macOS spells them.
+	withSpelling(t, "darwin")
 	m := wideModel(t, 72)
 	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyUp})
 

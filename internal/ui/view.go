@@ -420,7 +420,7 @@ func measure(ranked []palette.Ranked, prefix string) widths {
 	for _, r := range ranked {
 		w.detail = max(w.detail, detailWidth(r))
 		w.source = max(w.source, lipgloss.Width(source(r.Entry)))
-		lead, key := keycap(r.Entry.Key, prefix)
+		lead, key := spelling.keycap(r.Entry.Key, prefix)
 		w.key = max(w.key, lipgloss.Width(lead+key))
 	}
 	w.source = min(w.source, maxSource)
@@ -486,7 +486,7 @@ func (m model) row(index int, c columns) string {
 	if c.key > 0 {
 		// Right-aligned, so the rows end on a straight edge whatever the keys
 		// are.
-		lead, key := keycap(entry.Key, m.prefix)
+		lead, key := spelling.keycap(entry.Key, m.prefix)
 		b.WriteString(gap)
 		b.WriteString(t.text.Render(strings.Repeat(" ", max(c.key-lipgloss.Width(lead+key), 0))))
 		if lead != "" {
@@ -656,7 +656,7 @@ func (m model) footer() string {
 		if chosen := m.confirming.Chosen; chosen != "" {
 			question = " " + m.confirming.Title + "?"
 		}
-		keys := m.fitHints([]hint{{"⏎", "run"}, {"any key", "cancel"}})
+		keys := m.fitHints([]hint{{spelling.name("enter"), "run"}, {"any key", "cancel"}})
 		room := max(m.cols()-lipgloss.Width(keys)-2, 1)
 		// The namespace repeats what the selected row above already says, and
 		// the question mark is what makes the line a question rather than a
@@ -669,26 +669,26 @@ func (m model) footer() string {
 
 	if m.replying != nil {
 		name := strings.TrimPrefix(m.replying.Entry.Title, palette.GoTo)
-		keys := m.fitHints([]hint{{"esc", "back"}})
+		keys := m.fitHints([]hint{{spelling.name("esc"), "back"}})
 		return m.spread(m.styles.plain.meta.Render(truncate(" keys go to "+name, max(m.cols()-lipgloss.Width(keys)-2, 1))), keys)
 	}
 
 	left := m.selectedName()
-	act, back := hint{"⏎", "run"}, hint{"esc", "close"}
+	act, back := hint{spelling.name("enter"), "run"}, hint{spelling.name("esc"), "close"}
 	var more []hint
 	if m.cursor < len(m.ranked) && m.ranked[m.cursor].Entry.Goes {
 		act.does = "go"
 	}
 	if m.choosing == nil && !m.pending && m.cursor < len(m.ranked) && canReply(m.ranked[m.cursor]) {
-		more = append(more, hint{"⇥", "reply"})
+		more = append(more, hint{spelling.name("tab"), "reply"})
 	}
 	if m.canClose() {
-		more = append(more, closeHint)
+		more = append(more, closeHint())
 	}
 	if m.choosing != nil {
 		// The command the targets belong to is no longer on the list, so the
 		// footer is where it stays legible.
-		left, back = " "+m.choosing.entry.Name(), hint{"esc", "back"}
+		left, back = " "+m.choosing.entry.Name(), hint{spelling.name("esc"), "back"}
 	}
 	if m.pending {
 		// What the keystroke asked for is still out on the socket. Knowing it

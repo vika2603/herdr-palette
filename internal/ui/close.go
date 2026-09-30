@@ -61,4 +61,4 @@ func (m model) close(entry palette.Entry) tea.Cmd {
 
 // closeHint names what the key closes, since esc closes the popup and the two
 // would otherwise read the same.
-var closeHint = hint{"⌃x", "close pane"}
+func closeHint() hint { return hint{spelling.name("ctrl+x"), "close pane"} }

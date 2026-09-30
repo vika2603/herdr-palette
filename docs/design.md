@@ -554,6 +554,11 @@ separate registration. Their names and run modes live with the script itself.
 
 ## Colours
 
+Bubble Tea owns terminal input and requests the background colour through its
+message API. Lipgloss starts with an explicit dark-background default and is
+updated from `BackgroundColorMsg`; its synchronous terminal probe must remain
+disabled so it cannot consume bytes from the framework's protocol responses.
+
 herdr does not publish its theme: the API has no method for it, and
 config.toml carries only the theme's name plus the tokens the user overrode.
 `internal/theme` therefore resolves each colour from three places, each

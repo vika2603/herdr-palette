@@ -7,6 +7,7 @@ import (
 	"os"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/vika2603/herdr-client/herdr"
 	"github.com/vika2603/herdr-client/plugin"
 
@@ -18,6 +19,9 @@ import (
 // is what assembling the list ran into, which is worth showing next to the
 // half that survived. toggle is the key that closes the popup from inside.
 func Run(ctx context.Context, env *plugin.Env, list palette.List, loadErr error, colours theme.Theme, toggle Toggle) error {
+	// Bubble Tea owns terminal input. Disable Lipgloss's synchronous probe
+	// before any adaptive colour can render; Init asks through the framework.
+	lipgloss.SetHasDarkBackground(true)
 	invocation := invocationContext(env)
 	list.Commands = applicable(list.Commands, invocation)
 

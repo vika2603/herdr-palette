@@ -393,10 +393,9 @@ func (m model) fill(rendered string, width int) string {
 	return rendered + strings.Repeat(" ", max(width-lipgloss.Width(rendered), 0))
 }
 
-// columns is how wide each part of a row is drawn in a list width columns
-// wide, zero for a column left out.
+// columns holds the row width and metadata budgets, zero when omitted.
 type columns struct {
-	width, title, detail, source, key int
+	width, detail, source, key int
 }
 
 func span(width int) int {
@@ -435,7 +434,6 @@ func (m model) columns(width int) columns {
 	if c.detail > 0 && room() < minTitle {
 		c.detail = 0
 	}
-	c.title = max(room(), 1)
 	return c
 }
 
@@ -470,7 +468,7 @@ func detailWidth(r palette.Ranked) int {
 		}
 		return lipgloss.Width(name)
 	}
-	if r.Status != "" && !trailingStatus(r) {
+	if r.Status != "" {
 		return lipgloss.Width(r.Detail) + 2
 	}
 	return lipgloss.Width(r.Detail)

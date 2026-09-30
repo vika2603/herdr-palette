@@ -71,18 +71,11 @@ func (m model) keyReply(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if msg.String() == "esc" {
 		return m, m.stopReply("")
 	}
-	keys := replyKeys(msg)
-	if len(keys) == 0 {
-		return m, nil
-	}
-	m.failure = ""
-	m.queued = append(m.queued, keys...)
-	return m, m.flushReply()
+	return m.queueReply(replyKeys(msg))
 }
 
-// pasteReply sends bracketed paste through the same ordered queue as keys.
-func (m model) pasteReply(text string) (tea.Model, tea.Cmd) {
-	keys := replyTextKeys(text)
+// queueReply keeps typed keys and pasted text on one ordered send path.
+func (m model) queueReply(keys []string) (tea.Model, tea.Cmd) {
 	if len(keys) == 0 {
 		return m, nil
 	}

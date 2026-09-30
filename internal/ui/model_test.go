@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"image/color"
 	"slices"
 	"strings"
 	"testing"
@@ -114,6 +115,27 @@ func TestTypingFiltersTheList(t *testing.T) {
 	}
 	if m.cursor != 0 {
 		t.Errorf("cursor = %d, want the selection reset to the best match", m.cursor)
+	}
+}
+
+func TestFrameworkBackgroundResponsesDoNotChangeTheQuery(t *testing.T) {
+	previous := lipgloss.HasDarkBackground()
+	t.Cleanup(func() { lipgloss.SetHasDarkBackground(previous) })
+	var ran []string
+	m := typeQuery(t, testModel(t, nil, &ran), "split")
+	selected := m.ranked[m.cursor].Entry.ID
+	for _, tc := range []struct {
+		colour color.Color
+		dark   bool
+	}{{color.White, false}, {color.Black, true}} {
+		var cmd tea.Cmd
+		m, cmd = send(t, m, tea.BackgroundColorMsg{Color: tc.colour})
+		if lipgloss.HasDarkBackground() != tc.dark {
+			t.Errorf("background response did not select dark=%v", tc.dark)
+		}
+		if cmd != nil || m.query.Value() != "split" || m.ranked[m.cursor].Entry.ID != selected {
+			t.Error("a terminal background response changed the query or selection")
+		}
 	}
 }
 

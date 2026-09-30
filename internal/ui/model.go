@@ -7,6 +7,7 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/vika2603/herdr-client/herdr"
 	"github.com/vika2603/herdr-client/plugin"
 
@@ -139,10 +140,8 @@ func newModel(
 
 	// The label naming the screen stands where a prompt would.
 	query := textinput.New()
-	query.Prompt = ""
 	query.Placeholder = searchPlaceholder
-	// The cursor keeps the terminal's own colours: drawn in the accent it is a
-	// second block of the label's colour right beside the label.
+	// The field owns editing; View positions the framework's native cursor.
 	query.SetVirtualCursor(false)
 	query.Focus()
 
@@ -162,17 +161,13 @@ func newModel(
 		previewEnabled: true,
 	}
 	m.changes = watch(ctx, env)
-	m.query.SetWidth(m.queryWidth())
 	m.rank()
 	return m
 }
 
-// setSize takes the popup's size. The query line is sized with it: what the
-// field shows of a long query is the columns left over, and a field that keeps
-// drawing all of it wraps the line and pushes every row below it down.
+// setSize takes the popup's dimensions and keeps the selection visible.
 func (m *model) setSize(width, height int) {
 	m.width, m.height = width, height
-	m.query.SetWidth(m.queryWidth())
 	m.reveal()
 }
 
@@ -189,7 +184,6 @@ func (m *model) enter(scope palette.Scope) {
 	m.scope = scope
 	m.query.SetValue("")
 	m.query.Placeholder = placeholder(scope)
-	m.query.SetWidth(m.queryWidth())
 	m.failure, m.notice = "", ""
 	m.rank()
 }
@@ -206,7 +200,7 @@ func (m model) narrowed() bool { return m.scope != palette.ScopePalette }
 
 // Init starts following the session. The terminal blinks the native cursor;
 // the text field's virtual cursor is not drawn.
-func (m model) Init() tea.Cmd { return listen(m.changes) }
+func (m model) Init() tea.Cmd { return tea.Batch(listen(m.changes), tea.RequestBackgroundColor) }
 
 // Update answers a message, and asks for the preview again once the pane it
 // should show has changed, whatever the message did to change it.
@@ -228,6 +222,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.BackgroundColorMsg:
+		lipgloss.SetHasDarkBackground(msg.IsDark())
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.setSize(msg.Width, msg.Height)
 		return m, nil
@@ -333,7 +331,7 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.replying != nil {
-			return m.pasteReply(msg.Content)
+			return m.queueReply(replyTextKeys(msg.Content))
 		}
 		if m.confirming != nil {
 			m.confirming = nil
@@ -767,13 +765,6 @@ func (m *model) move(by int) {
 func (m *model) settle() {
 	m.failure, m.notice = "", ""
 	m.confirming = nil
-}
-
-// queryWidth is how much of a long query is on show: the columns left once the
-// label in front of it and the cursor's own have been taken. Without it the
-// line grows past the popup and wraps, which pushes every row below it down.
-func (m model) queryWidth() int {
-	return max(m.cols()-m.queryLead()-1, 1)
 }
 
 func clamp(index, length int) int {

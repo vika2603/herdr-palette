@@ -114,7 +114,7 @@ func TestLoadMergesTheCatalogWithPluginActions(t *testing.T) {
 	if !ok {
 		t.Fatal("Load() dropped the machine manager action")
 	}
-	if entry.Title != "manage machines" {
+	if entry.Title != "Manage machines" {
 		t.Errorf("title = %q, want the action's own title", entry.Title)
 	}
 	if entry.Type != "Machine Manager" {
@@ -239,7 +239,7 @@ func TestConfiguredCommandsAreListed(t *testing.T) {
 	if !ok {
 		t.Fatal("the configured popup command is not in the list")
 	}
-	if entry.Title != "open git jump" || entry.Type != TypeCustom || entry.Key != "prefix+f" {
+	if entry.Title != "Open git jump" || entry.Type != TypeCustom || entry.Key != "prefix+f" {
 		t.Errorf("entry = %+v, want the configured description, group and key", entry)
 	}
 	if _, ok := find(entries, "config:prefix+alt+g"); !ok {

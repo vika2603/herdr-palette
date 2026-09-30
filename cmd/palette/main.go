@@ -123,7 +123,7 @@ func onExec(ctx context.Context, env *plugin.Env) error {
 
 	// An unreachable action list still leaves the catalog and the configured
 	// commands, and the handed-over entry may well be one of them.
-	list, _ := entries(ctx, env, keys.Commands())
+	list, _ := entries(ctx, env, keys.Commands(), settings.Load(env))
 	return palette.RunPending(ctx, env, list.All(), pending)
 }
 
@@ -148,8 +148,11 @@ func onInput(ctx context.Context, env *plugin.Env) error {
 }
 
 // entries assembles the command list both entrypoints work from.
-func entries(ctx context.Context, env *plugin.Env, cfg keys.Config) (palette.List, error) {
-	return palette.Load(ctx, env.Client(), env.PluginID, catalog.Entries(), cfg)
+func entries(ctx context.Context, env *plugin.Env, cfg keys.Config, own settings.Settings) (palette.List, error) {
+	list, loadErr := palette.Load(ctx, env.Client(), env.PluginID, catalog.Entries(), cfg)
+	scripts, scriptErr := palette.ScriptEntries(env.PluginID, own.ScriptDirs)
+	list.Commands = append(list.Commands, scripts...)
+	return list, errors.Join(loadErr, scriptErr)
 }
 
 // onRun runs the configured command this pane was opened for. The pane closes
@@ -158,11 +161,21 @@ func entries(ctx context.Context, env *plugin.Env, cfg keys.Config) (palette.Lis
 // entrypoint.
 func onRun(ctx context.Context, env *plugin.Env) error {
 	command := os.Getenv(palette.RunEnv)
-	if command == "" {
+	script := os.Getenv(palette.ScriptEnv)
+	if command == "" && script == "" {
 		return errors.New("the pane was opened without a command to run")
 	}
 
-	cmd := palette.ShellCommand(ctx, command)
+	var cmd *exec.Cmd
+	if script != "" {
+		var err error
+		cmd, err = palette.ScriptCommand(ctx, script)
+		if err != nil {
+			return err
+		}
+	} else {
+		cmd = palette.ShellCommand(ctx, command)
+	}
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	err := cmd.Run()
 
@@ -178,7 +191,7 @@ func onRun(ctx context.Context, env *plugin.Env) error {
 func onPalette(ctx context.Context, env *plugin.Env) error {
 	cfg := keys.Load(env.BinPath)
 	own := settings.Load(env)
-	list, loadErr := entries(ctx, env, cfg)
+	list, loadErr := entries(ctx, env, cfg, own)
 	toggle := ui.Toggle{
 		Binding: cfg.Plugin[keys.PluginBinding(env.PluginID, actionToggle)],
 		Prefix:  cfg.Prefix,

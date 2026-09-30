@@ -57,8 +57,8 @@ var (
 	ScopeWorkspaces = Scope{Name: "workspaces", Kinds: KindsOf(KindWorkspace), Empty: "no workspace is open"}
 	ScopePlugins    = Scope{Name: "plugins", Kinds: KindsOf(KindPlugin), Empty: "no plugin is installed"}
 	ScopeHerdr      = Scope{Name: "herdr", Kinds: KindsOf(KindCommand), Empty: "no herdr command is listed"}
-	// ScopeCommands is the commands configured under [[keys.command]], which
-	// the rows name with the "command" namespace.
+	// ScopeCommands holds configured commands and user scripts, which the
+	// rows name with the "command" namespace.
 	ScopeCommands = Scope{Name: "commands", Kinds: KindsOf(KindCustom), Empty: "no command is configured"}
 )
 

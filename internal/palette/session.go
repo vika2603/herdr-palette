@@ -22,7 +22,7 @@ const (
 // GoTo is in front of every row that focuses something rather than running a
 // command, so the query narrows the list to them. The spelling without the
 // space finds them too: the matcher reads a query as a subsequence.
-const GoTo = "go to "
+const GoTo = "Go To "
 
 // Session is what is open right now: the rows that go there, and what every
 // agent in the session is doing. Which scope lists a row is its kind's

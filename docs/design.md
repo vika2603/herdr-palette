@@ -57,19 +57,19 @@ pane is opened directly (`herdr plugin pane open`).
 
 A row's name is `namespace: title`, the way an editor's command list reads,
 and that is what a query matches. The namespace is where the row comes from —
-`herdr` for the built-in commands, `command` for the ones configured under
-`[[keys.command]]`, the plugin's own name for a plugin action, and the kind of
-thing for the rows that go somewhere. The row draws the title first and the
-namespace in a column of its own at the right, next to the detail and the key:
+`herdr` for the built-in commands, `command` for user scripts and the ones
+configured under `[[keys.command]]`, the plugin's own name for a plugin action,
+and the kind of thing for the rows that go somewhere. The row draws the title
+first and the namespace in a column of its own at the right, next to the detail and the key:
 it repeats down the list while the title is what distinguishes the row, and a
 namespace in front would leave every title starting in a different column. The
 matched positions index the whole name, so they are split between the two when
 the row is drawn. The line under the list names the selected row in the
 `namespace: title` form.
 
-A command's title is lowercase, authored that way rather than lowercased when
-drawn. The rows that go to a pane keep the name it carries: it is a name, not a
-command.
+Built-in command titles use Title Case. Configured commands, scripts and plugin
+actions keep the casing their authors supplied, as do pane, tab and workspace
+names. Matching and sorting fold case separately from display.
 
 ## Going to what is open
 
@@ -102,8 +102,8 @@ source. The command list is a scope too, `palette`, holding every kind but tabs
 and workspaces. The others are `agents`, `panes` (agents included, since an
 agent runs in a pane), `tabs`, `workspaces`, `plugins`, the actions every
 installed plugin registered, `herdr`, herdr's own commands, and `commands`,
-the ones configured under `[[keys.command]]`, which their rows already name
-`command:`. Searching
+user scripts and the ones configured under `[[keys.command]]`, which their rows
+already name `command:`. Searching
 `herdr` in the command list is no substitute for the last: a plugin's id and a
 pane's directory are searched too, and both often carry the word. A new scope
 is a line naming its kinds; the label, the placeholder, the empty line and completion
@@ -119,7 +119,7 @@ spell out some scope. Each scope carries the line it shows when it holds
 nothing, since why it would depends on the scope: nothing is open, no plugin is
 installed, no command is configured. The footer names
 the scope while `tab` would go there, since the same key answers a waiting
-agent otherwise. `switch workspace` and `switch tab` are entries whose `Scope`
+agent otherwise. `Switch Workspace` and `Switch Tab` are entries whose `Scope`
 opens theirs in place of running anything. `backspace` on an empty query and
 `esc` go back to the command list, except that `esc` closes a popup the `goto`
 action opened in its scope, the way it closes the command list.
@@ -166,7 +166,7 @@ rests for 80 ms and then once a second while it is on show. Each read carries a
 sequence number that moves on whenever the pane to show changes, so a read for
 a pane already left is dropped and its refresh is not asked for again.
 
-Every one of these rows starts with "go to", so typing that — or `goto`, which
+Every one of these rows starts with "Go To", so typing that — or `goto`, which
 a subsequence match reaches as well — narrows the list to them. A pane's row
 shows the name it was given, or what the program in it reports, and carries the
 workspace it sits in and its directory as search text, so a project name finds
@@ -405,6 +405,50 @@ herdr's own temporary pane does. A zoomed pane is placed against an existing
 pane and takes its id; a popup covers the active pane and herdr rejects a
 target or a workspace alongside it.
 
+## User scripts
+
+`script_dirs` lists directories, defaulting to `["scripts"]` beside the
+palette's configuration when unset. An explicit list replaces the default,
+and an empty list disables discovery. Relative paths resolve against that
+configuration directory and `~/` resolves against the user's home. Discovery is shallow:
+regular executable files with a shebang on Unix, and `.ps1`, `.cmd` and `.bat`
+files on Windows. Links to regular scripts work too; dotfiles and
+directories are left out. Nothing runs during discovery.
+
+Directories are scanned in configured order, once per directory file identity.
+Resolved paths deduplicate the
+same script reached through repeated directories or symbolic links; the first
+reference supplies its title, id and execution path. Different files with the
+same title stay separate, with paths added to their row details. Errors in one
+directory do not prevent the other directories from loading.
+
+Only the initial comments are read, up to 4 KiB of the original file. PowerShell
+headers with a UTF-16 byte-order mark are decoded before reading metadata;
+execution still uses the original file. `@palette.title` names the
+row and `@palette.mode` selects the existing `shell`, `pane` or `popup` behavior.
+Without them the filename supplies the title and the mode is `shell`. Bad
+metadata leaves that script out and reports the filename alongside the valid
+list. A missing directory is empty, so installing the plugin needs no setup.
+
+Scripts are commands in the existing list and scope, with ids derived from
+their absolute paths. The popup and exec entrypoint discover them the same
+way, so handing one over uses its id, not copied script contents. Every script
+is handed over: even a background script might ask herdr to open a popup, and
+herdr cannot show one while the palette is still up. Invocation context is
+preserved just as for configured commands; an absent or invalid working
+directory is an error, not permission to run in the plugin's directory.
+
+The run pane receives a script path separately from a shell command line.
+Unix executes the file through its shebang. Windows runs PowerShell scripts
+with `powershell.exe -File`, respecting its execution policy, and batch scripts
+with cmd.exe. A batch path is passed through an environment variable with
+delayed expansion disabled, so spaces, percent signs and exclamation marks in
+the path are not interpreted as shell source.
+
+Each command-list load scans the directories; typing only searches the in-memory
+entries. No watcher or persistent index needs to keep a cache in sync with the
+short-lived popup processes.
+
 ## Picking a target from a list
 
 A command whose target is one of several things herdr knows about — the
@@ -495,10 +539,9 @@ repository would not have protected against either.
 ## The palette's own configuration
 
 `internal/settings` reads one file in the plugin's config directory, in a
-single decode: the popup's size and the colours. It carries what herdr's API
-does not publish and nothing else — a command belongs in herdr's own
-`[[keys.command]]`, which the list already reads, rather than in a second place
-that would compete with it.
+single decode: the popup's size, colours and script directories. Commands bound
+to keys stay in herdr's `[[keys.command]]`; scripts need no key binding or
+separate registration. Their names and run modes live with the script itself.
 
 ## Colours
 
@@ -543,7 +586,7 @@ row can be typed in any order; the scores are added and the matched positions
 merged for highlighting.
 
 The row it matches is the row as it is drawn, namespace included, so `spr`
-reaches "herdr: split pane right" and the highlighted letters are the ones that
+reaches "herdr: Split Pane Right" and the highlighted letters are the ones that
 were searched. fzf's scoring is what separates a run at the start of a word
 from letters scattered through a row, which is the difference the palette
 depends on at the size it has. Those bonuses live in tables `algo.Init` fills,

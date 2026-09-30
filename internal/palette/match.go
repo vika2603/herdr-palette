@@ -102,7 +102,7 @@ func Rank(entries []Entry, text string, recent []string) []Ranked {
 		if a, b := fold(ranked[i].Entry.Type), fold(ranked[j].Entry.Type); a != b {
 			return a < b
 		}
-		return ranked[i].Entry.Title < ranked[j].Entry.Title
+		return fold(ranked[i].Entry.Title) < fold(ranked[j].Entry.Title)
 	})
 	return ranked
 }

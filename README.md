@@ -49,17 +49,18 @@ Inside the popup a key reads as a terminal passes it on, so `ctrl+shift+p` is
 
 - **`herdr:`** herdr's own commands, including a few herdr has no key for:
   splitting left and up, moving or swapping the pane, evening out pane sizes,
-  `switch workspace` and `switch tab`, and searching what the panes printed.
-- **`command:`** your `[[keys.command]]` entries, run the way herdr runs them.
+  `Switch Workspace` and `Switch Tab`, and searching what the panes printed.
+- **`command:`** your `[[keys.command]]` entries and scripts, with no key
+  binding needed for a script.
 - **A plugin's name** every action that plugin registered.
 - **`pane:` / `agent:`** the open panes, with what each agent is doing. A
   pane is also found by its tab's, workspace's or directory's name.
 
 Type the start of `agents`, `panes`, `tabs`, `workspaces`, `plugins`, `herdr`
-or `commands` (your `[[keys.command]]` entries), two letters or more, or its
+or `commands` (your configured commands and scripts), two letters or more, or its
 letters in order such as `cmd` or `wsp`, and press `tab` to list only those; the label in front of the query
 names the scope. Tabs and workspaces are listed only in their scope, which
-`switch tab` and `switch workspace` open too. `herdr.palette.goto` opens the
+`Switch Tab` and `Switch Workspace` open too. `herdr.palette.goto` opens the
 popup in `panes`.
 
 Before you type, the list is grouped into what needs you, what you ran
@@ -91,6 +92,8 @@ The palette's own `config.toml` is in the directory
 `herdr plugin config-dir herdr.palette` prints. Everything is optional:
 
 ```toml
+script_dirs = ["scripts"] # relative to this config file; absolute paths and ~/ work too
+
 scheme = "herd"            # or "terminal", to follow the terminal's colours
 accent = "#A48BFF"         # any colour below takes a hex value or an ANSI index
 rule = "#414868"
@@ -114,6 +117,49 @@ idle = "8"
 
 Colours herdr's `[theme.custom]` defines (`accent`, `overlay0`, `surface0`,
 `overlay1`) are used when the file sets none.
+
+## Scripts
+
+Put scripts in `scripts/` beside the palette's `config.toml`, or choose one or
+more directories with `script_dirs = ["scripts", "~/dotfiles/herdr-scripts"]`.
+The list replaces the default; `script_dirs = []` disables script discovery.
+Search their names in the palette and press `enter`; adding or editing a script
+takes effect the next time you open it. Repeated paths and links to the same
+script are listed once, using the first reference. Different scripts with the
+same title stay separate and show their paths.
+
+On Linux and macOS, give each script a shebang and make it executable
+(`chmod +x lazygit.sh`). For example, `lazygit.sh`:
+
+```sh
+#!/usr/bin/env sh
+# @palette.title Lazygit
+# @palette.mode pane
+
+exec lazygit
+```
+
+Both comments are optional. The title defaults to the filename without its
+extension. The mode defaults to `shell`, which runs in the background with no
+terminal output; `pane` opens a temporary full-screen pane and `popup` opens a
+floating terminal. The terminal closes when the script exits. For an external
+editor, a script containing a shebang followed by `zed .` needs no metadata.
+
+Scripts run in the directory of the pane you opened the palette from, with
+`HERDR_ACTIVE_WORKSPACE_ID`, `HERDR_ACTIVE_TAB_ID`, `HERDR_ACTIVE_PANE_ID` and
+`HERDR_ACTIVE_PANE_CWD` available when herdr supplies them.
+
+On Windows, use `.ps1`, `.cmd` or `.bat`. PowerShell scripts use the same `#`
+comments; batch scripts use `REM @palette.title ...` and `REM @palette.mode ...`
+(or `::` comments), before the first command. PowerShell uses the system's
+execution policy: if Windows PowerShell blocks scripts, they must be allowed
+there before using `.ps1` commands in the palette. UTF-16 PowerShell files with
+a byte-order mark are supported alongside UTF-8 files.
+
+Only each directory's immediate files are listed, including links to scripts;
+dotfiles and subdirectories are skipped. Metadata belongs in the initial
+comments, within the first 4 KiB. An invalid script reports its filename while
+the other commands and directories remain available.
 
 ## Development
 

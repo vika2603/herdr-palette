@@ -28,9 +28,9 @@ func closeModel(t *testing.T) (model, *[]string) {
 			{ID: "close", Title: "close tab", Type: "Herdr", Confirm: true, Run: func(context.Context, palette.Exec) error { return nil }},
 		},
 		Session: palette.Session{Entries: []palette.Entry{
-			{ID: "pane:api", Title: "go to api", Type: palette.TypePane, Kind: palette.KindPane, Close: closer("pane:api")},
-			{ID: "pane:docs", Title: "go to docs", Type: palette.TypePane, Kind: palette.KindPane, Close: closer("pane:docs")},
-			{ID: "workspace:w2", Title: "go to docs", Type: palette.TypeWorkspace, Kind: palette.KindWorkspace, Close: closer("workspace:w2")},
+			{ID: "pane:api", Title: "Go To api", Type: palette.TypePane, Kind: palette.KindPane, Close: closer("pane:api")},
+			{ID: "pane:docs", Title: "Go To docs", Type: palette.TypePane, Kind: palette.KindPane, Close: closer("pane:docs")},
+			{ID: "workspace:w2", Title: "Go To docs", Type: palette.TypeWorkspace, Kind: palette.KindWorkspace, Close: closer("workspace:w2")},
 		}},
 	}
 	m := newModel(context.Background(), testEnv(t), &herdr.PluginInvocationContext{}, list, nil, theme.Defaults(), Toggle{})

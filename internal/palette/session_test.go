@@ -94,7 +94,7 @@ func TestAnAgentIsFoundByItsStatus(t *testing.T) {
 	if matched != "working" {
 		t.Errorf("the detail highlights %q, want the status the query matched", matched)
 	}
-	if !strings.Contains(ranked[0].Entry.Name(), "go to") {
+	if !strings.Contains(ranked[0].Entry.Name(), "Go To") {
 		t.Errorf("row = %q, want it to go to the agent", ranked[0].Entry.Name())
 	}
 }

@@ -116,13 +116,12 @@ func (e Entry) Namespace() string {
 func (e Entry) Goes() bool { return places.Has(e.Kind) }
 
 // Name is how a row reads: the namespace in front of the title, as in
-// "herdr: split pane right". It is both what the row renders and what a query
+// "herdr: Split Pane Right". It is both what the row renders and what a query
 // matches, so the letters highlighted in a row are the ones that were
 // searched.
 //
-// A command's title is lowercase, the way an editor's command list reads. The
-// rows that go somewhere keep the name the workspace, tab or pane carries,
-// which is a name rather than a command.
+// Titles keep their authored casing, including names supplied by commands,
+// scripts, plugins and the session. Matching folds case separately.
 func (e Entry) Name() string {
 	return e.Namespace() + e.Title
 }
@@ -136,9 +135,9 @@ func (e Entry) Initial(ctx context.Context, x Exec) string {
 	return e.Input.Initial(ctx, x)
 }
 
-// TypeCustom is the namespace of the commands configured under
-// [[keys.command]]. A plugin action shows under the plugin's own name
-// instead, and the rows that go somewhere under what they go to.
+// TypeCustom is the namespace of configured commands and user scripts. A
+// plugin action shows under the plugin's own name instead, and the rows that
+// go somewhere under what they go to.
 const TypeCustom = "Command"
 
 // ContextEnv is the environment variable the action entrypoint uses to pass

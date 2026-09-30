@@ -137,7 +137,7 @@ func TestRankPrefersAWordStart(t *testing.T) {
 // The positions are what the row highlights, so they have to cover the query
 // and index the row as it is drawn.
 func TestRankReportsWhereTheQueryMatched(t *testing.T) {
-	entry := Entry{ID: "a", Title: "split pane right", Type: "Herdr"}
+	entry := Entry{ID: "a", Title: "Split Pane Right", Type: "Herdr"}
 
 	ranked := Rank([]Entry{entry}, "split", nil)
 	if len(ranked) != 1 {
@@ -148,13 +148,13 @@ func TestRankReportsWhereTheQueryMatched(t *testing.T) {
 	for _, at := range ranked[0].Matched {
 		matched += string(name[at])
 	}
-	if matched != "split" {
-		t.Errorf("the row highlights %q, want the query", matched)
+	if matched != "Split" {
+		t.Errorf("the row highlights %q, want the matched text with its original casing", matched)
 	}
 }
 
 func TestEveryWordOfTheQueryIsHighlighted(t *testing.T) {
-	entry := Entry{ID: "a", Title: "split pane right", Type: "Herdr"}
+	entry := Entry{ID: "a", Title: "Split Pane Right", Type: "Herdr"}
 
 	ranked := Rank([]Entry{entry}, "right split", nil)
 	if len(ranked) != 1 {
@@ -165,7 +165,7 @@ func TestEveryWordOfTheQueryIsHighlighted(t *testing.T) {
 	for _, at := range ranked[0].Matched {
 		matched += string(name[at])
 	}
-	if matched != "splitright" {
+	if matched != "SplitRight" {
 		t.Errorf("the row highlights %q, want both words in the order they are drawn", matched)
 	}
 }

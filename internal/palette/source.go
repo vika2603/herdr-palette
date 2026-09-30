@@ -112,7 +112,7 @@ func pluginEntry(action herdr.PluginActionInfo, name string) Entry {
 	actionID := action.ActionID
 	return Entry{
 		ID:             "plugin:" + pluginID + "/" + actionID,
-		Title:          strings.ToLower(action.Title),
+		Title:          action.Title,
 		Type:           pluginNamespace(pluginID, name),
 		Kind:           KindPlugin,
 		NeedsSelection: onlySelection(action.Contexts),

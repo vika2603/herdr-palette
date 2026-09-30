@@ -29,10 +29,10 @@ func sessionList() palette.List {
 			{ID: "jump", Title: "open git jump", Type: palette.TypeCustom},
 		},
 		Session: palette.Session{Entries: []palette.Entry{
-			{ID: "pane:done", Title: "go to api", Type: "Agent", Kind: palette.KindAgent, Detail: "done · claude", Status: "done", Pane: "p-done"},
-			{ID: "pane:working", Title: "go to billing", Type: "Agent", Kind: palette.KindAgent, Detail: "working · claude", Status: "working", Pane: "p-working"},
-			{ID: "pane:blocked", Title: "go to frontend", Type: "Agent", Kind: palette.KindAgent, Detail: "blocked · codex", Status: "blocked", Pane: "p-blocked"},
-			{ID: "workspace:docs", Title: "go to docs", Type: "Workspace", Kind: palette.KindWorkspace},
+			{ID: "pane:done", Title: "Go To api", Type: "Agent", Kind: palette.KindAgent, Detail: "done · claude", Status: "done", Pane: "p-done"},
+			{ID: "pane:working", Title: "Go To billing", Type: "Agent", Kind: palette.KindAgent, Detail: "working · claude", Status: "working", Pane: "p-working"},
+			{ID: "pane:blocked", Title: "Go To frontend", Type: "Agent", Kind: palette.KindAgent, Detail: "blocked · codex", Status: "blocked", Pane: "p-blocked"},
+			{ID: "workspace:docs", Title: "Go To docs", Type: "Workspace", Kind: palette.KindWorkspace},
 		}, Statuses: []string{"blocked", "done", "working", "working"}},
 	}
 }

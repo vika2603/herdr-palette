@@ -49,7 +49,7 @@ command = ["./bin/palette"]
 [[panes]]
 id = "run"
 title = "\u200B"
-description = "Run a command configured under [[keys.command]]"
+description = "Run a configured command or user script"
 # Placement and size come from the command's own configuration, passed when the
 # pane is opened.
 placement = "popup"

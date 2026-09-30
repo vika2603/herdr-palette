@@ -52,7 +52,7 @@ func herdrEntries() []palette.Entry {
 		{
 			ID:      "herdr:workspace.new",
 			Binding: "new_workspace",
-			Title:   "new workspace",
+			Title:   "New Workspace",
 			Type:    groupHerdr,
 			Run: func(ctx context.Context, e palette.Exec) error {
 				// source_workspace_id lets the new workspace follow the
@@ -67,7 +67,7 @@ func herdrEntries() []palette.Entry {
 		{
 			ID:      "herdr:workspace.rename",
 			Binding: "rename_workspace",
-			Title:   "rename workspace",
+			Title:   "Rename Workspace",
 			Type:    groupHerdr,
 			Input: &palette.Input{
 				Label:   "Workspace name",
@@ -88,7 +88,7 @@ func herdrEntries() []palette.Entry {
 		{
 			ID:      "herdr:workspace.close",
 			Binding: "close_workspace",
-			Title:   "close workspace",
+			Title:   "Close Workspace",
 			Confirm: true,
 			Type:    groupHerdr,
 			Run: func(ctx context.Context, e palette.Exec) error {
@@ -103,14 +103,14 @@ func herdrEntries() []palette.Entry {
 		{
 			ID:      "herdr:workspace.switch",
 			Binding: "workspace_picker",
-			Title:   "switch workspace",
+			Title:   "Switch Workspace",
 			Type:    groupHerdr,
 			Scope:   palette.ScopeWorkspaces,
 		},
 		{
 			ID:      "herdr:worktree.new",
 			Binding: "new_worktree",
-			Title:   "new worktree workspace",
+			Title:   "New Worktree Workspace",
 			Type:    groupHerdr,
 			Input:   &palette.Input{Label: "New branch"},
 			Run: func(ctx context.Context, e palette.Exec) error {
@@ -125,7 +125,7 @@ func herdrEntries() []palette.Entry {
 		{
 			ID:      "herdr:worktree.open",
 			Binding: "open_worktree",
-			Title:   "open worktree workspace",
+			Title:   "Open Worktree Workspace",
 			Type:    groupHerdr,
 			Choices: &palette.Choices{
 				Label: "Worktree to open",
@@ -146,7 +146,7 @@ func herdrEntries() []palette.Entry {
 		{
 			ID:      "herdr:worktree.remove",
 			Binding: "remove_worktree",
-			Title:   "remove worktree workspace",
+			Title:   "Remove Worktree Workspace",
 			Confirm: true,
 			Type:    groupHerdr,
 			Choices: &palette.Choices{
@@ -166,7 +166,7 @@ func herdrEntries() []palette.Entry {
 		{
 			ID:      "herdr:tab.new",
 			Binding: "new_tab",
-			Title:   "new tab",
+			Title:   "New Tab",
 			Type:    groupHerdr,
 			Run: func(ctx context.Context, e palette.Exec) error {
 				_, err := e.Client.TabCreate(ctx, herdr.TabCreateParams{
@@ -180,7 +180,7 @@ func herdrEntries() []palette.Entry {
 		{
 			ID:      "herdr:tab.rename",
 			Binding: "rename_tab",
-			Title:   "rename tab",
+			Title:   "Rename Tab",
 			Type:    groupHerdr,
 			Input: &palette.Input{
 				Label:   "Tab name",
@@ -198,7 +198,7 @@ func herdrEntries() []palette.Entry {
 		{
 			ID:      "herdr:tab.close",
 			Binding: "close_tab",
-			Title:   "close tab",
+			Title:   "Close Tab",
 			Confirm: true,
 			Type:    groupHerdr,
 			Run: func(ctx context.Context, e palette.Exec) error {
@@ -212,21 +212,21 @@ func herdrEntries() []palette.Entry {
 		},
 		{
 			ID:    "herdr:tab.switch",
-			Title: "switch tab",
+			Title: "Switch Tab",
 			Type:  groupHerdr,
 			Scope: palette.ScopeTabs,
 		},
 		{
 			ID:      "herdr:tab.move.previous",
 			Binding: "move_tab_previous",
-			Title:   "move tab toward the front",
+			Title:   "Move Tab Toward the Front",
 			Type:    groupHerdr,
 			Run:     moveTab(-1),
 		},
 		{
 			ID:      "herdr:tab.move.next",
 			Binding: "move_tab_next",
-			Title:   "move tab toward the back",
+			Title:   "Move Tab Toward the Back",
 			Type:    groupHerdr,
 			Run:     moveTab(1),
 		},
@@ -234,33 +234,33 @@ func herdrEntries() []palette.Entry {
 		{
 			ID:      "herdr:pane.split.right",
 			Binding: "split_vertical",
-			Title:   "split pane right",
+			Title:   "Split Pane Right",
 			Type:    groupHerdr,
 			Run:     split(herdr.SplitDirectionRight, ""),
 		},
 		{
 			ID:      "herdr:pane.split.down",
 			Binding: "split_horizontal",
-			Title:   "split pane down",
+			Title:   "Split Pane Down",
 			Type:    groupHerdr,
 			Run:     split(herdr.SplitDirectionDown, ""),
 		},
 		{
 			ID:    "herdr:pane.split.left",
-			Title: "split pane left",
+			Title: "Split Pane Left",
 			Type:  groupHerdr,
 			Run:   split(herdr.SplitDirectionRight, herdr.PaneDirectionLeft),
 		},
 		{
 			ID:    "herdr:pane.split.up",
-			Title: "split pane up",
+			Title: "Split Pane Up",
 			Type:  groupHerdr,
 			Run:   split(herdr.SplitDirectionDown, herdr.PaneDirectionUp),
 		},
 		{
 			ID:      "herdr:pane.zoom",
 			Binding: "zoom",
-			Title:   "toggle pane zoom",
+			Title:   "Toggle Pane Zoom",
 			Type:    groupHerdr,
 			Run: func(ctx context.Context, e palette.Exec) error {
 				_, err := e.Client.PaneZoom(ctx, herdr.PaneZoomParams{
@@ -272,7 +272,7 @@ func herdrEntries() []palette.Entry {
 		},
 		{
 			ID:    "herdr:layout.even",
-			Title: "even out pane sizes",
+			Title: "Even Out Pane Sizes",
 			Type:  groupHerdr,
 			Run: func(ctx context.Context, e palette.Exec) error {
 				id, err := need(e.Ctx.FocusedPaneID, errNoPane)
@@ -299,7 +299,7 @@ func herdrEntries() []palette.Entry {
 		{
 			ID:      "herdr:pane.rename",
 			Binding: "rename_pane",
-			Title:   "rename pane",
+			Title:   "Rename Pane",
 			Type:    groupHerdr,
 			Input:   &palette.Input{Label: "Pane name"},
 			Run: func(ctx context.Context, e palette.Exec) error {
@@ -314,7 +314,7 @@ func herdrEntries() []palette.Entry {
 		{
 			ID:      "herdr:pane.close",
 			Binding: "close_pane",
-			Title:   "close pane",
+			Title:   "Close Pane",
 			Confirm: true,
 			Type:    groupHerdr,
 			Run: func(ctx context.Context, e palette.Exec) error {
@@ -329,7 +329,7 @@ func herdrEntries() []palette.Entry {
 		{
 			ID:      "herdr:pane.edit_scrollback",
 			Binding: "edit_scrollback",
-			Title:   "edit pane scrollback",
+			Title:   "Edit Pane Scrollback",
 			Type:    groupHerdr,
 			Run: func(ctx context.Context, e palette.Exec) error {
 				id, err := need(e.Ctx.FocusedPaneID, errNoPane)
@@ -342,7 +342,7 @@ func herdrEntries() []palette.Entry {
 		},
 		{
 			ID:    "herdr:pane.move",
-			Title: "move pane to another tab or workspace",
+			Title: "Move Pane to Another Tab or Workspace",
 			Type:  groupHerdr,
 			Choices: &palette.Choices{
 				Label: "Where to move the pane",
@@ -374,7 +374,7 @@ func herdrEntries() []palette.Entry {
 
 		{
 			ID:    "herdr:pane.swap",
-			Title: "swap pane with another in the tab",
+			Title: "Swap Pane with Another in the Tab",
 			Type:  groupHerdr,
 			Choices: &palette.Choices{
 				Label: "Pane to swap with",
@@ -414,7 +414,7 @@ func herdrEntries() []palette.Entry {
 
 		{
 			ID:    "herdr:agent.rename",
-			Title: "rename the focused agent",
+			Title: "Rename the Focused Agent",
 			Type:  groupHerdr,
 			Input: &palette.Input{
 				Label:   "Agent name",
@@ -438,7 +438,7 @@ func herdrEntries() []palette.Entry {
 
 		{
 			ID:    "herdr:config.edit",
-			Title: "edit herdr config",
+			Title: "Edit Herdr Config",
 			Type:  groupHerdr,
 			// herdr reads config.toml and offers nothing over the API to show
 			// or change it, so the palette opens the same file it reads the
@@ -450,7 +450,7 @@ func herdrEntries() []palette.Entry {
 		{
 			ID:      "herdr:server.reload_config",
 			Binding: "reload_config",
-			Title:   "reload config",
+			Title:   "Reload Config",
 			Type:    groupHerdr,
 			Run: func(ctx context.Context, e palette.Exec) error {
 				_, err := e.Client.ServerReloadConfig(ctx)
@@ -632,8 +632,8 @@ func moveTargets(ctx context.Context, e palette.Exec) ([]palette.Choice, error) 
 
 	choices := make([]palette.Choice, 0, len(snapshot.Snapshot.Tabs)+2)
 	choices = append(choices,
-		palette.Choice{Value: toNewTab, Title: "a new tab", Detail: workspaces[herdr.Value(e.Ctx.WorkspaceID)]},
-		palette.Choice{Value: toNewWorkspace, Title: "a new workspace"},
+		palette.Choice{Value: toNewTab, Title: "A New Tab", Detail: workspaces[herdr.Value(e.Ctx.WorkspaceID)]},
+		palette.Choice{Value: toNewWorkspace, Title: "A New Workspace"},
 	)
 	for _, tab := range snapshot.Snapshot.Tabs {
 		if tab.TabID == herdr.Value(e.Ctx.TabID) {

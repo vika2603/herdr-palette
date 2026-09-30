@@ -573,7 +573,7 @@ func TestRebuildingWhatIsOpenKeepsTheSelection(t *testing.T) {
 		palette.List{
 			Commands: testEntries(&ran),
 			Session: palette.Session{Entries: []palette.Entry{
-				{ID: "pane:w1:p1", Title: "go to shell", Type: "Agent", Kind: palette.KindAgent, Detail: "claude · idle"},
+				{ID: "pane:w1:p1", Title: "Go To shell", Type: "Agent", Kind: palette.KindAgent, Detail: "claude · idle"},
 			}},
 		},
 		nil,
@@ -587,8 +587,8 @@ func TestRebuildingWhatIsOpenKeepsTheSelection(t *testing.T) {
 		t.Fatalf("the query matched %d rows, want the agent", len(m.ranked))
 	}
 	m.setOpen(palette.Session{Entries: []palette.Entry{
-		{ID: "pane:w1:p2", Title: "go to nvim", Type: "Pane", Kind: palette.KindPane, Detail: "palette"},
-		{ID: "pane:w1:p1", Title: "go to shell", Type: "Agent", Kind: palette.KindAgent, Detail: "claude · working"},
+		{ID: "pane:w1:p2", Title: "Go To nvim", Type: "Pane", Kind: palette.KindPane, Detail: "palette"},
+		{ID: "pane:w1:p1", Title: "Go To shell", Type: "Agent", Kind: palette.KindAgent, Detail: "claude · working"},
 	}})
 
 	if len(m.ranked) != 2 {
@@ -981,10 +981,10 @@ func mixedModel(t *testing.T) model {
 		palette.List{
 			Commands: commands,
 			Session: palette.Session{Entries: []palette.Entry{
-				{ID: "pane:p1", Title: "go to shell", Type: "Agent", Kind: palette.KindAgent, Detail: "claude · working"},
-				{ID: "pane:p2", Title: "go to git jump", Type: "Pane", Kind: palette.KindPane, Detail: "palette"},
-				{ID: "tab:t2", Title: "go to 2", Type: "Tab", Kind: palette.KindTab},
-				{ID: "workspace:w2", Title: "go to docs", Type: "Workspace", Kind: palette.KindWorkspace},
+				{ID: "pane:p1", Title: "Go To shell", Type: "Agent", Kind: palette.KindAgent, Detail: "claude · working"},
+				{ID: "pane:p2", Title: "Go To git jump", Type: "Pane", Kind: palette.KindPane, Detail: "palette"},
+				{ID: "tab:t2", Title: "Go To 2", Type: "Tab", Kind: palette.KindTab},
+				{ID: "workspace:w2", Title: "Go To docs", Type: "Workspace", Kind: palette.KindWorkspace},
 			}},
 		},
 		nil,
@@ -1306,7 +1306,7 @@ func questionModel(t *testing.T, open []palette.Entry) model {
 // The session keeps the list current while a question is up: a row the palette
 // still offers after a rebuild is one it can still act on.
 func TestARebuildKeepsAQuestionWhoseRowSurvives(t *testing.T) {
-	m := questionModel(t, []palette.Entry{confirmable("pane:p1", "go to shell")})
+	m := questionModel(t, []palette.Entry{confirmable("pane:p1", "Go To shell")})
 	m = typeQuery(t, m, "shell")
 
 	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyEnter})
@@ -1317,8 +1317,8 @@ func TestARebuildKeepsAQuestionWhoseRowSurvives(t *testing.T) {
 	// The second pane matches the query too, so the rows it is ranked into say
 	// whether the rebuild reached the list at all.
 	m.setOpen(palette.Session{Entries: []palette.Entry{
-		confirmable("pane:p1", "go to shell"),
-		{ID: "pane:p2", Title: "go to another shell", Type: "Pane", Kind: palette.KindPane},
+		confirmable("pane:p1", "Go To shell"),
+		{ID: "pane:p2", Title: "Go To another shell", Type: "Pane", Kind: palette.KindPane},
 	}})
 	if m.confirming == nil {
 		t.Error("the question went away although the row it names is still on show")
@@ -1342,7 +1342,7 @@ func ids(ranked []palette.Ranked) []string {
 // A pane that closes under the question takes the question with it, rather
 // than leaving it standing over whatever row the selection landed on.
 func TestAQuestionGoesWithTheRowItNames(t *testing.T) {
-	m := questionModel(t, []palette.Entry{confirmable("pane:p1", "go to shell")})
+	m := questionModel(t, []palette.Entry{confirmable("pane:p1", "Go To shell")})
 	m = typeQuery(t, m, "shell")
 
 	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyEnter})

@@ -11,8 +11,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"unicode/utf16"
+
+	"github.com/vika2603/herdr-client/plugin/manifest"
 
 	"github.com/vika2603/herdr-palette/internal/keys"
 )
@@ -24,8 +27,11 @@ const ScriptEnv = "HERDR_PALETTE_SCRIPT"
 const scriptHeaderLimit = 4 * 1024
 
 type scriptMetadata struct {
-	title string
-	mode  string
+	title     string
+	mode      string
+	width     manifest.PopupSize
+	height    manifest.PopupSize
+	arguments []Argument
 }
 
 // ScriptEntries reads the configured directories of user scripts. Discovery
@@ -140,10 +146,13 @@ func scriptDirectory(own, dir string, seen map[string]bool) ([]Entry, error) {
 			meta.title = strings.TrimSuffix(file.Name(), filepath.Ext(file.Name()))
 		}
 		entry := entryFor(own, configured{
-			id:     "script:" + path,
-			title:  meta.title,
-			script: path,
-			window: herdrWindow(meta.mode),
+			id:        "script:" + path,
+			title:     meta.title,
+			script:    path,
+			window:    herdrWindow(meta.mode),
+			width:     meta.width,
+			height:    meta.height,
+			arguments: meta.arguments,
 		})
 		entry.Description = path
 		entry.Search = path
@@ -231,12 +240,13 @@ func powerShellHeader(data []byte) ([]byte, error) {
 func parseScriptHeader(data []byte, batch, truncated bool) (scriptMetadata, error) {
 	meta := scriptMetadata{mode: keys.TypeShell}
 	seen := make(map[string]bool)
+	var numbered [maxArguments]*Argument
 	lines := strings.Split(strings.TrimPrefix(string(data), "\ufeff"), "\n")
 	for i, line := range lines {
 		line = strings.TrimSpace(line)
 		comment, ok := scriptComment(line, batch)
 		if line != "" && !ok {
-			return meta, nil
+			break
 		}
 		if i == len(lines)-1 && truncated {
 			return meta, fmt.Errorf("script header exceeds %d bytes", scriptHeaderLimit)
@@ -266,11 +276,57 @@ func parseScriptHeader(data []byte, batch, truncated bool) (scriptMetadata, erro
 			default:
 				return meta, fmt.Errorf("unknown script mode %q (use shell, pane or popup)", value)
 			}
+		case "width", "height":
+			size, err := popupSize(value)
+			if err != nil {
+				return meta, fmt.Errorf("@palette.%s: %w", key, err)
+			}
+			if key == "width" {
+				meta.width = size
+			} else {
+				meta.height = size
+			}
 		default:
-			return meta, fmt.Errorf("unknown script field @palette.%s", key)
+			n, err := strconv.Atoi(strings.TrimPrefix(key, "argument"))
+			if err != nil || key != "argument"+strconv.Itoa(n) || n < 1 || n > maxArguments {
+				return meta, fmt.Errorf("unknown script field @palette.%s", key)
+			}
+			argument, err := parseArgument(value)
+			if err != nil {
+				return meta, fmt.Errorf("@palette.%s: %w", key, err)
+			}
+			numbered[n-1] = &argument
 		}
 	}
-	return meta, nil
+	// Only a popup has a size of its own: a pane takes over the layout and a
+	// shell command has no window at all.
+	if (seen["width"] || seen["height"]) && meta.mode != keys.TypePopup {
+		return meta, errors.New("@palette.width and @palette.height need @palette.mode popup")
+	}
+	arguments, err := declaredArguments(numbered)
+	meta.arguments = arguments
+	return meta, err
+}
+
+// popupSize reads a size the way [[keys.command]] spells one: a cell count,
+// or a percentage of the pane area.
+func popupSize(value string) (manifest.PopupSize, error) {
+	var size manifest.PopupSize
+	var raw any = value
+	if !strings.HasSuffix(value, "%") {
+		cells, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return size, fmt.Errorf("size %q must be a cell count like 30 or a percentage like 80%%", value)
+		}
+		raw = cells
+	}
+	if err := size.UnmarshalTOML(raw); err != nil {
+		return size, err
+	}
+	if size == (manifest.PopupSize{}) {
+		return size, errors.New("size must be at least one cell")
+	}
+	return size, nil
 }
 
 func scriptComment(line string, batch bool) (string, bool) {
@@ -287,9 +343,10 @@ func scriptComment(line string, batch bool) (string, bool) {
 }
 
 // ScriptCommand executes a script as a file, preserving its interpreter and
-// keeping the path out of shell source. It also rechecks files after discovery,
-// since the script may have been removed or replaced while the palette was up.
-func ScriptCommand(ctx context.Context, path string) (*exec.Cmd, error) {
+// keeping the path out of shell source, with args as its positional
+// arguments. It also rechecks files after discovery, since the script may
+// have been removed or replaced while the palette was up.
+func ScriptCommand(ctx context.Context, path string, args []string) (*exec.Cmd, error) {
 	if !filepath.IsAbs(path) {
 		return nil, fmt.Errorf("script path must be absolute: %q", path)
 	}
@@ -305,7 +362,7 @@ func ScriptCommand(ctx context.Context, path string) (*exec.Cmd, error) {
 	} else if !ok {
 		return nil, fmt.Errorf("script %s needs a shebang", path)
 	}
-	cmd := scriptCommand(ctx, path)
+	cmd := scriptCommand(ctx, path, args)
 	if cmd.Err != nil {
 		return nil, fmt.Errorf("script %s: %w", path, cmd.Err)
 	}

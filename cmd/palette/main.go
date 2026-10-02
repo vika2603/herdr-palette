@@ -5,7 +5,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 
@@ -168,8 +170,14 @@ func onRun(ctx context.Context, env *plugin.Env) error {
 
 	var cmd *exec.Cmd
 	if script != "" {
+		var args []string
+		if raw := os.Getenv(palette.ArgsEnv); raw != "" {
+			if err := json.Unmarshal([]byte(raw), &args); err != nil {
+				return fmt.Errorf("script arguments: %w", err)
+			}
+		}
 		var err error
-		cmd, err = palette.ScriptCommand(ctx, script)
+		cmd, err = palette.ScriptCommand(ctx, script, args)
 		if err != nil {
 			return err
 		}

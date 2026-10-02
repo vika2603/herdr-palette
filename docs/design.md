@@ -435,6 +435,8 @@ Only the initial comments are read, up to 4 KiB of the original file. PowerShell
 headers with a UTF-16 byte-order mark are decoded before reading metadata;
 execution still uses the original file. `@palette.title` names the
 row and `@palette.mode` selects the existing `shell`, `pane` or `popup` behavior.
+`@palette.width` and `@palette.height` size a popup script as
+`[[keys.command]]` sizes a popup, and are an error in other modes.
 Without them the filename supplies the title and the mode is `shell`. Bad
 metadata leaves that script out and reports the filename alongside the valid
 list. A missing directory is empty, so installing the plugin needs no setup.
@@ -457,6 +459,14 @@ the path are not interpreted as shell source.
 Each command-list load scans the directories; typing only searches the in-memory
 entries. No watcher or persistent index needs to keep a cache in sync with the
 short-lived popup processes.
+
+## Script arguments
+
+Arguments take Raycast's fields plus `name`. While the script is selected, its
+fields follow the query on the query line, and their values are dropped once
+another row is selected. The values are passed as positional arguments and as
+`HP_` variables, on Windows as variables only, and reach the `run` pane in
+`HERDR_PALETTE_ARGS`.
 
 ## Picking a target from a list
 
@@ -662,9 +672,9 @@ names its own row, so following the pointer buys nothing. herdr captures the
 mouse for its own UI but forwards events to a pane app that asks for them, so
 the popup receives them.
 
-A click's row is `offset + Y - headerRows`, where `headerRows` is the query
-line and the rule under it. Two things have to hold for that to name the row
-under the pointer. No line the popup draws may wrap, or every row below the
+A click's row is `offset + Y - headerRows`, where `headerRows` is the blank
+line, the query line and the rule under it. Two things have to hold for that
+to name the row under the pointer. No line the popup draws may wrap, or every row below the
 wrap moves out from under the arithmetic. And `Y` has to fall inside the rows
 that were drawn: the rule under the list and the line below it are inside the
 popup as well, and the arithmetic alone reads them as the rows that would have

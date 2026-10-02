@@ -39,6 +39,12 @@ type styles struct {
 	// something that cannot be undone.
 	chip, chipDanger   lipgloss.Style
 	heavy, heavyDanger lipgloss.Style
+	// field is a script's argument on the query line, fieldEmpty one showing
+	// its placeholder, and fieldCap the rounded ends in the field's shade.
+	// option is a dropdown's option over the list, optionPicked the
+	// highlighted one, and optionMarker its bar.
+	field, fieldEmpty, fieldCap        lipgloss.Style
+	option, optionPicked, optionMarker lipgloss.Style
 }
 
 func newStyles(colours theme.Theme) styles {
@@ -78,6 +84,16 @@ func newStyles(colours theme.Theme) styles {
 		chipDanger:  chip(colours.Failure),
 		heavy:       fg(colours.Accent),
 		heavyDanger: fg(colours.Failure),
+
+		// A field takes the band's shade, which sets it apart from the query.
+		// The options take the rule's, so the menu stands apart from the
+		// selected row under it.
+		field:        band,
+		fieldEmpty:   band.Foreground(colours.Meta),
+		fieldCap:     fg(colours.Selected),
+		option:       lipgloss.NewStyle().Background(colours.Rule),
+		optionPicked: lipgloss.NewStyle().Background(colours.Rule).Foreground(colours.Accent).Bold(true),
+		optionMarker: lipgloss.NewStyle().Background(colours.Rule).Foreground(colours.Accent),
 	}
 }
 
@@ -131,12 +147,15 @@ func placeholder(scope palette.Scope) string {
 }
 
 const (
-	// chrome is the row budget the list does not get: the query line, the two
-	// rules, and the help line.
-	chrome = 4
+	// chrome is the row budget the list does not get: the query line and the
+	// line above it, the two rules, and the help line.
+	chrome = 5
 	// headerRows is how many lines precede the first line of the list: the
-	// query line and the rule under it. A click's row is counted from there.
-	headerRows = 2
+	// line above the query line, the query line, and the rule under it. A
+	// click's row is counted from there.
+	headerRows = 3
+	// queryRow is the line the query is typed on, under the blank line.
+	queryRow = 1
 	// margins includes the selection and its blank, the blank and origin
 	// marker at the right edge, and the scrollbar.
 	margins = 5
@@ -216,16 +235,16 @@ func (m model) rows() int {
 }
 
 func (m model) View() tea.View {
-	lines := []string{m.header(), m.topRule()}
+	lines := append(m.headerLines(), m.topRule())
 	lines = append(lines, m.body()...)
 	lines = append(lines, m.rule(), m.footer())
-	column := m.queryCursorColumn()
-	visible := m.replying == nil && m.confirming == nil && m.width > column && m.height >= len(lines)
+	column := m.line().cursor
+	visible := m.replying == nil && m.confirming == nil && column >= 0 && m.width > column && m.height >= len(lines)
 	view := tea.NewView(strings.Join(lines, "\n"))
 	view.MouseMode = tea.MouseModeCellMotion
 	view.BackgroundColor = m.backdrop
 	if visible {
-		view.Cursor = tea.NewCursor(column, 0)
+		view.Cursor = tea.NewCursor(column, queryRow)
 	}
 	return view
 }
@@ -257,27 +276,15 @@ func (m model) header() string {
 		name := strings.TrimPrefix(m.replying.Entry.Title, palette.GoTo)
 		return truncate(lead+m.styles.plain.text.Bold(true).Render(name), m.cols())
 	}
-	return truncate(lead+m.queryLine(max(m.cols()-m.queryLead(), 1)), m.cols())
+	// The text is drawn continuously; View.Cursor supplies the native cursor
+	// to the framework so input methods can locate the insertion point.
+	return truncate(lead+m.line().text, m.cols())
 }
 
-// queryLine draws text continuously. View.Cursor supplies the native cursor
-// to the framework so input methods can locate the insertion point.
-func (m model) queryLine(room int) string {
-	s := m.styles.plain
-	runes := []rune(m.query.Value())
-	if len(runes) == 0 {
-		return s.faint.Render(truncate(m.query.Placeholder, room))
-	}
-	at := min(max(m.query.Position(), 0), len(runes))
-	from, to := window(runes, at, room)
-	return s.text.Render(string(runes[from:to]))
-}
-
-func (m model) queryCursorColumn() int {
-	runes := []rune(m.query.Value())
-	at := min(max(m.query.Position(), 0), len(runes))
-	from, _ := window(runes, at, max(m.cols()-m.queryLead(), 1))
-	return m.queryLead() + lipgloss.Width(string(runes[from:at]))
+// headerLines are a blank line, which gives the query line room above it,
+// and the query line.
+func (m model) headerLines() []string {
+	return []string{strings.Repeat(" ", m.cols()), m.header()}
 }
 
 // window is the part of the query on show, which is all of it until it
@@ -295,25 +302,27 @@ func window(runes []rune, at, room int) (from, to int) {
 	return from, to
 }
 
-// topRule is the rule under the query line: heavier under the label, in its
-// colour, with how many agents are in each state at its end.
+// topRule is the rule under the query line: heavier under what has the keys,
+// the label or the field being typed into, in the label's colour, with how
+// many agents are in each state at its end.
 func (m model) topRule() string {
-	label, danger := m.mode()
+	_, danger := m.mode()
 	heavy := m.styles.heavy
 	if danger {
 		heavy = m.styles.heavyDanger
 	}
-	cols, chip := m.cols(), len(label)+2
-	if cols < 1+chip {
+	cols, mark := m.cols(), m.line().mark
+	if cols < mark.start+mark.width {
 		return m.styles.rule.Render(strings.Repeat("─", cols))
 	}
 
+	end := mark.start + mark.width
 	tail := ""
-	if summary := m.summary(cols - 1 - chip - minRuleRun); summary != "" {
+	if summary := m.summary(cols - end - minRuleRun); summary != "" {
 		tail = " " + summary + " " + m.styles.rule.Render("─")
 	}
-	run := cols - 1 - chip - lipgloss.Width(tail)
-	return m.styles.rule.Render("─") + heavy.Render(strings.Repeat("━", chip)) +
+	run := max(cols-end-lipgloss.Width(tail), 0)
+	return m.styles.rule.Render(strings.Repeat("─", mark.start)) + heavy.Render(strings.Repeat("━", mark.width)) +
 		m.styles.rule.Render(strings.Repeat("─", run)) + tail
 }
 
@@ -355,13 +364,13 @@ func (m model) body() []string {
 	list := m.listLines(m.listWidth())
 	width := m.previewWidth()
 	if width == 0 {
-		return list
+		return m.dropdown(list)
 	}
 	panel := m.previewLines(width, len(list))
 	for i := range list {
 		list[i] += panel[i]
 	}
-	return list
+	return m.dropdown(list)
 }
 
 func (m model) listLines(width int) []string {
@@ -778,6 +787,26 @@ func (m model) footer() string {
 		return m.spread(m.styles.plain.meta.Render(truncate(" keys go to "+name, max(m.cols()-lipgloss.Width(keys)-2, 1))), keys)
 	}
 
+	if m.inField() {
+		entry, _ := m.fielded()
+		focus := m.form().focus
+		hints := []hint{{spelling.name("enter"), "run"}}
+		if entry.Arguments[focus].Type == palette.ArgumentDropdown {
+			hints = append(hints, hint{"↑↓", "choose"})
+		}
+		if focus < len(entry.Arguments)-1 {
+			hints = append(hints, hint{spelling.name("tab"), "next"})
+		}
+		hints = append(hints, hint{spelling.name("shift+tab"), "previous"})
+		if m.cols() >= previewMinCols {
+			hints = append(hints, m.previewHint())
+		}
+		hints = append(hints, hint{spelling.name("esc"), "back"})
+		keys := m.fitHints(hints)
+		left := truncate(" "+entry.Name(), max(m.cols()-lipgloss.Width(keys)-2, 1))
+		return m.spread(m.styles.plain.meta.Render(left), keys)
+	}
+
 	left := m.selectedName()
 	act, back := hint{spelling.name("enter"), "run"}, hint{spelling.name("esc"), "close"}
 	var more []hint
@@ -791,6 +820,8 @@ func (m model) footer() string {
 	}
 	if scope, ok := m.completion(); ok {
 		more = append(more, hint{spelling.name("tab"), scope.Name})
+	} else if _, ok := m.fielded(); ok && !m.pending {
+		more = append(more, hint{spelling.name("tab"), "arguments"})
 	} else if m.choosing == nil && !m.pending && m.cursor < len(m.ranked) && canReply(m.ranked[m.cursor]) {
 		more = append(more, hint{spelling.name("tab"), "reply"})
 	}
@@ -798,11 +829,7 @@ func (m model) footer() string {
 		more = append(more, closeHint(m.ranked[m.cursor].Entry))
 	}
 	if m.cols() >= previewMinCols {
-		action := "show preview"
-		if m.previewEnabled {
-			action = "hide preview"
-		}
-		more = append(more, hint{spelling.name("ctrl+o"), action})
+		more = append(more, m.previewHint())
 	}
 	if m.scope != m.home {
 		back.does = "back"
@@ -824,6 +851,14 @@ func (m model) footer() string {
 	keys := m.fitHints(append(append([]hint{act}, more...), back))
 	left = truncate(left, max(m.cols()-lipgloss.Width(keys)-2, 1))
 	return m.spread(m.styles.plain.meta.Render(left), keys)
+}
+
+// previewHint names what ctrl+o does to the preview.
+func (m model) previewHint() hint {
+	if m.previewEnabled {
+		return hint{spelling.name("ctrl+o"), "hide preview"}
+	}
+	return hint{spelling.name("ctrl+o"), "show preview"}
 }
 
 // fitHints is as many of the hints as leave the left of the footer room.

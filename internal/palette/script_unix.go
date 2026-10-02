@@ -7,6 +7,6 @@ import (
 	"os/exec"
 )
 
-func scriptCommand(ctx context.Context, path string) *exec.Cmd {
-	return exec.CommandContext(ctx, path)
+func scriptCommand(ctx context.Context, path string, args []string) *exec.Cmd {
+	return exec.CommandContext(ctx, path, args...)
 }

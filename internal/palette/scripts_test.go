@@ -451,7 +451,7 @@ func TestScriptCommandRunsTheScriptDirectly(t *testing.T) {
 	}
 	dir := t.TempDir()
 	path := writePaletteScript(t, dir, "it's $here.sh", "#!/bin/sh\nprintf 'ran'\n")
-	cmd, err := ScriptCommand(context.Background(), path)
+	cmd, err := ScriptCommand(context.Background(), path, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -467,7 +467,7 @@ func TestWindowsPowerShellScriptCanReadTerminalInput(t *testing.T) {
 	}
 	dir := t.TempDir()
 	path := writePaletteScript(t, dir, "ask me.ps1", "Write-Output (Read-Host 'Prompt')\n")
-	cmd, err := ScriptCommand(context.Background(), path)
+	cmd, err := ScriptCommand(context.Background(), path, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -489,7 +489,7 @@ func TestWindowsBatchScriptLaunchesFromAPathWithShellCharacters(t *testing.T) {
 	if entry.Title != "Batch tool" {
 		t.Errorf("batch title = %q, want metadata from REM comment", entry.Title)
 	}
-	cmd, err := ScriptCommand(context.Background(), path)
+	cmd, err := ScriptCommand(context.Background(), path, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

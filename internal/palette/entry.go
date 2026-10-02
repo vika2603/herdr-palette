@@ -22,7 +22,9 @@ type Exec struct {
 	// Chosen is the target picked from the entry's list, empty for an entry
 	// that has none. It is separate from Input so an entry can ask for both.
 	Chosen string
-	Env    *plugin.Env
+	// Args are the values entered for the entry's Arguments, in order.
+	Args []string
+	Env  *plugin.Env
 }
 
 // Input describes the second step of an entry that cannot run on its own,
@@ -57,7 +59,12 @@ type Entry struct {
 	// Chosen is the value a row picked from that list carries: the palette
 	// runs the entry with it, and a handover writes it down beside the input.
 	Chosen string
-	Run    func(context.Context, Exec) error
+	// Arguments are what a script asks for before it runs, filled in on the
+	// query line while its row is selected, and Args the values entered for
+	// them, which the palette runs the entry with.
+	Arguments []Argument
+	Args      []string
+	Run       func(context.Context, Exec) error
 	// Close closes what a row that goes somewhere goes to, so it can be
 	// closed from the list without going there first. Nil on every other row.
 	Close func(context.Context, Exec) error

@@ -97,7 +97,7 @@ func TestAHeadingIsNotARow(t *testing.T) {
 }
 
 func TestMovingOntoAGroupBringsItsHeading(t *testing.T) {
-	m := sessionModel(t, testEnv(t), nil, 72, 7)
+	m := sessionModel(t, testEnv(t), nil, 72, 8)
 	rows := m.rows()
 
 	// Down to the end and back to the top, which a window this short has to
@@ -420,8 +420,8 @@ func TestTheNativeCursorTracksTheInsertionPoint(t *testing.T) {
 	if got := ansi.Strip(m.header()); !strings.Contains(got, searchPlaceholder) || strings.Contains(got, "\u258f") {
 		t.Errorf("header = %q, want placeholder text without a painted cursor", got)
 	}
-	if cursor := m.View().Cursor; cursor == nil || cursor.X != 11 || cursor.Y != 0 || cursor.Shape != tea.CursorBlock || !cursor.Blink {
-		t.Errorf("empty query cursor = %+v, want a blinking block at (11, 0)", cursor)
+	if cursor := m.View().Cursor; cursor == nil || cursor.X != 11 || cursor.Y != queryRow || cursor.Shape != tea.CursorBlock || !cursor.Blink {
+		t.Errorf("empty query cursor = %+v, want a blinking block at (11, queryRow)", cursor)
 	}
 
 	m = typeQuery(t, m, "split")
@@ -430,8 +430,8 @@ func TestTheNativeCursorTracksTheInsertionPoint(t *testing.T) {
 	if got := ansi.Strip(m.header()); !strings.Contains(got, "split") {
 		t.Errorf("header = %q, want continuous text", got)
 	}
-	if cursor := m.View().Cursor; cursor == nil || cursor.X != 14 || cursor.Y != 0 || cursor.Shape != tea.CursorBlock || !cursor.Blink {
-		t.Errorf("query cursor = %+v, want a blinking block after spl at (14, 0)", cursor)
+	if cursor := m.View().Cursor; cursor == nil || cursor.X != 14 || cursor.Y != queryRow || cursor.Shape != tea.CursorBlock || !cursor.Blink {
+		t.Errorf("query cursor = %+v, want a blinking block after spl at (14, queryRow)", cursor)
 	}
 	profile := lipgloss.ColorProfile()
 	lipgloss.SetColorProfile(termenv.TrueColor)
@@ -461,12 +461,12 @@ func TestALongQueryKeepsTheCaretOnShow(t *testing.T) {
 
 func TestTheNativeCursorUsesCellWidthForCJKInput(t *testing.T) {
 	m := typeQuery(t, sessionModel(t, testEnv(t), nil, 72, 12), "宽a")
-	if cursor := m.View().Cursor; cursor == nil || cursor.X != 14 || cursor.Y != 0 {
-		t.Errorf("cursor after wide character and ASCII = %+v, want (14, 0)", cursor)
+	if cursor := m.View().Cursor; cursor == nil || cursor.X != 14 || cursor.Y != queryRow {
+		t.Errorf("cursor after wide character and ASCII = %+v, want (14, queryRow)", cursor)
 	}
 	m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyLeft})
-	if cursor := m.View().Cursor; cursor == nil || cursor.X != 13 || cursor.Y != 0 {
-		t.Errorf("cursor after wide character = %+v, want (13, 0)", cursor)
+	if cursor := m.View().Cursor; cursor == nil || cursor.X != 13 || cursor.Y != queryRow {
+		t.Errorf("cursor after wide character = %+v, want (13, queryRow)", cursor)
 	}
 }
 

@@ -2,6 +2,7 @@ package palette
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -25,14 +26,15 @@ const (
 // window runs it detached, with nothing to show and nowhere for its output to
 // go.
 type configured struct {
-	id     string
-	title  string
-	key    string
-	line   string
-	script string
-	window herdr.PluginPanePlacement
-	width  manifest.PopupSize
-	height manifest.PopupSize
+	id        string
+	title     string
+	key       string
+	line      string
+	script    string
+	window    herdr.PluginPanePlacement
+	width     manifest.PopupSize
+	height    manifest.PopupSize
+	arguments []Argument
 }
 
 // customEntries turns herdr's [[keys.command]] entries into rows.
@@ -63,6 +65,7 @@ func entryFor(own string, command configured) Entry {
 		Kind:        KindCustom,
 		Key:         command.key,
 		Description: command.line,
+		Arguments:   command.arguments,
 		Run:         run(own, command),
 	}
 }
@@ -101,6 +104,7 @@ func herdrWindow(commandType string) herdr.PluginPanePlacement {
 func run(own string, command configured) func(context.Context, Exec) error {
 	return func(ctx context.Context, e Exec) error {
 		var script *exec.Cmd
+		values := argumentValues(command.arguments, e.Args)
 		if command.script != "" {
 			if e.Ctx == nil || herdr.Value(e.Ctx.FocusedPaneCwd) == "" {
 				return fmt.Errorf("%s: the focused pane has no working directory", command.title)
@@ -118,12 +122,15 @@ func run(own string, command configured) func(context.Context, Exec) error {
 			// A detached script outlives the action that starts it. Construct
 			// it before opening a pane too, so a removed or invalid script
 			// fails while the caller can still report the reason.
-			script, err = ScriptCommand(context.Background(), command.script)
+			script, err = ScriptCommand(context.Background(), command.script, values)
 			if err != nil {
 				return err
 			}
 		}
 		active := activeEnv(e.Ctx)
+		for i, argument := range command.arguments {
+			active[argument.Env] = values[i]
+		}
 		if command.window == "" {
 			if script != nil {
 				return startCommandDetached(script, *e.Ctx.FocusedPaneCwd, active)
@@ -131,9 +138,17 @@ func run(own string, command configured) func(context.Context, Exec) error {
 			return startDetached(command.line, herdr.Value(e.Ctx.FocusedPaneCwd), active)
 		}
 
-		// Set both variables so an inherited run-pane environment cannot
-		// select a different command type in the new pane.
-		env := map[string]string{RunEnv: command.line, ScriptEnv: command.script}
+		// Set all three variables so an inherited run-pane environment cannot
+		// select a different command type, or arguments, in the new pane.
+		args := ""
+		if len(values) > 0 {
+			encoded, err := json.Marshal(values)
+			if err != nil {
+				return err
+			}
+			args = string(encoded)
+		}
+		env := map[string]string{RunEnv: command.line, ScriptEnv: command.script, ArgsEnv: args}
 		for name, value := range active {
 			env[name] = value
 		}

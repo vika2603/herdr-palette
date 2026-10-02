@@ -83,7 +83,7 @@ and appear in the footer for the selected row.
 | `enter` | run the selection |
 | `up` / `down`, `ctrl+p` / `ctrl+n` | move the selection |
 | `pgup` / `pgdown` | move a page |
-| `tab` | list only the scope the query starts the name of; otherwise answer the selected agent when it is blocked, and `esc` gives the keyboard back |
+| `tab` | list only the scope the query starts the name of; otherwise move into the fields of a script that takes arguments, or answer the selected agent when it is blocked, and `esc` gives the keyboard back |
 | `ctrl+x` | close the selected pane, tab or workspace without going there |
 | `ctrl+o` | hide or show the side preview on a wide popup |
 | `ctrl+u` | clear the query |
@@ -159,9 +159,30 @@ terminal output; `pane` opens a temporary full-screen pane and `popup` opens a
 floating terminal. The terminal closes when the script exits. For an external
 editor, a script containing a shebang followed by `zed .` needs no metadata.
 
+A `popup` script can set `@palette.width` and `@palette.height`, as a cell
+count (`30`) or a percentage (`80%`).
+
 Scripts run in the directory of the pane you opened the palette from, with
 `HERDR_ACTIVE_WORKSPACE_ID`, `HERDR_ACTIVE_TAB_ID`, `HERDR_ACTIVE_PANE_ID` and
 `HERDR_ACTIVE_PANE_CWD` available when herdr supplies them.
+
+### Arguments
+
+A script can ask for up to three values, each declared on one line:
+
+```sh
+# @palette.argument1 { "name": "branch", "type": "text" }
+# @palette.argument2 { "name": "env", "type": "dropdown", "data": [{ "title": "Staging", "value": "staging" }, { "title": "Production", "value": "production" }] }
+# @palette.argument3 { "name": "token", "type": "password", "optional": true }
+```
+
+`name` and `type` (`text`, `password` or `dropdown`) are required;
+`placeholder`, `optional`, `percentEncoded` and `data` work as in Raycast
+script commands. When the script is selected its fields follow the query:
+`tab` moves through them and `enter` runs it. The script gets the values as
+`$1` to `$3` and as `HP_` plus the name in capitals (`HP_BRANCH`); on Windows
+only as the latter. A password is passed in clear text. The fields' rounded
+ends are Nerd Font glyphs.
 
 On Windows, use `.ps1`, `.cmd` or `.bat`. PowerShell scripts use the same `#`
 comments; batch scripts use `REM @palette.title ...` and `REM @palette.mode ...`

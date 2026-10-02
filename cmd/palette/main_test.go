@@ -102,3 +102,25 @@ func TestRunPaneExecutesTheScriptFile(t *testing.T) {
 		t.Fatalf("script output = %q, %v", data, err)
 	}
 }
+
+func TestRunPanePassesTheArgumentsOn(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows scripts read their arguments from the environment only")
+	}
+	dir, cwd := t.TempDir(), t.TempDir()
+	path := filepath.Join(dir, "args.sh")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nprintf '%s|' \"$#\" \"$1\" \"$2\" > observed\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(cwd)
+	t.Setenv(palette.RunEnv, "")
+	t.Setenv(palette.ScriptEnv, path)
+	t.Setenv(palette.ArgsEnv, `["two words",""]`)
+	if err := onRun(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(cwd, "observed"))
+	if err != nil || string(data) != "2|two words||" {
+		t.Fatalf("script output = %q, %v, want both arguments in place", data, err)
+	}
+}

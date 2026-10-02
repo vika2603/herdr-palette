@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"time"
 
@@ -219,6 +220,16 @@ func (m model) card(ranked palette.Ranked, width int) []string {
 		field("detail", ranked.Detail, s.text)
 	}
 	field("key", entry.Key, s.text)
+	// What the script will receive, as it is entered, by position: the name
+	// stands in, faint, for a value not entered yet.
+	for i, argument := range entry.Arguments {
+		label := "$" + strconv.Itoa(i+1)
+		if value := m.passed(entry, i); value != "" {
+			field(label, value, s.text)
+		} else {
+			field(label, argument.Name, s.faint)
+		}
+	}
 	if entry.Input != nil {
 		field("asks for", entry.Input.Label, s.text)
 	}

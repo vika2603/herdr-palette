@@ -33,8 +33,9 @@ type Pending struct {
 	EntryID string `json:"entry_id"`
 	Input   string `json:"input"`
 	// Chosen is the target picked before the popup closed, which outlives the
-	// list it was picked from.
+	// list it was picked from, and Args the values entered for a script.
 	Chosen  string                         `json:"chosen,omitempty"`
+	Args    []string                       `json:"args,omitempty"`
 	Context *herdr.PluginInvocationContext `json:"context"`
 	// PID is the process holding the popup. herdr closes a popup pane when
 	// the process in it exits.
@@ -59,12 +60,14 @@ type Prompt struct {
 // popup, so the palette writes down what to run, asks for that entrypoint, and
 // quits.
 //
-// A row picked from an entry's list of targets carries what was picked, which
-// travels with it: the list is gone by the time the entry runs.
+// A row picked from an entry's list of targets carries what was picked, and a
+// script the values entered for it, which travel with it: the list and the
+// fields are gone by the time the entry runs.
 func Relay(ctx context.Context, client *herdr.Client, env *plugin.Env, entry Entry, invocation *herdr.PluginInvocationContext) error {
 	return handOver(ctx, client, env, Pending{
 		EntryID: entry.ID,
 		Chosen:  entry.Chosen,
+		Args:    entry.Args,
 		Context: invocation,
 	})
 }
@@ -169,6 +172,7 @@ func RunPending(ctx context.Context, env *plugin.Env, entries []Entry, pending P
 			Ctx:    pending.Context,
 			Input:  pending.Input,
 			Chosen: pending.Chosen,
+			Args:   pending.Args,
 			Env:    env,
 		})
 		if err != nil {

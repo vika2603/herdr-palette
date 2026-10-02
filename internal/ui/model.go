@@ -75,6 +75,9 @@ type model struct {
 	choosing   *chooser
 	confirming *palette.Entry
 	closing    bool
+	// args is what has been entered for the arguments of a script, which
+	// belongs to the row it was entered for.
+	args *argForm
 	// replying is the blocked agent the keyboard has been handed to, whose
 	// screen stands in the list's place until esc gives it back.
 	replying *palette.Ranked
@@ -217,6 +220,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !ok {
 		return next, cmd
 	}
+	// What was entered for a script's arguments belongs to its row: once
+	// another row is selected it is dropped, and coming back starts over.
+	if updated.args != nil && updated.form() == nil {
+		updated.args = nil
+	}
 	if after := updated.previewTarget(); after != target {
 		updated.previewSeq++
 		if after != "" {
@@ -352,6 +360,12 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.confirming = nil
 			return m, nil
 		}
+		if m.inField() {
+			if entry, _ := m.fielded(); entry.Arguments[m.args.focus].Type == palette.ArgumentDropdown {
+				return m, nil
+			}
+			return m.editField(m.args.clone(), msg)
+		}
 		return m.editQuery(msg)
 
 	case tea.MouseClickMsg:
@@ -373,6 +387,13 @@ func (m model) mouse(msg tea.Mouse) (tea.Model, tea.Cmd) {
 	// The agent's screen is not a list, and a click is not an answer to it.
 	if m.replying != nil {
 		return m, nil
+	}
+	// The pointer is on the list, so the keys go back to the query that
+	// filters it.
+	if m.inField() {
+		f := m.args.clone()
+		f.focus = -1
+		m.args = f
 	}
 	switch msg.Button {
 	case tea.MouseWheelUp:
@@ -456,17 +477,13 @@ func (m model) keyList(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	if m.inField() {
+		return m.keyField(msg)
+	}
 
 	switch msg.String() {
 	case "ctrl+o":
-		if m.cols() < previewMinCols {
-			m.notice = "widen the palette to show a preview"
-			return m, nil
-		}
-		m.previewEnabled = !m.previewEnabled
-		m.preview = preview{}
-		m.failure, m.notice = "", ""
-		return m, nil
+		return m.togglePreview()
 	case "esc":
 		// A list of targets or a scope is a step inside the palette, so esc
 		// goes back to the commands rather than closing the popup.
@@ -495,13 +512,18 @@ func (m model) keyList(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.choose()
 	case "tab":
 		// A query that starts the name of a scope completes to it. Otherwise,
-		// on an agent that is waiting, tab moves the keyboard over to the
+		// on a script that asks for arguments, tab moves into its first field,
+		// and on an agent that is waiting it moves the keyboard over to the
 		// agent. Elsewhere it types nothing and does nothing.
 		//
 		// Not while a command is out: its answer would close the popup or
 		// put a list up under the agent's screen.
 		if scope, ok := m.completion(); ok {
 			m.enter(scope)
+			return m, nil
+		}
+		if entry, ok := m.fielded(); ok && !m.pending {
+			m.focusField(entry, 0)
 			return m, nil
 		}
 		if m.choosing == nil && !m.pending && m.cursor < len(m.ranked) && canReply(m.ranked[m.cursor]) {
@@ -530,6 +552,18 @@ func (m model) keyList(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m.editQuery(msg)
 }
 
+// togglePreview hides or shows the preview beside the list.
+func (m model) togglePreview() (tea.Model, tea.Cmd) {
+	if m.cols() < previewMinCols {
+		m.notice = "widen the palette to show a preview"
+		return m, nil
+	}
+	m.previewEnabled = !m.previewEnabled
+	m.preview = preview{}
+	m.failure, m.notice = "", ""
+	return m, nil
+}
+
 func (m model) editQuery(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	before := m.query.Value()
@@ -555,6 +589,12 @@ func (m model) choose() (tea.Model, tea.Cmd) {
 	if entry.Scope.Name != "" {
 		m.enter(entry.Scope)
 		return m, nil
+	}
+	if len(entry.Arguments) > 0 {
+		var ok bool
+		if entry, ok = m.filled(entry); !ok {
+			return m, nil
+		}
 	}
 	// The list an entry picks its target from is not itself the act, so the
 	// question waits until there is something to ask about.
@@ -646,7 +686,7 @@ func (m model) execute(entry palette.Entry) error {
 		return relay()
 	}
 
-	err := entry.Run(m.ctx, palette.Exec{Client: client, Ctx: m.invocation, Chosen: entry.Chosen, Env: m.env})
+	err := entry.Run(m.ctx, palette.Exec{Client: client, Ctx: m.invocation, Chosen: entry.Chosen, Args: entry.Args, Env: m.env})
 	if herdr.IsCode(err, herdr.ErrCodeUIBusy) {
 		return relay()
 	}

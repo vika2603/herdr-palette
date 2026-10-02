@@ -8,6 +8,9 @@
 package theme
 
 import (
+	"image/color"
+
+	lipgloss2 "charm.land/lipgloss/v2"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -49,6 +52,36 @@ type Theme struct {
 	// an agent is doing, by herdr's names for it. A state with no colour of
 	// its own is drawn in Meta.
 	Status map[string]lipgloss.TerminalColor
+	// Background is what the popup is laid on when the configuration names
+	// it; otherwise Backdrop derives it from the terminal's background.
+	Background color.Color
+}
+
+// How much a derived background darkens the terminal's. Darkening rather than
+// lightening keeps the selected row's band and the rule, shades just lighter
+// than a dark terminal's background, visible on it. The same share of white is
+// a far larger step, so a light background is darkened less.
+const (
+	darkenDark  = 0.2
+	darkenLight = 0.04
+)
+
+// Backdrop is the background the popup sets, given the terminal's: the
+// configured one, or the terminal's own darkened so the popup stands apart
+// from the panes it covers. herdr draws a pane background equal to the
+// terminal's as the terminal's own, so a black one, which cannot be darkened,
+// needs a configured background.
+func (t Theme) Backdrop(terminal color.Color, dark bool) color.Color {
+	if t.Background != nil {
+		return t.Background
+	}
+	if terminal == nil {
+		return nil
+	}
+	if dark {
+		return lipgloss2.Darken(terminal, darkenDark)
+	}
+	return lipgloss2.Darken(terminal, darkenLight)
 }
 
 // Defaults is the scheme used when the configuration names none.
@@ -148,6 +181,11 @@ func applyPlugin(theme *Theme, own Custom) bool {
 	set(&theme.Faint, own.Colours["faint"])
 	set(&theme.Scrollbar, own.Colours["scrollbar"])
 	set(&theme.Failure, own.Colours["failure"])
+	// lipgloss reads a value it cannot parse as no colour, which the terminal
+	// would be told is black, so such a value leaves the background derived.
+	if background := lipgloss2.Color(own.Colours["background"]); background != (lipgloss2.NoColor{}) {
+		theme.Background = background
+	}
 	for status, colour := range own.Status {
 		if colour == "" {
 			continue

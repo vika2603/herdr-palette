@@ -571,6 +571,25 @@ The defaults are ANSI indexes, which follow the terminal, except the rule and
 the selected row: both need a shade just off the terminal's background, which
 the ANSI palette has no index for, so they are adaptive hex values.
 
+The popup's background is set through `View.BackgroundColor`, which Bubble Tea
+writes as the terminal's default background (OSC 11) and resets on exit. herdr
+draws a pane's default background in the colour the pane set, except when it
+equals the host terminal's, which it draws as the host's own default, with any
+transparency the host applies to that. The popup's background therefore has to
+differ from the terminal's to show at all. Without a configured `background`
+it is derived from the colour `BackgroundColorMsg` reports with lipgloss's
+`Darken`: by 20% on a dark terminal, and less on a light one, where the same
+share of white is a far larger step. Darkening rather than lightening keeps the
+selected row's band and the rules, chosen as shades just lighter than a dark
+terminal's background, visible on it. It is set only once that answer has
+arrived: set earlier, the answer could report the popup's own colour. The
+adaptive colours then follow the popup's background rather than the
+terminal's, since a configured one can be light on a dark terminal.
+
+herdr fills the popup's border, and the column it keeps to the right of the
+pane, with its own `panel_bg`, which the API does not report. The popup does
+not try to match it; a configured `background` can.
+
 ## Reading herdr's configuration
 
 The key column, the configured commands and the theme tokens all come from

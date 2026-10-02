@@ -22,10 +22,13 @@ func configured(t *testing.T, content string) Settings {
 }
 
 func TestTheColoursReachTheTheme(t *testing.T) {
-	own := configured(t, "rule = \"#111111\"\n\n[status]\nworking = \"#fab387\"\n")
+	own := configured(t, "rule = \"#111111\"\nbackground = \"#181825\"\n\n[status]\nworking = \"#fab387\"\n")
 
 	if own.Theme.Colours["rule"] != "#111111" {
 		t.Errorf("rule = %q, want the configured colour", own.Theme.Colours["rule"])
+	}
+	if own.Theme.Colours["background"] != "#181825" {
+		t.Errorf("background = %q, want the configured colour", own.Theme.Colours["background"])
 	}
 	if own.Theme.Status["working"] != "#fab387" {
 		t.Errorf("working = %q, want the configured colour", own.Theme.Status["working"])

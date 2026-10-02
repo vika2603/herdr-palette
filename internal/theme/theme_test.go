@@ -1,6 +1,7 @@
 package theme
 
 import (
+	"image/color"
 	"reflect"
 	"testing"
 
@@ -116,4 +117,41 @@ func TestTheTerminalSchemeDrawsInTheTerminalsColours(t *testing.T) {
 	if !reflect.DeepEqual(Load(nil, Custom{Scheme: "no such scheme"}), Defaults()) {
 		t.Error("a scheme the palette does not know did not fall back to the default")
 	}
+}
+
+func TestTheBackgroundIsDerivedFromTheTerminals(t *testing.T) {
+	colours := Load(nil, Custom{})
+	for _, tc := range []struct {
+		terminal color.Color
+		dark     bool
+	}{
+		{color.RGBA{R: 0x1e, G: 0x1e, B: 0x2e, A: 0xff}, true},
+		{color.White, false},
+	} {
+		got := colours.Backdrop(tc.terminal, tc.dark)
+		if got == nil || brightness(got) >= brightness(tc.terminal) {
+			t.Errorf("backdrop for %v = %v, want a darker shade of it", tc.terminal, got)
+		}
+	}
+	if got := colours.Backdrop(nil, true); got != nil {
+		t.Errorf("backdrop with no terminal background = %v, want none", got)
+	}
+}
+
+func TestAConfiguredBackgroundReplacesTheDerivedOne(t *testing.T) {
+	colours := Load(nil, Custom{Colours: map[string]string{"background": "#f0f0f0"}})
+	r, g, b, _ := colours.Backdrop(color.Black, true).RGBA()
+	if r>>8 != 0xf0 || g>>8 != 0xf0 || b>>8 != 0xf0 {
+		t.Errorf("backdrop = %v, want the configured colour", colours.Backdrop(color.Black, true))
+	}
+
+	colours = Load(nil, Custom{Colours: map[string]string{"background": "blue"}})
+	if colours.Background != nil {
+		t.Errorf("background = %v, want an unreadable value to leave it derived", colours.Background)
+	}
+}
+
+func brightness(c color.Color) uint32 {
+	r, g, b, _ := c.RGBA()
+	return r + g + b
 }

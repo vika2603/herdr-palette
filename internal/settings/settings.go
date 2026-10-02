@@ -53,6 +53,7 @@ type file struct {
 	Faint              string            `toml:"faint"`
 	Scrollbar          string            `toml:"scrollbar"`
 	Failure            string            `toml:"failure"`
+	Background         string            `toml:"background"`
 	Status             map[string]string `toml:"status"`
 }
 
@@ -88,6 +89,7 @@ func Load(env *plugin.Env) Settings {
 				"faint":               parsed.Faint,
 				"scrollbar":           parsed.Scrollbar,
 				"failure":             parsed.Failure,
+				"background":          parsed.Background,
 			},
 			Status: parsed.Status,
 		},

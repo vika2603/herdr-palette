@@ -139,6 +139,34 @@ func TestFrameworkBackgroundResponsesDoNotChangeTheQuery(t *testing.T) {
 	}
 }
 
+func TestThePopupSetsItsBackgroundOnceTheTerminalHasAnswered(t *testing.T) {
+	previous := lipgloss.HasDarkBackground()
+	t.Cleanup(func() { lipgloss.SetHasDarkBackground(previous) })
+	terminal := color.RGBA{R: 0x1e, G: 0x1e, B: 0x2e, A: 0xff}
+
+	m := testModel(t, nil, nil)
+	if got := m.View().BackgroundColor; got != nil {
+		t.Errorf("background before the terminal answered = %v, want none", got)
+	}
+	m, _ = send(t, m, tea.BackgroundColorMsg{Color: terminal})
+	if got := m.View().BackgroundColor; got == nil || got == color.Color(terminal) {
+		t.Errorf("background = %v, want one set apart from the terminal's %v", got, terminal)
+	}
+}
+
+func TestTheColoursFollowAConfiguredBackground(t *testing.T) {
+	previous := lipgloss.HasDarkBackground()
+	t.Cleanup(func() { lipgloss.SetHasDarkBackground(previous) })
+	m := newModel(context.Background(), testEnv(t), &herdr.PluginInvocationContext{}, palette.List{}, nil,
+		theme.Load(nil, theme.Custom{Colours: map[string]string{"background": "#f0f0f0"}}), Toggle{})
+
+	send(t, m, tea.BackgroundColorMsg{Color: color.Black})
+
+	if lipgloss.HasDarkBackground() {
+		t.Error("a light popup on a dark terminal is drawn in the colours for a dark one")
+	}
+}
+
 func TestEnterRunsTheSelectedCommand(t *testing.T) {
 	var ran []string
 	m := typeQuery(t, testModel(t, nil, &ran), "git jump")

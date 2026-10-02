@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"image/color"
 	"strings"
 	"time"
 
@@ -109,8 +110,12 @@ type model struct {
 	// user has already left.
 	epoch int
 
-	styles  styles
-	failure string
+	styles styles
+	// colours are what the styles were made from, and backdrop the
+	// background the popup sets, nil until the terminal has reported its own.
+	colours  theme.Theme
+	backdrop color.Color
+	failure  string
 	// notice is what the footer says in place of a failure when nothing went
 	// wrong: an entry with nothing to act on.
 	notice string
@@ -156,6 +161,7 @@ func newModel(
 		recent:         recent,
 		query:          query,
 		styles:         styles,
+		colours:        colours,
 		closer:         newCloser(toggle),
 		state:          &stateGate{},
 		previewEnabled: true,
@@ -223,7 +229,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.BackgroundColorMsg:
-		lipgloss.SetHasDarkBackground(msg.IsDark())
+		// The background is set only after the terminal has answered: set
+		// before, the answer could be the popup's own background. The
+		// adaptive colours follow the background the text is drawn on, and a
+		// configured one can be light on a dark terminal.
+		dark := msg.IsDark()
+		m.backdrop = m.colours.Backdrop(msg.Color, dark)
+		if m.backdrop != nil {
+			dark = tea.BackgroundColorMsg{Color: m.backdrop}.IsDark()
+		}
+		lipgloss.SetHasDarkBackground(dark)
 		return m, nil
 
 	case tea.WindowSizeMsg:

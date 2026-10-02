@@ -223,6 +223,7 @@ func (m model) View() tea.View {
 	visible := m.replying == nil && m.confirming == nil && m.width > column && m.height >= len(lines)
 	view := tea.NewView(strings.Join(lines, "\n"))
 	view.MouseMode = tea.MouseModeCellMotion
+	view.BackgroundColor = m.backdrop
 	if visible {
 		view.Cursor = tea.NewCursor(column, 0)
 	}

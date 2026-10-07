@@ -28,15 +28,6 @@ const (
 	minQuery = 10
 	// dropMarker follows a dropdown's text.
 	dropMarker = " ▾"
-	// boxChrome is what a field takes beyond its text: a cap either side.
-	boxChrome = 2
-)
-
-// The caps that round a field's ends: Powerline's half circles, from the
-// private use area Nerd Fonts fill, drawn in the field's shade.
-const (
-	capLeft  = "\ue0b6"
-	capRight = "\ue0b4"
 )
 
 // argForm is what has been entered for the arguments of one row. It belongs
@@ -434,6 +425,8 @@ func (m model) editField(f *argForm, msg tea.Msg) (tea.Model, tea.Cmd) {
 // extent is a run of columns on a line.
 type extent struct{ start, width int }
 
+func (e extent) contains(x int) bool { return x >= e.start && x < e.start+e.width }
+
 // queryLine is what follows the label as it is drawn: the query, and the
 // selected script's fields after it.
 type queryLine struct {
@@ -501,7 +494,7 @@ func (m model) boxes(entry palette.Entry, f *argForm, room int) []box {
 		}
 		b.width = min(max(b.width, 1), maxField)
 		boxes[i] = b
-		total += b.width + boxChrome + 1
+		total += b.width + m.styles.fieldChrome + 1
 	}
 	for total > room-minQuery {
 		widest := 0
@@ -535,7 +528,7 @@ func (m model) line() queryLine {
 		boxes = m.boxes(entry, f, room)
 		used := fieldGap
 		for _, b := range boxes {
-			used += b.width + boxChrome + 1
+			used += b.width + m.styles.fieldChrome + 1
 		}
 		queryRoom = max(room-used, 1)
 	}
@@ -584,10 +577,18 @@ func (m model) line() queryLine {
 			col++
 		}
 		focused := inField && f.focus == i
-		text, cursor := m.boxText(bx, f, i, focused)
+		width := bx.width + m.styles.fieldChrome
+		at := extent{col, width}
+		// Nothing is drawn over the query line, so the field under the
+		// pointer is the one it is over. The one being typed into is marked
+		// by the rule under it instead.
+		look := m.styles.field
+		if !focused && m.pointer.Y == queryRow && at.contains(m.pointer.X) {
+			look = m.styles.fieldHovered
+		}
+		text, cursor := m.boxText(bx, f, i, focused, look)
 		b.WriteString(text)
-		width := bx.width + boxChrome
-		out.fields = append(out.fields, extent{col, width})
+		out.fields = append(out.fields, at)
 		if focused {
 			out.mark = extent{col, width}
 			dropdown := bx.argument.Type == palette.ArgumentDropdown
@@ -596,7 +597,7 @@ func (m model) line() queryLine {
 			}
 			// A dropdown shows a caret only while a filter is typed into it.
 			if !dropdown || f.fields[i].Value() != "" {
-				out.cursor = col + 1 + cursor
+				out.cursor = col + m.styles.fieldLead + cursor
 			}
 		}
 		col += width
@@ -605,12 +606,12 @@ func (m model) line() queryLine {
 	return out
 }
 
-// boxText draws a field between its rounded caps, and the column of the caret
+// boxText draws a field in look between its ends, and the column of the caret
 // inside its text when it has the focus.
-func (m model) boxText(bx box, f *argForm, i int, focused bool) (line string, cursor int) {
-	style := m.styles.field
+func (m model) boxText(bx box, f *argForm, i int, focused bool, look fieldLook) (line string, cursor int) {
+	style := look.text
 	if bx.empty {
-		style = m.styles.fieldEmpty
+		style = look.empty
 	}
 	if focused {
 		style = style.Bold(true)
@@ -640,7 +641,7 @@ func (m model) boxText(bx box, f *argForm, i int, focused bool) (line string, cu
 		text = truncate(text, bx.width)
 	}
 	text += strings.Repeat(" ", max(bx.width-lipgloss.Width(text), 0))
-	return m.styles.fieldCap.Render(capLeft) + style.Render(text) + m.styles.fieldCap.Render(capRight), cursor
+	return look.left + style.Render(text) + look.right, cursor
 }
 
 // menu is how the options of the dropdown being chosen from are laid out over
@@ -740,7 +741,7 @@ func (u menu) at(x, y int) (option int, over bool) {
 // fieldAt is the field drawn at column x, or -1.
 func (l queryLine) fieldAt(x int) int {
 	for i, field := range l.fields {
-		if x >= field.start && x < field.start+field.width {
+		if field.contains(x) {
 			return i
 		}
 	}

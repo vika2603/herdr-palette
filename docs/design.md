@@ -468,6 +468,18 @@ another row is selected. The values are passed as positional arguments and as
 `HP_` variables, on Windows as variables only, and reach the `run` pane in
 `HERDR_PALETTE_ARGS`.
 
+A field's ends are part of the theme. The default is Powerline's half circles
+from the private use area, which Ghostty, WezTerm and Windows Terminal draw
+themselves and kitty finds in the Nerd Font it ships; a terminal that does
+neither shows them as boxes. Whether the terminal behind herdr can draw them
+cannot be asked: the popup's environment is the herdr server's, which may
+have been started from another terminal, and herdr answers the popup's
+queries itself. `field_ends` therefore gives two ends of the user's own in
+their place. An end is drawn in the field's shade, a shape as its foreground
+and a blank as padding, so a shape closes the field and a blank pads it. The
+layout measures the ends rather than counting on one cell each, up to two
+cells an end.
+
 A dropdown's `command` runs when the dropdown first gets the focus rather than
 when the row is selected, so moving through the list never runs one. It runs
 off the update loop and is given the values of the arguments before it. It
@@ -610,18 +622,20 @@ arrived: set earlier, the answer could report the popup's own colour. The
 adaptive colours then follow the popup's background rather than the
 terminal's, since a configured one can be light on a dark terminal.
 
-The band behind the row the pointer is over, the dropdown's menu and the band
-behind an option the pointer is over are surfaces of the popup rather than
-colours of their own, so a scheme leaves them unset and each is derived from
-the popup's background and the selected row's band, as a share of the way from
-one to the other: halfway for a hovered row, twice the way for the menu, and
-two and a half times for a hovered option. The menu thereby stands out of the
+The band behind the row the pointer is over, the shade of a field the
+pointer is over, the dropdown's menu and the band behind an option the
+pointer is over are surfaces of the popup rather than colours of their own,
+so a scheme leaves them unset and each is derived from the popup's background
+and the selected row's band, as a share of the way from one to the other:
+halfway for a hovered row, one and a half times for a hovered field, whose
+own shade is the band's, twice the way for the menu, and two and a half times
+for a hovered option. The menu thereby stands out of the
 list the way the band does, in the band's hue, rather than in the rule's
 colour, which herdr's themes choose for lines. The arithmetic runs on the
 values the theme names rather than on what the terminal's colour profile rounds
 them to. Until the background is known nothing is drawn for the pointer and
 the menu takes the rule's colour. The plugin's configuration can name any of
-the three, which then stands from the start.
+the four, which then stands from the start.
 
 herdr fills the popup's border, and the column it keeps to the right of the
 pane, with its own `panel_bg`, which the API does not report. The popup does

@@ -10,6 +10,8 @@ package theme
 import (
 	"fmt"
 	"image/color"
+	"strings"
+	"unicode"
 
 	lipgloss2 "charm.land/lipgloss/v2"
 	"github.com/charmbracelet/lipgloss"
@@ -23,16 +25,18 @@ const (
 	SchemeTerminal = "terminal"
 )
 
-// Custom is what the plugin's own configuration says about colours: the
-// scheme, each role by the name the file gives it, and each state a row can be
-// in by its own name.
+// Custom is what the plugin's own configuration says about how the popup is
+// drawn: the scheme, each role by the name the file gives it, each state a row
+// can be in by its own name, and the two ends of a field.
 type Custom struct {
-	Scheme  string
-	Colours map[string]string
-	Status  map[string]string
+	Scheme    string
+	Colours   map[string]string
+	Status    map[string]string
+	FieldEnds []string
 }
 
-// Theme is one colour per role the popup draws.
+// Theme is how the popup is drawn: one colour per role, and the ends of a
+// script's field.
 type Theme struct {
 	// Accent marks what has focus and nothing else: the mode label, the
 	// stretch of rule under it and the selected row's bar.
@@ -50,13 +54,15 @@ type Theme struct {
 	Scrollbar lipgloss.TerminalColor
 	Failure   lipgloss.TerminalColor
 	// Hovered is the band behind the row the pointer is over, Menu what a
-	// dropdown's options are laid on, and MenuHovered the band behind the
-	// option the pointer is over. A scheme leaves them unset: the popup
-	// derives them from its background and Selected, which is the only way
-	// they stay shades of a background a scheme cannot know.
-	Hovered     lipgloss.TerminalColor
-	Menu        lipgloss.TerminalColor
-	MenuHovered lipgloss.TerminalColor
+	// dropdown's options are laid on, MenuHovered the band behind the option
+	// the pointer is over, and FieldHovered what a script's field the pointer
+	// is over is drawn on. A scheme leaves them unset: the popup derives them
+	// from its background and Selected, which is the only way they stay
+	// shades of a background a scheme cannot know.
+	Hovered      lipgloss.TerminalColor
+	Menu         lipgloss.TerminalColor
+	MenuHovered  lipgloss.TerminalColor
+	FieldHovered lipgloss.TerminalColor
 	// Status is the colour of the state a row is in, keyed by its name: what
 	// an agent is doing, by herdr's names for it. A state with no colour of
 	// its own is drawn in Meta.
@@ -64,6 +70,36 @@ type Theme struct {
 	// Background is what the popup is laid on when the configuration names
 	// it; otherwise Backdrop derives it from the terminal's background.
 	Background color.Color
+	// FieldEnds are what close a script's field on the left and the right,
+	// drawn in the field's shade: a shape is its foreground, and a blank is
+	// filled with it.
+	FieldEnds [2]string
+}
+
+// roundEnds are the default FieldEnds, Powerline's half circles from the
+// private use area: Ghostty, WezTerm and Windows Terminal draw them
+// themselves, kitty ships a Nerd Font to fall back on, and other terminals
+// need one installed.
+var roundEnds = [2]string{"\ue0b6", "\ue0b4"}
+
+// maxFieldEnd is the widest an end may be, in cells. A wider one would take
+// the room the field's text is narrowed for.
+const maxFieldEnd = 2
+
+// resolveFieldEnds is the two ends a configuration gives. Anything else, an
+// end that is not printable text on one line or one wider than maxFieldEnd,
+// keeps ends.
+func resolveFieldEnds(ends [2]string, configured []string) [2]string {
+	if len(configured) != 2 {
+		return ends
+	}
+	given := [2]string{configured[0], configured[1]}
+	for _, end := range given {
+		if lipgloss.Width(end) > maxFieldEnd || strings.ContainsFunc(end, func(r rune) bool { return !unicode.IsPrint(r) && r != ' ' }) {
+			return ends
+		}
+	}
+	return given
 }
 
 // How much a derived background darkens the terminal's. Darkening rather than
@@ -94,28 +130,42 @@ func (t Theme) Backdrop(terminal color.Color, dark bool) color.Color {
 }
 
 // Shades of the popup's surfaces, as shares of the way from its background to
-// the selected row's band. A row the pointer is over sits halfway, so it reads
-// as a row that could be selected without reading as the one that is. The
-// menu of a dropdown sits as far past the band as the band is from the
-// background, a surface raised over the list in the band's own hue, and an
-// option the pointer is over a half step further.
+// the selected row's band, which a field is drawn on too. A row the pointer is
+// over sits halfway, so it reads as a row that could be selected without
+// reading as the one that is. A field the pointer is over sits a half step
+// past the band, the step the row took. The menu of a dropdown sits as far
+// past the band as the band is from the background, a surface raised over the
+// list in the band's own hue, and an option the pointer is over a half step
+// further.
 const (
-	hoveredShare     = 0.5
-	menuShare        = 2
-	menuHoveredShare = 2.5
+	hoveredShare      = 0.5
+	fieldHoveredShare = 1.5
+	menuShare         = 2
+	menuHoveredShare  = 2.5
 )
 
-// Surfaces are Hovered, Menu and MenuHovered on the popup's background: each
-// as configured, or else the shade of backdrop it derives. Without a
-// background there is no such shade, and an unconfigured surface is nil.
-func (t Theme) Surfaces(backdrop color.Color) (hovered, menu, menuHovered lipgloss.TerminalColor) {
+// Surfaces are the colours of the popup's surfaces on its background.
+type Surfaces struct {
+	Hovered, Menu, MenuHovered, FieldHovered lipgloss.TerminalColor
+}
+
+// Surfaces are Hovered, Menu, MenuHovered and FieldHovered on the popup's
+// background: each as configured, or else the shade of backdrop it derives.
+// Without a background there is no such shade, and an unconfigured surface
+// is nil.
+func (t Theme) Surfaces(backdrop color.Color) Surfaces {
 	surface := func(configured lipgloss.TerminalColor, share float64) lipgloss.TerminalColor {
 		if configured != nil || backdrop == nil {
 			return configured
 		}
 		return shade(backdrop, t.Selected, share)
 	}
-	return surface(t.Hovered, hoveredShare), surface(t.Menu, menuShare), surface(t.MenuHovered, menuHoveredShare)
+	return Surfaces{
+		Hovered:      surface(t.Hovered, hoveredShare),
+		Menu:         surface(t.Menu, menuShare),
+		MenuHovered:  surface(t.MenuHovered, menuHoveredShare),
+		FieldHovered: surface(t.FieldHovered, fieldHoveredShare),
+	}
 }
 
 // shade is the colour share of the way from one colour to another, past the
@@ -165,6 +215,7 @@ func Herd() Theme {
 	muted := lipgloss.AdaptiveColor{Dark: "#8C8AA3", Light: "#66647E"}
 	accent := lipgloss.AdaptiveColor{Dark: "#A48BFF", Light: "#6A4FE0"}
 	return Theme{
+		FieldEnds: roundEnds,
 		Accent:    accent,
 		Rule:      lipgloss.AdaptiveColor{Dark: "#2C2A3B", Light: "#DEDCE8"},
 		Selected:  lipgloss.AdaptiveColor{Dark: "#262338", Light: "#ECE8FB"},
@@ -187,6 +238,7 @@ func Herd() Theme {
 // palette has no index for; the rest are ANSI indexes.
 func Terminal() Theme {
 	return Theme{
+		FieldEnds: roundEnds,
 		Accent:    lipgloss.Color("5"),
 		Rule:      lipgloss.AdaptiveColor{Dark: "#33333F", Light: "#DCDCE6"},
 		Selected:  lipgloss.AdaptiveColor{Dark: "#2C2C3A", Light: "#E6E6EE"},
@@ -216,6 +268,7 @@ func Load(tokens map[string]string, own Custom) Theme {
 	theme := Scheme(own.Scheme)
 	matched := applyHerdr(&theme, tokens)
 	matched = applyPlugin(&theme, own) || matched
+	theme.FieldEnds = resolveFieldEnds(theme.FieldEnds, own.FieldEnds)
 	if !matched {
 		theme.Match = theme.Accent
 	}
@@ -246,6 +299,7 @@ func applyPlugin(theme *Theme, own Custom) bool {
 	set(&theme.Hovered, own.Colours["hover_background"])
 	set(&theme.Menu, own.Colours["menu_background"])
 	set(&theme.MenuHovered, own.Colours["menu_hover_background"])
+	set(&theme.FieldHovered, own.Colours["field_hover_background"])
 	// lipgloss reads a value it cannot parse as no colour, which the terminal
 	// would be told is black, so such a value leaves the background derived.
 	if background := lipgloss2.Color(own.Colours["background"]); background != (lipgloss2.NoColor{}) {

@@ -160,36 +160,63 @@ func brightness(c color.Color) uint32 {
 // background; the plugin's configuration can still name them.
 func TestTheSurfacesAreDerivedUnlessConfigured(t *testing.T) {
 	derived := Load(tokens, Custom{})
-	if derived.Hovered != nil || derived.Menu != nil || derived.MenuHovered != nil {
-		t.Errorf("surfaces = %v, %v, %v, want them left to be derived", derived.Hovered, derived.Menu, derived.MenuHovered)
+	if derived.Hovered != nil || derived.Menu != nil || derived.MenuHovered != nil || derived.FieldHovered != nil {
+		t.Errorf("surfaces = %v, %v, %v, %v, want them left to be derived", derived.Hovered, derived.Menu, derived.MenuHovered, derived.FieldHovered)
 	}
 
 	own := Custom{Colours: map[string]string{
 		"hover_background": "#222222", "menu_background": "#333333", "menu_hover_background": "#444444",
+		"field_hover_background": "#555555",
 	}}
 	colours := Load(tokens, own)
-	if colours.Hovered != lipgloss.Color("#222222") || colours.Menu != lipgloss.Color("#333333") || colours.MenuHovered != lipgloss.Color("#444444") {
-		t.Errorf("surfaces = %v, %v, %v, want the configured ones", colours.Hovered, colours.Menu, colours.MenuHovered)
+	if colours.Hovered != lipgloss.Color("#222222") || colours.Menu != lipgloss.Color("#333333") ||
+		colours.MenuHovered != lipgloss.Color("#444444") || colours.FieldHovered != lipgloss.Color("#555555") {
+		t.Errorf("surfaces = %v, %v, %v, %v, want the configured ones", colours.Hovered, colours.Menu, colours.MenuHovered, colours.FieldHovered)
 	}
 }
 
 func TestTheSurfacesAreShadesOfTheBackground(t *testing.T) {
 	colours := Load(map[string]string{"surface0": "#303030"}, Custom{})
 
-	if hovered, menu, menuHovered := colours.Surfaces(nil); hovered != nil || menu != nil || menuHovered != nil {
-		t.Errorf("surfaces = %v, %v, %v without a background, want none", hovered, menu, menuHovered)
+	if got := colours.Surfaces(nil); got != (Surfaces{}) {
+		t.Errorf("surfaces = %+v without a background, want none", got)
 	}
-	hovered, menu, menuHovered := colours.Surfaces(color.RGBA{R: 0x10, G: 0x10, B: 0x10, A: 0xff})
+	got := colours.Surfaces(color.RGBA{R: 0x10, G: 0x10, B: 0x10, A: 0xff})
 	for name, c := range map[string]struct {
 		got  lipgloss.TerminalColor
 		want lipgloss.Color
 	}{
-		"hovered":      {hovered, "#202020"},
-		"menu":         {menu, "#505050"},
-		"menu hovered": {menuHovered, "#606060"},
+		"hovered":       {got.Hovered, "#202020"},
+		"field hovered": {got.FieldHovered, "#404040"},
+		"menu":          {got.Menu, "#505050"},
+		"menu hovered":  {got.MenuHovered, "#606060"},
 	} {
 		if c.got != c.want {
 			t.Errorf("%s = %v, want %v", name, c.got, c.want)
 		}
+	}
+}
+
+func TestFieldEndsAreAPairOrTheDefault(t *testing.T) {
+	round := Defaults().FieldEnds
+	for _, c := range []struct {
+		name       string
+		configured []string
+		want       [2]string
+	}{
+		{"default", nil, round},
+		{"pair", []string{"▐", "▌"}, [2]string{"▐", "▌"}},
+		{"blanks", []string{" ", " "}, [2]string{" ", " "}},
+		{"no ends", []string{"", ""}, [2]string{"", ""}},
+		{"one end", []string{"▐"}, round},
+		{"too wide", []string{"<<<", ">"}, round},
+		{"control character", []string{"\t", ">"}, round},
+		{"three ends", []string{"a", "b", "c"}, round},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if got := Load(nil, Custom{FieldEnds: c.configured}).FieldEnds; got != c.want {
+				t.Errorf("ends = %q, want %q", got, c.want)
+			}
+		})
 	}
 }

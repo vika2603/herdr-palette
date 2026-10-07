@@ -43,16 +43,32 @@ type styles struct {
 	// something that cannot be undone.
 	chip, chipDanger   lipgloss.Style
 	heavy, heavyDanger lipgloss.Style
-	// field is a script's argument on the query line, fieldEmpty one showing
-	// its placeholder, and fieldCap the rounded ends in the field's shade.
+	// field is how a script's argument is drawn on the query line, and
+	// fieldHovered one the pointer is over. Their ends take fieldLead columns
+	// before the text and fieldChrome in all.
 	// option is a dropdown's option over the list, optionPicked the
 	// highlighted one, optionMarker its bar, and optionHovered the option the
 	// pointer is over.
-	field, fieldEmpty, fieldCap                       lipgloss.Style
+	field, fieldHovered                               fieldLook
+	fieldLead, fieldChrome                            int
 	option, optionPicked, optionMarker, optionHovered lipgloss.Style
-	// hover is the stretch of rule that marks the field the pointer is over,
-	// kept off the accent, which marks what the keys act on.
-	hover lipgloss.Style
+}
+
+// fieldLook is a script's field: its text on its shade, a placeholder, and
+// its ends as drawn.
+type fieldLook struct {
+	text, empty lipgloss.Style
+	left, right string
+}
+
+// newFieldLook draws a field on band.
+func newFieldLook(band lipgloss.Style, colours theme.Theme) fieldLook {
+	return fieldLook{
+		text:  band,
+		empty: band.Foreground(colours.Meta),
+		left:  fieldEnd(band, colours.FieldEnds[0]),
+		right: fieldEnd(band, colours.FieldEnds[1]),
+	}
 }
 
 // newStyles draws in colours on the popup's background, nil until the
@@ -66,25 +82,31 @@ func newStyles(colours theme.Theme, backdrop color.Color) styles {
 	// is then the terminal's own background, whatever that is.
 	chip := func(colour lipgloss.TerminalColor) lipgloss.Style { return fg(colour).Reverse(true).Bold(true) }
 
-	hovered, menu, menuHovered := colours.Surfaces(backdrop)
+	surfaces := colours.Surfaces(backdrop)
 	on := func(colour lipgloss.TerminalColor) lipgloss.Style {
 		if colour == nil {
 			return lipgloss.NewStyle()
 		}
 		return lipgloss.NewStyle().Background(colour)
 	}
+	menu := surfaces.Menu
 	if menu == nil {
 		menu = colours.Rule
 	}
 	option := on(menu)
 	optionHovered := option
-	if menuHovered != nil {
-		optionHovered = on(menuHovered)
+	if surfaces.MenuHovered != nil {
+		optionHovered = on(surfaces.MenuHovered)
+	}
+	field := newFieldLook(band, colours)
+	fieldHovered := field
+	if surfaces.FieldHovered != nil {
+		fieldHovered = newFieldLook(on(surfaces.FieldHovered), colours)
 	}
 
 	return styles{
 		plain:   plainTone(colours, lipgloss.NewStyle()),
-		hovered: plainTone(colours, on(hovered)),
+		hovered: plainTone(colours, on(surfaces.Hovered)),
 		picked: tone{
 			text:  band.Bold(true),
 			meta:  band.Foreground(colours.Meta),
@@ -107,15 +129,24 @@ func newStyles(colours theme.Theme, backdrop color.Color) styles {
 		heavyDanger: fg(colours.Failure),
 
 		// A field takes the band's shade, which sets it apart from the query.
-		field:         band,
-		fieldEmpty:    band.Foreground(colours.Meta),
-		fieldCap:      fg(colours.Selected),
+		field:         field,
+		fieldHovered:  fieldHovered,
+		fieldLead:     lipgloss.Width(colours.FieldEnds[0]),
+		fieldChrome:   lipgloss.Width(colours.FieldEnds[0]) + lipgloss.Width(colours.FieldEnds[1]),
 		option:        option,
 		optionPicked:  option.Foreground(colours.Accent).Bold(true),
 		optionMarker:  option.Foreground(colours.Accent),
 		optionHovered: optionHovered,
-		hover:         fg(colours.Meta),
 	}
+}
+
+// fieldEnd draws an end of a field in band's shade: a shape as its colour, so
+// it closes the field, and a blank filled with it, so it pads the field.
+func fieldEnd(band lipgloss.Style, end string) string {
+	if strings.TrimSpace(end) == "" {
+		return band.Render(end)
+	}
+	return lipgloss.NewStyle().Foreground(band.GetBackground()).Render(end)
 }
 
 // plainTone is a row that is not selected, drawn on base.
@@ -364,13 +395,6 @@ func (m model) topRule(l layout) string {
 	rule := m.styles.rule.Render(strings.Repeat("─", mark.start)) + heavy.Render(strings.Repeat("━", mark.width)) +
 		m.styles.rule.Render(strings.Repeat("─", run)) + tail
 
-	// The field the pointer is over is marked the way the one being typed
-	// into is, in the hover's colour.
-	if field := l.hover.of(targetField); field >= 0 {
-		if over := l.line.fields[field]; over != mark {
-			rule = splice(rule, over.start, over.width, m.styles.hover.Render(strings.Repeat("━", over.width)))
-		}
-	}
 	return rule
 }
 

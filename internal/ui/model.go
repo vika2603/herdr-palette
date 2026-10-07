@@ -231,6 +231,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if updated.args != nil && updated.confirming == nil && updated.form() == nil {
 		updated.args = nil
 	}
+	// The run of fields on show stays where it was until the field being
+	// typed into leaves it.
+	if f := updated.form(); f != nil {
+		if first := updated.line().first; first != f.first {
+			f = f.clone()
+			f.first = first
+			updated.args = f
+		}
+	}
 	if load := updated.loadOptions(); load != nil {
 		cmd = tea.Batch(cmd, load)
 	}
@@ -466,6 +475,11 @@ func (m *model) mouseFields(at target, button tea.MouseButton) bool {
 			m.args = f
 		}
 		return true
+	case button == tea.MouseLeft && at.kind == targetScroll:
+		// A count leads to the field next to those on show, which brings it
+		// in sight.
+		m.focusField(entry, at.index)
+		return true
 	case button == tea.MouseLeft && (at.kind == targetField || at.kind == targetQuery && m.inField()):
 		i := at.of(targetField)
 		// A click on the dropdown that is open closes it, the way it opened.
@@ -502,6 +516,9 @@ const (
 	targetOption
 	// targetQuery is the query line away from the fields.
 	targetQuery
+	// targetScroll is a count of the fields out of sight, with index the
+	// field next to those on show it leads to.
+	targetScroll
 )
 
 // target is what the pointer is over, with index the row, field or option.
@@ -547,6 +564,12 @@ func (m model) targetAt(l layout, x, y int) target {
 	if y == queryRow {
 		if field := l.line.fieldAt(x); field >= 0 {
 			return target{targetField, field}
+		}
+		switch {
+		case l.line.before.contains(x):
+			return target{targetScroll, l.line.first - 1}
+		case l.line.after.contains(x):
+			return target{targetScroll, l.line.end}
 		}
 		return target{kind: targetQuery}
 	}

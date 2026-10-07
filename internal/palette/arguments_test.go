@@ -3,6 +3,7 @@ package palette
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -76,7 +77,7 @@ func TestScriptHeaderRejectsBadArgumentsAndSizes(t *testing.T) {
 		{`# @palette.argument1 { "name": "q", "type": "text" } trailing`, "after the argument"},
 		{`# @palette.argument2 { "name": "q", "type": "text" }`, "@palette.argument2 needs @palette.argument1"},
 		{"# @palette.argument1 { \"name\": \"q\", \"type\": \"text\" }\n# @palette.argument2 { \"name\": \"Q\", \"type\": \"text\" }", "both passed in HP_Q"},
-		{`# @palette.argument4 { "name": "q", "type": "text" }`, "unknown script field @palette.argument4"},
+		{`# @palette.argument7 { "name": "q", "type": "text" }`, "unknown script field @palette.argument7"},
 		{`# @palette.argument01 { "name": "q", "type": "text" }`, "unknown script field @palette.argument01"},
 		{"# @palette.width 80%", "need @palette.mode popup"},
 		{"# @palette.confirm yes", "must be true or false"},
@@ -267,5 +268,24 @@ func TestACommandWithoutArgumentsClearsThem(t *testing.T) {
 	}
 	if params.Width != nil || params.Height != nil {
 		t.Errorf("size = %v x %v, want herdr's default for a script that names none", params.Width, params.Height)
+	}
+}
+
+func TestAScriptCanAskForSixValues(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix script fixture")
+	}
+	var header strings.Builder
+	for i := 1; i <= 6; i++ {
+		fmt.Fprintf(&header, "# @palette.argument%d { \"name\": \"v%d\", \"type\": \"text\" }\n", i, i)
+	}
+	dir := t.TempDir()
+	writePaletteScript(t, dir, "six.sh", "#!/bin/sh\n"+header.String()+"exit 0\n")
+	entries, err := ScriptEntries("herdr.palette", []string{dir})
+	if err != nil || len(entries) != 1 || len(entries[0].Arguments) != 6 {
+		t.Fatalf("entries = %+v, err = %v, want one script asking for six values", entries, err)
+	}
+	if got := entries[0].Arguments[5].Env; got != "HP_V6" {
+		t.Errorf("sixth argument passed in %q, want HP_V6", got)
 	}
 }

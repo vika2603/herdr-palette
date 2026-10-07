@@ -149,13 +149,27 @@ func TestTheSchemeAndAccentAreRead(t *testing.T) {
 }
 
 func TestTheSurfaceColoursReachTheTheme(t *testing.T) {
-	own := configured(t, "hover_background = \"#222222\"\nmenu_background = \"#333333\"\nmenu_hover_background = \"#444444\"\n")
+	own := configured(t, "hover_background = \"#222222\"\nmenu_background = \"#333333\"\nmenu_hover_background = \"#444444\"\nfield_hover_background = \"#555555\"\n")
 
 	for key, want := range map[string]string{
 		"hover_background": "#222222", "menu_background": "#333333", "menu_hover_background": "#444444",
+		"field_hover_background": "#555555",
 	} {
 		if got := own.Theme.Colours[key]; got != want {
 			t.Errorf("%s = %q, want the configured colour", key, got)
+		}
+	}
+}
+
+func TestFieldEndsAreReadAsWritten(t *testing.T) {
+	if got := configured(t, "field_ends = [\"<\", \">\"]\n").Theme.FieldEnds; !slices.Equal(got, []string{"<", ">"}) {
+		t.Errorf("a pair = %q, want both ends", got)
+	}
+	// A value of another shape costs only itself.
+	for _, value := range []string{"\"round\"", "3", "[\"<\", 3]"} {
+		own := configured(t, "field_ends = "+value+"\nrule = \"#111111\"\n")
+		if own.Theme.FieldEnds != nil || own.Theme.Colours["rule"] != "#111111" {
+			t.Errorf("field_ends = %s: ends %q and rule %q, want no ends and the rest of the file read", value, own.Theme.FieldEnds, own.Theme.Colours["rule"])
 		}
 	}
 }

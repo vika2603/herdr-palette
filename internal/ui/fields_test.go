@@ -13,11 +13,15 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
 	"github.com/vika2603/herdr-client/herdr"
 
 	"github.com/vika2603/herdr-palette/internal/palette"
 	"github.com/vika2603/herdr-palette/internal/theme"
 )
+
+// capLeft is the left end of a field in the default theme.
+var capLeft = theme.Defaults().FieldEnds[0]
 
 // fieldModel is a palette holding a script that asks for a branch, an
 // environment picked from two, and an optional token. ran records the values
@@ -531,6 +535,7 @@ func darkBackground(t *testing.T, m model) model {
 // surfaces names every surface colour the theme can be given.
 var surfaces = map[string]string{
 	"hover_background": "#222222", "menu_background": "#333333", "menu_hover_background": "#444444",
+	"field_hover_background": "#555555",
 }
 
 // The options are drawn over the list, so a click on one picks it rather than
@@ -669,9 +674,30 @@ func TestThePointerMarksWhatItIsOverAndMovesNothing(t *testing.T) {
 	if at := m.layout().hover; at != (target{targetField, 2}) || m.form().focus != 1 {
 		t.Errorf("hovering %+v with focus on %d, want the token field hovered and the dropdown kept", at, m.form().focus)
 	}
-	rule := []rune(ansi.Strip(m.topRule(m.layout())))
-	if rule[fields[2].start] != '━' {
-		t.Errorf("rule under the hovered field = %q, want it marked", string(rule))
+}
+
+// A field the pointer is over is drawn on a shade of its own, its ends with
+// it; the one being typed into is not, since the rule marks it.
+func TestAHoveredFieldIsDrawnOnItsOwnShade(t *testing.T) {
+	previous := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(previous) })
+	var ran [][]string
+	m := darkBackground(t, typeQuery(t, pressAll(t, fieldModel(t, 72, &ran), tabKey), "main"))
+	fields := m.line().fields
+	hovered := m.styles.fieldHovered.left + m.styles.fieldHovered.empty.Render("token")
+
+	away := m.line().text
+	if strings.Contains(away, hovered) {
+		t.Fatal("the token field is drawn hovered with the pointer away")
+	}
+	m, _ = send(t, m, tea.MouseMotionMsg{X: fields[2].start + 1, Y: queryRow})
+	if !strings.Contains(m.line().text, hovered) {
+		t.Error("the token field under the pointer is not drawn on the hovered shade")
+	}
+	m, _ = send(t, m, tea.MouseMotionMsg{X: fields[0].start + 1, Y: queryRow})
+	if m.line().text != away {
+		t.Error("the field being typed into changed under the pointer")
 	}
 }
 
@@ -691,6 +717,7 @@ func TestConfiguredSurfacesNeedNoBackground(t *testing.T) {
 			{"hovered row", m.styles.hovered.text.GetBackground(), surfaces["hover_background"]},
 			{"menu", m.styles.option.GetBackground(), surfaces["menu_background"]},
 			{"hovered option", m.styles.optionHovered.GetBackground(), surfaces["menu_hover_background"]},
+			{"hovered field", m.styles.fieldHovered.text.GetBackground(), surfaces["field_hover_background"]},
 		} {
 			if fmt.Sprint(c.got) != c.want {
 				t.Errorf("%s %s = %v, want the configured colour", c.name, when, c.got)
@@ -700,4 +727,32 @@ func TestConfiguredSurfacesNeedNoBackground(t *testing.T) {
 	check("before the background")
 	m = darkBackground(t, m)
 	check("after the background")
+}
+
+// Ends of another width move the fields, the caret and what a click hits
+// with them.
+func TestFieldsFollowTheWidthOfTheirEnds(t *testing.T) {
+	for _, configured := range [][]string{{" ", " "}, {"<<", ">>"}, {"", ""}} {
+		t.Run(strings.Join(configured, "|"), func(t *testing.T) {
+			var ran [][]string
+			m := fieldModel(t, 72, &ran)
+			m.colours = theme.Load(nil, theme.Custom{FieldEnds: configured})
+			m.styles = newStyles(m.colours, nil)
+			lead := len(m.colours.FieldEnds[0])
+
+			m = typeQuery(t, pressAll(t, m, tabKey), "main")
+			field := m.line().fields[0]
+			if got := m.View().Cursor; got == nil || got.X != field.start+lead+len("main") {
+				t.Errorf("cursor = %+v, want it after main, %d columns into the field", got, lead)
+			}
+			header := []rune(ansi.Strip(m.header(m.layout())))
+			if got := string(header[field.start : field.start+field.width]); !strings.HasPrefix(got, m.colours.FieldEnds[0]+"main") || !strings.HasSuffix(got, m.colours.FieldEnds[1]) {
+				t.Errorf("field = %q, want main between the ends", got)
+			}
+			m, _ = click(t, m, m.line().fields[1].start+1, queryRow)
+			if f := m.form(); f == nil || f.focus != 1 {
+				t.Errorf("form = %+v, want a click on the second field to focus it", f)
+			}
+		})
+	}
 }

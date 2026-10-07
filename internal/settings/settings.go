@@ -57,7 +57,32 @@ type file struct {
 	HoverBackground    string            `toml:"hover_background"`
 	MenuBackground     string            `toml:"menu_background"`
 	MenuHover          string            `toml:"menu_hover_background"`
+	FieldHover         string            `toml:"field_hover_background"`
 	Status             map[string]string `toml:"status"`
+	FieldEnds          fieldEnds         `toml:"field_ends"`
+}
+
+// fieldEnds is field_ends as written, an array of the two ends. What they
+// mean is the theme's to decide. A value of any other shape is read as none,
+// which keeps the default ends, rather than failing the decode and costing
+// the rest of the file.
+type fieldEnds []string
+
+func (e *fieldEnds) UnmarshalTOML(data any) error {
+	*e = nil
+	values, ok := data.([]any)
+	if !ok {
+		return nil
+	}
+	for _, value := range values {
+		text, ok := value.(string)
+		if !ok {
+			*e = nil
+			return nil
+		}
+		*e = append(*e, text)
+	}
+	return nil
 }
 
 // Load reads the file. An unreadable or missing one leaves the palette with
@@ -84,20 +109,22 @@ func Load(env *plugin.Env) Settings {
 		Theme: theme.Custom{
 			Scheme: parsed.Scheme,
 			Colours: map[string]string{
-				"accent":                parsed.Accent,
-				"rule":                  parsed.Rule,
-				"selected_background":   parsed.SelectedBackground,
-				"match":                 parsed.Match,
-				"meta":                  parsed.Meta,
-				"faint":                 parsed.Faint,
-				"scrollbar":             parsed.Scrollbar,
-				"failure":               parsed.Failure,
-				"background":            parsed.Background,
-				"hover_background":      parsed.HoverBackground,
-				"menu_background":       parsed.MenuBackground,
-				"menu_hover_background": parsed.MenuHover,
+				"accent":                 parsed.Accent,
+				"rule":                   parsed.Rule,
+				"selected_background":    parsed.SelectedBackground,
+				"match":                  parsed.Match,
+				"meta":                   parsed.Meta,
+				"faint":                  parsed.Faint,
+				"scrollbar":              parsed.Scrollbar,
+				"failure":                parsed.Failure,
+				"background":             parsed.Background,
+				"hover_background":       parsed.HoverBackground,
+				"menu_background":        parsed.MenuBackground,
+				"menu_hover_background":  parsed.MenuHover,
+				"field_hover_background": parsed.FieldHover,
 			},
-			Status: parsed.Status,
+			Status:    parsed.Status,
+			FieldEnds: parsed.FieldEnds,
 		},
 	}
 }

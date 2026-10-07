@@ -610,6 +610,19 @@ arrived: set earlier, the answer could report the popup's own colour. The
 adaptive colours then follow the popup's background rather than the
 terminal's, since a configured one can be light on a dark terminal.
 
+The band behind the row the pointer is over, the dropdown's menu and the band
+behind an option the pointer is over are surfaces of the popup rather than
+colours of their own, so a scheme leaves them unset and each is derived from
+the popup's background and the selected row's band, as a share of the way from
+one to the other: halfway for a hovered row, twice the way for the menu, and
+two and a half times for a hovered option. The menu thereby stands out of the
+list the way the band does, in the band's hue, rather than in the rule's
+colour, which herdr's themes choose for lines. The arithmetic runs on the
+values the theme names rather than on what the terminal's colour profile rounds
+them to. Until the background is known nothing is drawn for the pointer and
+the menu takes the rule's colour. The plugin's configuration can name any of
+the three, which then stands from the start.
+
 herdr fills the popup's border, and the column it keeps to the right of the
 pane, with its own `panel_bg`, which the API does not report. The popup does
 not try to match it; a configured `background` can.
@@ -677,14 +690,14 @@ recently the palette went there.
 
 ## Mouse
 
-The view uses `tea.MouseModeCellMotion`, which reports clicks and the
-wheel, and the pointer only while a button is down. The bare pointer is not
-wanted: the selection belongs to the keyboard, and all motion mode would let a
-touch of the trackpad carry it to whatever row the pointer came to rest on, so
-the next `enter` would run that row rather than the one being read. A click
-names its own row, so following the pointer buys nothing. herdr captures the
-mouse for its own UI but forwards events to a pane app that asks for them, so
-the popup receives them.
+The view uses `tea.MouseModeAllMotion`, which reports every motion of the
+pointer as well as clicks and the wheel, so the row, option or field under the
+pointer can be drawn as hovered. The pointer only marks it. The selection
+belongs to the keyboard: were the pointer to carry it, a touch of the trackpad
+would leave it on whatever row the pointer came to rest on, and the next
+`enter` would run that row rather than the one being read. A click names its
+own row. herdr captures the mouse for its own UI but forwards events to a pane
+app that asks for them, so the popup receives them.
 
 A click's row is `offset + Y - headerRows`, where `headerRows` is the blank
 line, the query line and the rule under it. Two things have to hold for that
@@ -697,6 +710,15 @@ would run a command that is not on screen.
 
 A click off the rows puts away a question waiting to be answered rather than
 doing nothing, the way a key other than `enter` does.
+
+A script's fields and a dropdown's options are tested before the rows, since
+the options are drawn over the list and a click on one would otherwise run the
+row under it. A click on a field gives it the keys, and one on the dropdown
+that is open closes it; a click on an option picks it. While a field has the
+keys, a click elsewhere on the list closes an open dropdown without running
+anything, and the wheel goes through the options over the menu and does
+nothing over the list, where moving the selection would drop what was
+entered.
 
 ## State
 

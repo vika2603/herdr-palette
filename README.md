@@ -113,6 +113,9 @@ faint = "8"
 scrollbar = "8"
 failure = "1"
 background = "#181825"     # what the popup is laid on
+hover_background = "#1f2335"      # the row the pointer is over
+menu_background = "#2f3549"       # a dropdown's options
+menu_hover_background = "#3b4261" # the option the pointer is over
 
 [window]                   # a percentage of the pane area or a cell count
 width = "80%"
@@ -127,6 +130,9 @@ idle = "8"
 
 Colours herdr's `[theme.custom]` defines (`accent`, `overlay0`, `surface0`,
 `overlay1`) are used when the file sets none.
+
+Without `hover_background`, `menu_background` or `menu_hover_background`, each
+is a shade derived from the popup's background and `selected_background`.
 
 Without `background`, the popup darkens the terminal's background so it stands
 apart from the panes under it. A black background cannot be darkened, so set
@@ -185,7 +191,9 @@ A script can ask for up to three values, each declared on one line:
 `placeholder`, `optional`, `percentEncoded` and `data` work as in Raycast
 script commands. When the script is selected its fields follow the query:
 `tab` moves through them and `enter` runs it. In a dropdown, `up` and `down`
-choose an option and typing filters the options by title. The script gets the
+choose an option and typing filters the options by title. A click on a field
+moves to it, a click on an option picks it, and the wheel over the options goes
+through them. The script gets the
 values as `$1` to `$3` and as `HP_` plus the name in capitals (`HP_BRANCH`); on
 Windows only as the latter. A password is passed in clear text. The fields'
 rounded ends are Nerd Font glyphs.

@@ -147,3 +147,15 @@ func TestTheSchemeAndAccentAreRead(t *testing.T) {
 		t.Errorf("colours = %v, want the accent and faint colours read", own.Theme.Colours)
 	}
 }
+
+func TestTheSurfaceColoursReachTheTheme(t *testing.T) {
+	own := configured(t, "hover_background = \"#222222\"\nmenu_background = \"#333333\"\nmenu_hover_background = \"#444444\"\n")
+
+	for key, want := range map[string]string{
+		"hover_background": "#222222", "menu_background": "#333333", "menu_hover_background": "#444444",
+	} {
+		if got := own.Theme.Colours[key]; got != want {
+			t.Errorf("%s = %q, want the configured colour", key, got)
+		}
+	}
+}

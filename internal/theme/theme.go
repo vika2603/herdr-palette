@@ -8,6 +8,7 @@
 package theme
 
 import (
+	"fmt"
 	"image/color"
 
 	lipgloss2 "charm.land/lipgloss/v2"
@@ -48,6 +49,14 @@ type Theme struct {
 	Faint     lipgloss.TerminalColor
 	Scrollbar lipgloss.TerminalColor
 	Failure   lipgloss.TerminalColor
+	// Hovered is the band behind the row the pointer is over, Menu what a
+	// dropdown's options are laid on, and MenuHovered the band behind the
+	// option the pointer is over. A scheme leaves them unset: the popup
+	// derives them from its background and Selected, which is the only way
+	// they stay shades of a background a scheme cannot know.
+	Hovered     lipgloss.TerminalColor
+	Menu        lipgloss.TerminalColor
+	MenuHovered lipgloss.TerminalColor
 	// Status is the colour of the state a row is in, keyed by its name: what
 	// an agent is doing, by herdr's names for it. A state with no colour of
 	// its own is drawn in Meta.
@@ -82,6 +91,59 @@ func (t Theme) Backdrop(terminal color.Color, dark bool) color.Color {
 		return lipgloss2.Darken(terminal, darkenDark)
 	}
 	return lipgloss2.Darken(terminal, darkenLight)
+}
+
+// Shades of the popup's surfaces, as shares of the way from its background to
+// the selected row's band. A row the pointer is over sits halfway, so it reads
+// as a row that could be selected without reading as the one that is. The
+// menu of a dropdown sits as far past the band as the band is from the
+// background, a surface raised over the list in the band's own hue, and an
+// option the pointer is over a half step further.
+const (
+	hoveredShare     = 0.5
+	menuShare        = 2
+	menuHoveredShare = 2.5
+)
+
+// Surfaces are Hovered, Menu and MenuHovered on the popup's background: each
+// as configured, or else the shade of backdrop it derives. Without a
+// background there is no such shade, and an unconfigured surface is nil.
+func (t Theme) Surfaces(backdrop color.Color) (hovered, menu, menuHovered lipgloss.TerminalColor) {
+	surface := func(configured lipgloss.TerminalColor, share float64) lipgloss.TerminalColor {
+		if configured != nil || backdrop == nil {
+			return configured
+		}
+		return shade(backdrop, t.Selected, share)
+	}
+	return surface(t.Hovered, hoveredShare), surface(t.Menu, menuShare), surface(t.MenuHovered, menuHoveredShare)
+}
+
+// shade is the colour share of the way from one colour to another, past the
+// second for a share over one.
+func shade(from color.Color, to lipgloss.TerminalColor, share float64) lipgloss.Color {
+	channel := func(a, b uint32) uint32 {
+		v := float64(a>>8) + (float64(b>>8)-float64(a>>8))*share
+		return uint32(min(max(v, 0), 255))
+	}
+	r1, g1, b1, _ := from.RGBA()
+	r2, g2, b2, _ := resolve(to).RGBA()
+	return lipgloss.Color(fmt.Sprintf("#%02x%02x%02x", channel(r1, r2), channel(g1, g2), channel(b1, b2)))
+}
+
+// resolve is a theme colour as the values it was given name it. The colour
+// itself would answer through the terminal's profile, which rounds it, or
+// with black where the profile has no colour at all.
+func resolve(c lipgloss.TerminalColor) color.Color {
+	switch c := c.(type) {
+	case lipgloss.AdaptiveColor:
+		if lipgloss.HasDarkBackground() {
+			return lipgloss2.Color(c.Dark)
+		}
+		return lipgloss2.Color(c.Light)
+	case lipgloss.Color:
+		return lipgloss2.Color(string(c))
+	}
+	return c
 }
 
 // Defaults is the scheme used when the configuration names none.
@@ -181,6 +243,9 @@ func applyPlugin(theme *Theme, own Custom) bool {
 	set(&theme.Faint, own.Colours["faint"])
 	set(&theme.Scrollbar, own.Colours["scrollbar"])
 	set(&theme.Failure, own.Colours["failure"])
+	set(&theme.Hovered, own.Colours["hover_background"])
+	set(&theme.Menu, own.Colours["menu_background"])
+	set(&theme.MenuHovered, own.Colours["menu_hover_background"])
 	// lipgloss reads a value it cannot parse as no colour, which the terminal
 	// would be told is black, so such a value leaves the background derived.
 	if background := lipgloss2.Color(own.Colours["background"]); background != (lipgloss2.NoColor{}) {

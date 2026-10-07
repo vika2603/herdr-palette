@@ -106,6 +106,10 @@ type model struct {
 	// prefix is the primary key a prefix chord starts with, which the key
 	// column spells out.
 	prefix string
+	// pointer is where the mouse last was. What it is over is drawn as
+	// hovered; it moves nothing. Before the mouse has been anywhere it is at
+	// the top left, on the blank line over the query, which is over nothing.
+	pointer tea.Mouse
 
 	// epoch counts the screens the popup has walked out of. A request to the
 	// socket carries the one it was made in, and an answer from an earlier
@@ -144,7 +148,7 @@ func newModel(
 	colours theme.Theme,
 	toggle Toggle,
 ) model {
-	styles := newStyles(colours)
+	styles := newStyles(colours, nil)
 
 	// The label naming the screen stands where a prompt would.
 	query := textinput.New()
@@ -240,6 +244,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if mouse, ok := msg.(tea.MouseMsg); ok {
+		m.pointer = mouse.Mouse()
+	}
 	switch msg := msg.(type) {
 	case tea.BackgroundColorMsg:
 		// The background is set only after the terminal has answered: set
@@ -252,6 +259,7 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			dark = tea.BackgroundColorMsg{Color: m.backdrop}.IsDark()
 		}
 		lipgloss.SetHasDarkBackground(dark)
+		m.styles = newStyles(m.colours, m.backdrop)
 		return m, nil
 
 	case tea.WindowSizeMsg:
@@ -374,6 +382,8 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.editQuery(msg)
 
+	case tea.MouseMotionMsg:
+		return m, nil
 	case tea.MouseClickMsg:
 		return m.mouse(msg.Mouse())
 	case tea.MouseWheelMsg:
@@ -394,13 +404,9 @@ func (m model) mouse(msg tea.Mouse) (tea.Model, tea.Cmd) {
 	if m.replying != nil {
 		return m, nil
 	}
-	// The pointer is on the list, so the keys go back to the query that
-	// filters it.
-	if m.inField() {
-		entry, _ := m.fielded()
-		f := m.args.clone()
-		f.focusOn(entry, -1)
-		m.args = f
+	at := m.targetAt(m.layout(), msg.X, msg.Y)
+	if m.mouseFields(at, msg.Button) {
+		return m, nil
 	}
 	switch msg.Button {
 	case tea.MouseWheelUp:
@@ -410,8 +416,7 @@ func (m model) mouse(msg tea.Mouse) (tea.Model, tea.Cmd) {
 		m.move(wheelStep)
 		return m, nil
 	case tea.MouseLeft:
-		index, ok := m.rowAt(msg.X, msg.Y)
-		if !ok {
+		if at.kind != targetRow {
 			// A click off the rows is not an answer, so it puts the question
 			// away rather than leaving it up over a list being read.
 			m.settle()
@@ -423,17 +428,132 @@ func (m model) mouse(msg tea.Mouse) (tea.Model, tea.Cmd) {
 			// selection there, the way any other key puts it away.
 			entry := *m.confirming
 			m.confirming = nil
-			if index == m.cursor {
+			if at.index == m.cursor {
 				m.pending = true
 				return m, m.answer(entry)
 			}
-			m.cursor = index
+			m.cursor = at.index
 			return m, nil
 		}
-		m.cursor = index
+		m.cursor = at.index
 		return m.choose()
 	}
 	return m, nil
+}
+
+// mouseFields answers the pointer where the selected script's fields take it:
+// on a field, on the open dropdown's options, or off them while a field has
+// the keys. It reports whether that was the whole answer; when it was not, the
+// list answers the pointer as well.
+func (m *model) mouseFields(at target, button tea.MouseButton) bool {
+	entry, ok := m.fielded()
+	if !ok {
+		return false
+	}
+	dropdown := func(i int) bool { return entry.Arguments[i].Type == palette.ArgumentDropdown }
+	switch {
+	case at.kind == targetOption:
+		if at.index >= 0 {
+			f := m.args.clone()
+			switch button {
+			case tea.MouseWheelUp:
+				f.step(entry, f.focus, -1)
+			case tea.MouseWheelDown:
+				f.step(entry, f.focus, 1)
+			case tea.MouseLeft:
+				f.option[f.focus] = at.index
+			}
+			m.args = f
+		}
+		return true
+	case button == tea.MouseLeft && (at.kind == targetField || at.kind == targetQuery && m.inField()):
+		i := at.of(targetField)
+		// A click on the dropdown that is open closes it, the way it opened.
+		if f := m.form(); f != nil && i >= 0 && i == f.focus && dropdown(i) {
+			i = -1
+		}
+		m.focusField(entry, i)
+		return true
+	case !m.inField():
+		return false
+	case button == tea.MouseWheelUp || button == tea.MouseWheelDown:
+		// The list under a field is not what the wheel is for while the field
+		// has the keys: moving the selection would leave what was entered
+		// behind.
+		return true
+	}
+	// The pointer is on the list, so the keys go back to the query that
+	// filters it. A click away from an open dropdown only closes it, the way
+	// a menu is dismissed, rather than running the row under it.
+	closing := dropdown(m.args.focus)
+	m.focusField(entry, -1)
+	return closing && button == tea.MouseLeft
+}
+
+// targetKind is what kind of thing on the popup the pointer can be over.
+type targetKind int
+
+const (
+	targetNone targetKind = iota
+	targetRow
+	targetField
+	// targetOption is an option of the open dropdown, or with index -1 the
+	// status it shows in place of its options.
+	targetOption
+	// targetQuery is the query line away from the fields.
+	targetQuery
+)
+
+// target is what the pointer is over, with index the row, field or option.
+type target struct {
+	kind  targetKind
+	index int
+}
+
+// of is the index of the target when it is of kind, and -1 otherwise.
+func (t target) of(kind targetKind) int {
+	if t.kind != kind {
+		return -1
+	}
+	return t.index
+}
+
+// layout is how a frame lays out what follows the label and the dropdown
+// open over the list, and what the pointer is over among them. It is worked
+// out once a frame and read by everything drawn from it.
+type layout struct {
+	line  queryLine
+	menu  menu
+	hover target
+}
+
+func (m model) layout() layout {
+	l := layout{line: m.line()}
+	l.menu = m.menu(l.line)
+	l.hover = m.targetAt(l, m.pointer.X, m.pointer.Y)
+	return l
+}
+
+// targetAt is what is drawn at x, y, the topmost first: the open dropdown's
+// options are drawn over the rows. Nothing is a target on the agent's screen,
+// which does not answer the pointer.
+func (m model) targetAt(l layout, x, y int) target {
+	if m.replying != nil {
+		return target{}
+	}
+	if option, over := l.menu.at(x, y); over {
+		return target{targetOption, option}
+	}
+	if y == queryRow {
+		if field := l.line.fieldAt(x); field >= 0 {
+			return target{targetField, field}
+		}
+		return target{kind: targetQuery}
+	}
+	if row, ok := m.rowAt(x, y); ok {
+		return target{targetRow, row}
+	}
+	return target{}
 }
 
 // rowAt is the entry the pointer is over, and whether it is over one at all.

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"image/color"
 	"strconv"
 	"strings"
 
@@ -29,7 +30,10 @@ type tone struct {
 
 // styles are the popup's rendered colours.
 type styles struct {
-	plain, picked tone
+	// plain is a row as it is drawn, picked the selected row, and hovered the
+	// row the pointer is over, which is drawn plain while there is no colour
+	// for its band.
+	plain, picked, hovered tone
 
 	rule  lipgloss.Style
 	thumb lipgloss.Style
@@ -42,28 +46,45 @@ type styles struct {
 	// field is a script's argument on the query line, fieldEmpty one showing
 	// its placeholder, and fieldCap the rounded ends in the field's shade.
 	// option is a dropdown's option over the list, optionPicked the
-	// highlighted one, and optionMarker its bar.
-	field, fieldEmpty, fieldCap        lipgloss.Style
-	option, optionPicked, optionMarker lipgloss.Style
+	// highlighted one, optionMarker its bar, and optionHovered the option the
+	// pointer is over.
+	field, fieldEmpty, fieldCap                       lipgloss.Style
+	option, optionPicked, optionMarker, optionHovered lipgloss.Style
+	// hover is the stretch of rule that marks the field the pointer is over,
+	// kept off the accent, which marks what the keys act on.
+	hover lipgloss.Style
 }
 
-func newStyles(colours theme.Theme) styles {
+// newStyles draws in colours on the popup's background, nil until the
+// terminal has reported the one it is derived from. Its surfaces then fall
+// back: nothing is drawn for the pointer, and the menu takes the rule's
+// colour, which sets it apart from the selected row under it.
+func newStyles(colours theme.Theme, backdrop color.Color) styles {
 	band := lipgloss.NewStyle().Background(colours.Selected)
 	fg := func(colour lipgloss.TerminalColor) lipgloss.Style { return lipgloss.NewStyle().Foreground(colour) }
 	// Reversed rather than given a background of the accent: the label's text
 	// is then the terminal's own background, whatever that is.
 	chip := func(colour lipgloss.TerminalColor) lipgloss.Style { return fg(colour).Reverse(true).Bold(true) }
 
+	hovered, menu, menuHovered := colours.Surfaces(backdrop)
+	on := func(colour lipgloss.TerminalColor) lipgloss.Style {
+		if colour == nil {
+			return lipgloss.NewStyle()
+		}
+		return lipgloss.NewStyle().Background(colour)
+	}
+	if menu == nil {
+		menu = colours.Rule
+	}
+	option := on(menu)
+	optionHovered := option
+	if menuHovered != nil {
+		optionHovered = on(menuHovered)
+	}
+
 	return styles{
-		plain: tone{
-			text:   lipgloss.NewStyle(),
-			meta:   fg(colours.Meta),
-			faint:  fg(colours.Faint),
-			match:  fg(colours.Match).Bold(true),
-			marker: lipgloss.NewStyle(),
-			origin: fg(colours.Accent),
-			status: statusStyles(colours, lipgloss.NewStyle()),
-		},
+		plain:   plainTone(colours, lipgloss.NewStyle()),
+		hovered: plainTone(colours, on(hovered)),
 		picked: tone{
 			text:  band.Bold(true),
 			meta:  band.Foreground(colours.Meta),
@@ -86,14 +107,27 @@ func newStyles(colours theme.Theme) styles {
 		heavyDanger: fg(colours.Failure),
 
 		// A field takes the band's shade, which sets it apart from the query.
-		// The options take the rule's, so the menu stands apart from the
-		// selected row under it.
-		field:        band,
-		fieldEmpty:   band.Foreground(colours.Meta),
-		fieldCap:     fg(colours.Selected),
-		option:       lipgloss.NewStyle().Background(colours.Rule),
-		optionPicked: lipgloss.NewStyle().Background(colours.Rule).Foreground(colours.Accent).Bold(true),
-		optionMarker: lipgloss.NewStyle().Background(colours.Rule).Foreground(colours.Accent),
+		field:         band,
+		fieldEmpty:    band.Foreground(colours.Meta),
+		fieldCap:      fg(colours.Selected),
+		option:        option,
+		optionPicked:  option.Foreground(colours.Accent).Bold(true),
+		optionMarker:  option.Foreground(colours.Accent),
+		optionHovered: optionHovered,
+		hover:         fg(colours.Meta),
+	}
+}
+
+// plainTone is a row that is not selected, drawn on base.
+func plainTone(colours theme.Theme, base lipgloss.Style) tone {
+	return tone{
+		text:   base,
+		meta:   base.Foreground(colours.Meta),
+		faint:  base.Foreground(colours.Faint),
+		match:  base.Foreground(colours.Match).Bold(true),
+		marker: base,
+		origin: base.Foreground(colours.Accent),
+		status: statusStyles(colours, base),
 	}
 }
 
@@ -105,9 +139,13 @@ func statusStyles(colours theme.Theme, base lipgloss.Style) map[string]lipgloss.
 	return styles
 }
 
-func (s styles) tone(selected bool) tone {
-	if selected {
+// tone is what a row is drawn in. The selection wins over the pointer.
+func (s styles) tone(selected, hovered bool) tone {
+	switch {
+	case selected:
 		return s.picked
+	case hovered:
+		return s.hovered
 	}
 	return s.plain
 }
@@ -235,13 +273,14 @@ func (m model) rows() int {
 }
 
 func (m model) View() tea.View {
-	lines := append(m.headerLines(), m.topRule())
-	lines = append(lines, m.body()...)
+	l := m.layout()
+	lines := append(m.headerLines(l), m.topRule(l))
+	lines = append(lines, m.body(l)...)
 	lines = append(lines, m.rule(), m.footer())
-	column := m.line().cursor
+	column := l.line.cursor
 	visible := m.replying == nil && m.confirming == nil && column >= 0 && m.width > column && m.height >= len(lines)
 	view := tea.NewView(strings.Join(lines, "\n"))
-	view.MouseMode = tea.MouseModeCellMotion
+	view.MouseMode = tea.MouseModeAllMotion
 	view.BackgroundColor = m.backdrop
 	if visible {
 		view.Cursor = tea.NewCursor(column, queryRow)
@@ -263,7 +302,7 @@ func (m model) mode() (string, bool) {
 	return m.scope.Label(), false
 }
 
-func (m model) header() string {
+func (m model) header(l layout) string {
 	label, danger := m.mode()
 	chip := m.styles.chip
 	if danger {
@@ -278,13 +317,13 @@ func (m model) header() string {
 	}
 	// The text is drawn continuously; View.Cursor supplies the native cursor
 	// to the framework so input methods can locate the insertion point.
-	return truncate(lead+m.line().text, m.cols())
+	return truncate(lead+l.line.text, m.cols())
 }
 
 // headerLines are a blank line, which gives the query line room above it,
 // and the query line.
-func (m model) headerLines() []string {
-	return []string{strings.Repeat(" ", m.cols()), m.header()}
+func (m model) headerLines(l layout) []string {
+	return []string{strings.Repeat(" ", m.cols()), m.header(l)}
 }
 
 // window is the part of the query on show, which is all of it until it
@@ -305,13 +344,13 @@ func window(runes []rune, at, room int) (from, to int) {
 // topRule is the rule under the query line: heavier under what has the keys,
 // the label or the field being typed into, in the label's colour, with how
 // many agents are in each state at its end.
-func (m model) topRule() string {
+func (m model) topRule(l layout) string {
 	_, danger := m.mode()
 	heavy := m.styles.heavy
 	if danger {
 		heavy = m.styles.heavyDanger
 	}
-	cols, mark := m.cols(), m.line().mark
+	cols, mark := m.cols(), l.line.mark
 	if cols < mark.start+mark.width {
 		return m.styles.rule.Render(strings.Repeat("─", cols))
 	}
@@ -322,8 +361,17 @@ func (m model) topRule() string {
 		tail = " " + summary + " " + m.styles.rule.Render("─")
 	}
 	run := max(cols-end-lipgloss.Width(tail), 0)
-	return m.styles.rule.Render(strings.Repeat("─", mark.start)) + heavy.Render(strings.Repeat("━", mark.width)) +
+	rule := m.styles.rule.Render(strings.Repeat("─", mark.start)) + heavy.Render(strings.Repeat("━", mark.width)) +
 		m.styles.rule.Render(strings.Repeat("─", run)) + tail
+
+	// The field the pointer is over is marked the way the one being typed
+	// into is, in the hover's colour.
+	if field := l.hover.of(targetField); field >= 0 {
+		if over := l.line.fields[field]; over != mark {
+			rule = splice(rule, over.start, over.width, m.styles.hover.Render(strings.Repeat("━", over.width)))
+		}
+	}
+	return rule
 }
 
 // summary counts the agents of the session by state, in no more than room
@@ -357,23 +405,25 @@ func (m model) summary(room int) string {
 
 // body is the list, with the preview beside it where the popup is wide
 // enough for one.
-func (m model) body() []string {
+func (m model) body(l layout) []string {
 	if m.replying != nil {
 		return m.replyLines(m.rows())
 	}
-	list := m.listLines(m.listWidth())
+	list := m.listLines(m.listWidth(), l.hover.of(targetRow))
 	width := m.previewWidth()
 	if width == 0 {
-		return m.dropdown(list)
+		return m.dropdown(list, l)
 	}
 	panel := m.previewLines(width, len(list))
 	for i := range list {
 		list[i] += panel[i]
 	}
-	return m.dropdown(list)
+	return m.dropdown(list, l)
 }
 
-func (m model) listLines(width int) []string {
+// listLines are the rows of the list, with hovered the row the pointer is
+// over or -1.
+func (m model) listLines(width, hovered int) []string {
 	rows := m.rows()
 	c := m.columns(width)
 	lines := make([]string, 0, rows)
@@ -388,7 +438,7 @@ func (m model) listLines(width int) []string {
 			lines = append(lines, m.fill(heading, width-1)+m.scrollbar(len(lines)))
 			continue
 		}
-		lines = append(lines, m.row(l.row, c)+m.scrollbar(len(lines)))
+		lines = append(lines, m.row(l.row, c, l.row == hovered)+m.scrollbar(len(lines)))
 	}
 	for len(lines) < rows {
 		lines = append(lines, strings.Repeat(" ", width-1)+m.scrollbar(len(lines)))
@@ -488,11 +538,11 @@ func source(entry palette.Entry) string {
 	return strings.TrimSuffix(entry.Namespace(), ": ")
 }
 
-func (m model) row(index int, c columns) string {
+func (m model) row(index int, c columns, hovered bool) string {
 	ranked := m.ranked[index]
 	entry := ranked.Entry
 	selected := index == m.cursor
-	t := m.styles.tone(selected)
+	t := m.styles.tone(selected, hovered)
 
 	marker := t.text.Render(" ")
 	if selected {

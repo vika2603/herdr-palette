@@ -54,6 +54,9 @@ type file struct {
 	Scrollbar          string            `toml:"scrollbar"`
 	Failure            string            `toml:"failure"`
 	Background         string            `toml:"background"`
+	HoverBackground    string            `toml:"hover_background"`
+	MenuBackground     string            `toml:"menu_background"`
+	MenuHover          string            `toml:"menu_hover_background"`
 	Status             map[string]string `toml:"status"`
 }
 
@@ -81,15 +84,18 @@ func Load(env *plugin.Env) Settings {
 		Theme: theme.Custom{
 			Scheme: parsed.Scheme,
 			Colours: map[string]string{
-				"accent":              parsed.Accent,
-				"rule":                parsed.Rule,
-				"selected_background": parsed.SelectedBackground,
-				"match":               parsed.Match,
-				"meta":                parsed.Meta,
-				"faint":               parsed.Faint,
-				"scrollbar":           parsed.Scrollbar,
-				"failure":             parsed.Failure,
-				"background":          parsed.Background,
+				"accent":                parsed.Accent,
+				"rule":                  parsed.Rule,
+				"selected_background":   parsed.SelectedBackground,
+				"match":                 parsed.Match,
+				"meta":                  parsed.Meta,
+				"faint":                 parsed.Faint,
+				"scrollbar":             parsed.Scrollbar,
+				"failure":               parsed.Failure,
+				"background":            parsed.Background,
+				"hover_background":      parsed.HoverBackground,
+				"menu_background":       parsed.MenuBackground,
+				"menu_hover_background": parsed.MenuHover,
 			},
 			Status: parsed.Status,
 		},

@@ -524,7 +524,7 @@ func TestTheKeyColumnShowsWhatEachCommandIsBoundTo(t *testing.T) {
 		t.Errorf("key column width = %d, want the widest key", m.widths.key)
 	}
 	c := m.columns(m.listWidth())
-	first, second := ansi.Strip(m.row(0, c)), ansi.Strip(m.row(1, c))
+	first, second := ansi.Strip(m.row(0, c, false)), ansi.Strip(m.row(1, c, false))
 	if !strings.Contains(first, "New tab  ⌃b c") {
 		t.Errorf("the shortcut does not follow the title inline: %q", first)
 	}
@@ -1102,8 +1102,8 @@ func TestTabCompletesTheStartOfAScope(t *testing.T) {
 	if got, want := ids(m.ranked), []string{"pane:p1", "pane:p2"}; !slices.Equal(got, want) {
 		t.Errorf("rows = %v, want %v: an agent's pane is a pane too", got, want)
 	}
-	if !strings.Contains(m.header(), "PANES") {
-		t.Errorf("header = %q, want the scope named", m.header())
+	if !strings.Contains(m.header(m.layout()), "PANES") {
+		t.Errorf("header = %q, want the scope named", m.header(m.layout()))
 	}
 
 	m = typeQuery(t, m, "shell")
@@ -1217,11 +1217,11 @@ func TestNothingInAScopeMatchingSaysSo(t *testing.T) {
 // label says for all of them; a plugin's name is still worth its column.
 func TestAScopeOfPlacesHasNoSourceColumn(t *testing.T) {
 	m := tab(t, typeQuery(t, mixedModel(t), "pan"))
-	if got := ansi.Strip(m.row(0, m.columns(m.listWidth()))); strings.Contains(got, "agent") {
+	if got := ansi.Strip(m.row(0, m.columns(m.listWidth()), false)); strings.Contains(got, "agent") {
 		t.Errorf("row = %q, want no source column in a scope of panes", got)
 	}
 	m = tab(t, typeQuery(t, mixedModel(t), "plug"))
-	if got := ansi.Strip(m.row(0, m.columns(m.listWidth()))); !strings.Contains(got, "notes") {
+	if got := ansi.Strip(m.row(0, m.columns(m.listWidth()), false)); !strings.Contains(got, "notes") {
 		t.Errorf("row = %q, want the plugin's name", got)
 	}
 }

@@ -221,9 +221,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return next, cmd
 	}
 	// What was entered for a script's arguments belongs to its row: once
-	// another row is selected it is dropped, and coming back starts over.
-	if updated.args != nil && updated.form() == nil {
+	// another row is selected it is dropped, and coming back starts over. The
+	// question before a script runs hides the fields without leaving the row,
+	// so cancelling it keeps them.
+	if updated.args != nil && updated.confirming == nil && updated.form() == nil {
 		updated.args = nil
+	}
+	if load := updated.loadOptions(); load != nil {
+		cmd = tea.Batch(cmd, load)
 	}
 	if after := updated.previewTarget(); after != target {
 		updated.previewSeq++
@@ -345,6 +350,10 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.choices(msg)
 		return m, nil
 
+	case optionsMsg:
+		m.optionsLoaded(msg)
+		return m, nil
+
 	case tea.KeyPressMsg:
 		return m.key(msg)
 
@@ -361,9 +370,6 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.inField() {
-			if entry, _ := m.fielded(); entry.Arguments[m.args.focus].Type == palette.ArgumentDropdown {
-				return m, nil
-			}
 			return m.editField(m.args.clone(), msg)
 		}
 		return m.editQuery(msg)
@@ -391,8 +397,9 @@ func (m model) mouse(msg tea.Mouse) (tea.Model, tea.Cmd) {
 	// The pointer is on the list, so the keys go back to the query that
 	// filters it.
 	if m.inField() {
+		entry, _ := m.fielded()
 		f := m.args.clone()
-		f.focus = -1
+		f.focusOn(entry, -1)
 		m.args = f
 	}
 	switch msg.Button {

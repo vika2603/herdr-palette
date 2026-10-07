@@ -26,3 +26,14 @@ func processExists(pid int) bool {
 	}
 	return process.Signal(syscall.Signal(0)) == nil
 }
+
+// killTree makes cancelling the command end everything it started, not only
+// the shell: the command leads a process group of its own, and the whole group
+// is killed.
+func killTree(cmd *exec.Cmd) {
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+	}
+	cmd.SysProcAttr.Setpgid = true
+	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
+}

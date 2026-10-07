@@ -770,6 +770,10 @@ func (m model) footer() string {
 		if chosen := m.confirming.Chosen; chosen != "" {
 			question = " " + m.confirming.Title + "?"
 		}
+		// A script is asked about with the values it is about to run with.
+		if values := confirmedValues(*m.confirming); values != "" {
+			question = " " + m.confirming.Name() + " " + values + "?"
+		}
 		keys := m.fitHints([]hint{{spelling.name("enter"), "run"}, {"any key", "cancel"}})
 		room := max(m.cols()-lipgloss.Width(keys)-2, 1)
 		// The namespace repeats what the selected row above already says, and
@@ -913,4 +917,21 @@ func truncate(text string, width int) string {
 		width = 1
 	}
 	return ansi.Truncate(text, width, "…")
+}
+
+// confirmedValues is what a script waiting for confirmation was given, as the
+// question shows it: the values entered, a password hidden.
+func confirmedValues(entry palette.Entry) string {
+	var shown []string
+	for i, argument := range entry.Arguments {
+		if i >= len(entry.Args) || entry.Args[i] == "" {
+			continue
+		}
+		value := entry.Args[i]
+		if argument.Type == palette.ArgumentPassword {
+			value = strings.Repeat("•", len([]rune(value)))
+		}
+		shown = append(shown, value)
+	}
+	return strings.Join(shown, " · ")
 }

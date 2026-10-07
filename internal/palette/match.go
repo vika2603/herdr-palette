@@ -107,6 +107,30 @@ func Rank(entries []Entry, text string, recent []string) []Ranked {
 	return ranked
 }
 
+// FilterChoices is the indexes of the choices whose titles the query matches,
+// best match first. An empty query keeps every choice in its order.
+func FilterChoices(choices []Choice, text string) []int {
+	q := newQuery(text)
+	type scored struct{ index, score int }
+	var kept []scored
+	for i, choice := range choices {
+		score := 0
+		if !q.empty() {
+			var ok bool
+			if score, _, ok = match(fold(choice.Title), q); !ok {
+				continue
+			}
+		}
+		kept = append(kept, scored{i, score})
+	}
+	sort.SliceStable(kept, func(i, j int) bool { return kept[i].score > kept[j].score })
+	indexes := make([]int, len(kept))
+	for i, k := range kept {
+		indexes[i] = k.index
+	}
+	return indexes
+}
+
 // group is what separates rows the query scored the same, which on an empty
 // query is all of them. The commands come first: a session holds as many rows
 // that go somewhere as it has panes, and the palette should open on what it is

@@ -121,16 +121,16 @@ func TestMovingOntoAGroupBringsItsHeading(t *testing.T) {
 
 func TestTheRuleCountsTheAgentsByState(t *testing.T) {
 	m := sessionModel(t, testEnv(t), nil, 72, 12)
-	if got := m.topRule(); !strings.Contains(got, "● 1 blocked") || !strings.Contains(got, "● 2 working") {
+	if got := m.topRule(m.layout()); !strings.Contains(got, "● 1 blocked") || !strings.Contains(got, "● 2 working") {
 		t.Errorf("rule = %q, want the agents counted by state", got)
 	}
-	if lipgloss.Width(m.topRule()) != 72 {
-		t.Errorf("rule is %d wide, want the popup's width", lipgloss.Width(m.topRule()))
+	if lipgloss.Width(m.topRule(m.layout())) != 72 {
+		t.Errorf("rule is %d wide, want the popup's width", lipgloss.Width(m.topRule(m.layout())))
 	}
 
 	// A narrow popup keeps the counts and drops the names of the states.
 	narrow := sessionModel(t, testEnv(t), nil, 32, 12)
-	if got := narrow.topRule(); strings.Contains(got, "blocked") || !strings.Contains(got, "● 1") {
+	if got := narrow.topRule(narrow.layout()); strings.Contains(got, "blocked") || !strings.Contains(got, "● 1") {
 		t.Errorf("rule = %q, want the bare counts", got)
 	}
 }
@@ -138,21 +138,22 @@ func TestTheRuleCountsTheAgentsByState(t *testing.T) {
 func TestTheLabelNamesTheScreen(t *testing.T) {
 	var picked string
 	m := chooserModel(t, &picked, worktreeChoices)
-	if got := m.header(); !strings.Contains(got, "PALETTE") {
+	if got := m.header(m.layout()); !strings.Contains(got, "PALETTE") {
 		t.Errorf("header = %q, want PALETTE", got)
 	}
 	scoped := m
 	scoped.enter(palette.ScopeWorkspaces)
-	if got := scoped.header(); !strings.Contains(got, "WORKSPACES") {
+	if got := scoped.header(scoped.layout()); !strings.Contains(got, "WORKSPACES") {
 		t.Errorf("header = %q in a scope, want WORKSPACES", got)
 	}
-	if got := choose(t, m, "worktree").header(); !strings.Contains(got, modePick) {
+	picking := choose(t, m, "worktree")
+	if got := picking.header(picking.layout()); !strings.Contains(got, modePick) {
 		t.Errorf("header = %q on a list of targets, want %s", got, modePick)
 	}
 
 	var ran []string
 	confirm, _ := send(t, confirmModel(t, &ran), tea.KeyPressMsg{Code: tea.KeyEnter})
-	if got := confirm.header(); !strings.Contains(got, modeConfirm) {
+	if got := confirm.header(confirm.layout()); !strings.Contains(got, modeConfirm) {
 		t.Errorf("header = %q while asking, want %s", got, modeConfirm)
 	}
 }
@@ -163,7 +164,8 @@ func TestTheQueryStartsRightAfterTheLabel(t *testing.T) {
 	for _, scope := range []palette.Scope{palette.ScopePalette, palette.ScopePanes, palette.ScopeWorkspaces} {
 		m := sessionModel(t, testEnv(t), nil, 72, 12)
 		m.enter(scope)
-		header := ansi.Strip(typeQuery(t, m, "x").header())
+		typed := typeQuery(t, m, "x")
+		header := ansi.Strip(typed.header(typed.layout()))
 		got := lipgloss.Width(header[:strings.Index(header, "x")])
 		if want := len(" "+scope.Label()+" ") + 2; got != want {
 			t.Errorf("under %s the query starts at %d, want %d", scope.Label(), got, want)
@@ -202,7 +204,7 @@ func TestPreviewCanBeToggledWithoutLeavingTheList(t *testing.T) {
 	if cmd != nil || m.preview.text != "" {
 		t.Error("a read from before the preview was hidden was kept or rescheduled")
 	}
-	for i, line := range m.body() {
+	for i, line := range m.body(m.layout()) {
 		if got := lipgloss.Width(line); got != m.cols() {
 			t.Errorf("line %d width = %d, want %d", i, got, m.cols())
 		}
@@ -417,7 +419,7 @@ func TestWrapKeepsEveryWordWithinTheWidth(t *testing.T) {
 
 func TestTheNativeCursorTracksTheInsertionPoint(t *testing.T) {
 	m := sessionModel(t, testEnv(t), nil, 72, 12)
-	if got := ansi.Strip(m.header()); !strings.Contains(got, searchPlaceholder) || strings.Contains(got, "\u258f") {
+	if got := ansi.Strip(m.header(m.layout())); !strings.Contains(got, searchPlaceholder) || strings.Contains(got, "\u258f") {
 		t.Errorf("header = %q, want placeholder text without a painted cursor", got)
 	}
 	if cursor := m.View().Cursor; cursor == nil || cursor.X != 11 || cursor.Y != queryRow || cursor.Shape != tea.CursorBlock || !cursor.Blink {
@@ -427,7 +429,7 @@ func TestTheNativeCursorTracksTheInsertionPoint(t *testing.T) {
 	m = typeQuery(t, m, "split")
 	m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyLeft})
 	m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyLeft})
-	if got := ansi.Strip(m.header()); !strings.Contains(got, "split") {
+	if got := ansi.Strip(m.header(m.layout())); !strings.Contains(got, "split") {
 		t.Errorf("header = %q, want continuous text", got)
 	}
 	if cursor := m.View().Cursor; cursor == nil || cursor.X != 14 || cursor.Y != queryRow || cursor.Shape != tea.CursorBlock || !cursor.Blink {
@@ -436,7 +438,7 @@ func TestTheNativeCursorTracksTheInsertionPoint(t *testing.T) {
 	profile := lipgloss.ColorProfile()
 	lipgloss.SetColorProfile(termenv.TrueColor)
 	defer lipgloss.SetColorProfile(profile)
-	if header := m.header(); strings.Contains(header, "\x1b[7m") || strings.Contains(header, ";7m") {
+	if header := m.header(m.layout()); strings.Contains(header, "\x1b[7m") || strings.Contains(header, ";7m") {
 		t.Errorf("the query line still draws a block: %q", header)
 	}
 }
@@ -444,17 +446,17 @@ func TestTheNativeCursorTracksTheInsertionPoint(t *testing.T) {
 func TestALongQueryKeepsTheCaretOnShow(t *testing.T) {
 	m := sessionModel(t, testEnv(t), nil, 32, 12)
 	m = typeQuery(t, m, strings.Repeat("abcdefgh ", 8)+"end")
-	header := ansi.Strip(m.header())
+	header := ansi.Strip(m.header(m.layout()))
 	if !strings.Contains(header, "end") || m.View().Cursor == nil || m.View().Cursor.X >= 32 {
 		t.Errorf("header = %q, want the end of the query and the caret after it", header)
 	}
-	if w := lipgloss.Width(m.header()); w > 32 {
+	if w := lipgloss.Width(m.header(m.layout())); w > 32 {
 		t.Errorf("header is %d wide", w)
 	}
 	for range 80 {
 		m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyHome})
 	}
-	if header := ansi.Strip(m.header()); !strings.Contains(header, "abcdefgh") || m.View().Cursor == nil || m.View().Cursor.X != 11 {
+	if header := ansi.Strip(m.header(m.layout())); !strings.Contains(header, "abcdefgh") || m.View().Cursor == nil || m.View().Cursor.X != 11 {
 		t.Errorf("header = %q after home, want the caret at the start", header)
 	}
 }

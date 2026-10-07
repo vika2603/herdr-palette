@@ -62,7 +62,7 @@ func TestTabHandsTheKeyboardToABlockedAgent(t *testing.T) {
 	if m.replying == nil {
 		t.Fatal("tab on a blocked agent did not hand it the keyboard")
 	}
-	if got := m.header(); !strings.Contains(got, modeReply) || !strings.Contains(got, "frontend") {
+	if got := m.header(m.layout()); !strings.Contains(got, modeReply) || !strings.Contains(got, "frontend") {
 		t.Errorf("header = %q, want the label and the agent's name", got)
 	}
 	if m.previewTarget() != "p-blocked" {

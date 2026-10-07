@@ -2,6 +2,8 @@ package ui
 
 import (
 	"context"
+	"fmt"
+	"image/color"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -80,7 +82,7 @@ func runEnter(t *testing.T, m model) (model, bool) {
 func TestASelectedScriptShowsAFieldForEachArgument(t *testing.T) {
 	var ran [][]string
 	m := fieldModel(t, 72, &ran)
-	header := ansi.Strip(m.header())
+	header := ansi.Strip(m.header(m.layout()))
 	for _, name := range []string{"deploy", "branch", "environment ▾", "token"} {
 		if !strings.Contains(header, name) {
 			t.Errorf("header = %q, want %q on it", header, name)
@@ -93,7 +95,7 @@ func TestASelectedScriptShowsAFieldForEachArgument(t *testing.T) {
 	// search placeholder.
 	empty := pressAll(t, m, clearKey)
 	selectRow(t, &empty, "script:deploy")
-	if header := ansi.Strip(empty.header()); !strings.Contains(header, "Deploy") || strings.Contains(header, searchPlaceholder) {
+	if header := ansi.Strip(empty.header(empty.layout())); !strings.Contains(header, "Deploy") || strings.Contains(header, searchPlaceholder) {
 		t.Errorf("header = %q, want the command's title as the placeholder", header)
 	}
 
@@ -109,7 +111,7 @@ func TestASelectedScriptShowsAFieldForEachArgument(t *testing.T) {
 	for m.ranked[m.cursor].Entry.ID != "script:lazygit" {
 		m = pressAll(t, m, downKey)
 	}
-	if header := ansi.Strip(m.header()); strings.Contains(header, "branch") || !strings.Contains(header, searchPlaceholder) {
+	if header := ansi.Strip(m.header(m.layout())); strings.Contains(header, "branch") || !strings.Contains(header, searchPlaceholder) {
 		t.Errorf("header = %q on a row without arguments, want no fields and the search placeholder", header)
 	}
 }
@@ -121,7 +123,7 @@ func TestTabMovesIntoTheFieldsAndTypingFillsThem(t *testing.T) {
 	if m.query.Value() != "deploy" {
 		t.Errorf("query = %q, want it left as it was", m.query.Value())
 	}
-	header := []rune(ansi.Strip(m.header()))
+	header := []rune(ansi.Strip(m.header(m.layout())))
 	start := slices.Index(header, []rune(capLeft)[0])
 	if start < 0 || string(header[start:start+5]) != capLeft+"main" {
 		t.Fatalf("header = %q, want the branch typed into its field", string(header))
@@ -134,7 +136,7 @@ func TestTabMovesIntoTheFieldsAndTypingFillsThem(t *testing.T) {
 		t.Errorf("cursor = %+v, want it after main at column %d", cursor, start+1+len("main"))
 	}
 	// The rule's mark follows the keys from the label to the field.
-	rule := []rune(ansi.Strip(m.topRule()))
+	rule := []rune(ansi.Strip(m.topRule(m.layout())))
 	if mark := slices.Index(rule, '━'); mark != start {
 		t.Errorf("the rule's mark starts at %d, want under the field at %d: %q", mark, start, string(rule))
 	}
@@ -177,7 +179,7 @@ func TestADropdownIsChosenWithTheArrowsUnderItsField(t *testing.T) {
 	if !strings.Contains(view, "Staging") || !strings.Contains(view, "Production") {
 		t.Errorf("view does not show the options:\n%s", view)
 	}
-	if header := ansi.Strip(m.header()); !strings.Contains(header, capLeft+"Production") || strings.Contains(header, "environment") {
+	if header := ansi.Strip(m.header(m.layout())); !strings.Contains(header, capLeft+"Production") || strings.Contains(header, "environment") {
 		t.Errorf("header = %q, want the highlighted option in the field", header)
 	}
 	if cursor := m.View().Cursor; cursor != nil {
@@ -200,7 +202,7 @@ func TestTypingInADropdownFiltersItsOptions(t *testing.T) {
 	if !strings.Contains(view, "Production") || strings.Contains(view, "Staging") {
 		t.Errorf("view does not show only the matching option:\n%s", view)
 	}
-	if header := ansi.Strip(m.header()); !strings.Contains(header, capLeft+"prd") {
+	if header := ansi.Strip(m.header(m.layout())); !strings.Contains(header, capLeft+"prd") {
 		t.Errorf("header = %q, want the filter in the field", header)
 	}
 	if cursor := m.View().Cursor; cursor == nil {
@@ -218,7 +220,7 @@ func TestTypingInADropdownFiltersItsOptions(t *testing.T) {
 
 	// Leaving the field drops the filter and keeps the option it matched.
 	m = pressAll(t, m, escKey)
-	if header := ansi.Strip(m.header()); !strings.Contains(header, capLeft+"Production") {
+	if header := ansi.Strip(m.header(m.layout())); !strings.Contains(header, capLeft+"Production") {
 		t.Errorf("header = %q, want the matched option kept", header)
 	}
 	if _, ok := runEnter(t, m); !ok {
@@ -249,7 +251,7 @@ func TestADropdownCommandListsItsOptionsOnceEntered(t *testing.T) {
 	}
 	m = drain(t, m, cmd)
 	m = typeQuery(t, m, "rel")
-	if header := ansi.Strip(m.header()); !strings.Contains(header, capLeft+"rel") {
+	if header := ansi.Strip(m.header(m.layout())); !strings.Contains(header, capLeft+"rel") {
 		t.Errorf("header = %q, want the filter in the field", header)
 	}
 	if _, ok := runEnter(t, m); !ok {
@@ -284,7 +286,7 @@ func TestADropdownCommandIsListedAgainForNewValuesBeforeIt(t *testing.T) {
 	m = typeQuery(t, pressAll(t, m, tabKey), "api")
 	m, cmd := send(t, m, tabKey)
 	m = pressAll(t, drain(t, m, cmd), downKey)
-	if header := ansi.Strip(m.header()); !strings.Contains(header, capLeft+"api-dev") {
+	if header := ansi.Strip(m.header(m.layout())); !strings.Contains(header, capLeft+"api-dev") {
 		t.Fatalf("header = %q, want the options listed for api", header)
 	}
 
@@ -327,7 +329,7 @@ func TestOptionsArrivingUnderAQuestionEndTheLoading(t *testing.T) {
 	if m.args == nil || m.args.loading[1] {
 		t.Fatal("the dropdown is still loading after its options arrived")
 	}
-	if header := ansi.Strip(m.header()); !strings.Contains(header, capLeft+"main") {
+	if header := ansi.Strip(m.header(m.layout())); !strings.Contains(header, capLeft+"main") {
 		t.Errorf("header = %q, want the option that arrived", header)
 	}
 }
@@ -355,7 +357,7 @@ func TestAFailedDropdownCommandRunsAgainWhenEnteredAgain(t *testing.T) {
 		t.Fatal("entering the dropdown again did not run its command")
 	}
 	m = drain(t, m, cmd)
-	if header := ansi.Strip(m.header()); !strings.Contains(header, capLeft+"main") {
+	if header := ansi.Strip(m.header(m.layout())); !strings.Contains(header, capLeft+"main") {
 		t.Errorf("header = %q, want the options from the second run", header)
 	}
 }
@@ -385,7 +387,7 @@ func TestAConfirmedScriptAsksWithItsValuesAndKeepsThemOnCancel(t *testing.T) {
 	if m.confirming != nil || m.args == nil {
 		t.Fatalf("confirming = %v, args = %v, want the question gone and the values kept", m.confirming != nil, m.args)
 	}
-	if header := ansi.Strip(m.header()); !strings.Contains(header, capLeft+"main") {
+	if header := ansi.Strip(m.header(m.layout())); !strings.Contains(header, capLeft+"main") {
 		t.Errorf("header = %q, want the branch kept", header)
 	}
 
@@ -405,14 +407,14 @@ func TestEscGivesTheKeysBackAndKeepsWhatWasEntered(t *testing.T) {
 	if m.inField() {
 		t.Fatal("esc left the keys in the field")
 	}
-	if header := ansi.Strip(m.header()); !strings.Contains(header, capLeft+"main") {
+	if header := ansi.Strip(m.header(m.layout())); !strings.Contains(header, capLeft+"main") {
 		t.Errorf("header = %q, want the branch kept", header)
 	}
 
 	// A query that keeps the row selected keeps its values; another row
 	// selected leaves them behind with the row.
 	m = typeQuery(t, pressAll(t, m, tea.KeyPressMsg{Code: tea.KeyBackspace}), "y")
-	if header := ansi.Strip(m.header()); !strings.Contains(header, capLeft+"main") {
+	if header := ansi.Strip(m.header(m.layout())); !strings.Contains(header, capLeft+"main") {
 		t.Errorf("header = %q, want the branch kept while the row stays selected", header)
 	}
 	m = pressAll(t, m, clearKey)
@@ -422,7 +424,7 @@ func TestEscGivesTheKeysBackAndKeepsWhatWasEntered(t *testing.T) {
 	for m.ranked[m.cursor].Entry.ID != "script:deploy" {
 		m = pressAll(t, m, downKey)
 	}
-	if header := ansi.Strip(m.header()); strings.Contains(header, "main") {
+	if header := ansi.Strip(m.header(m.layout())); strings.Contains(header, "main") {
 		t.Errorf("header = %q, want the fields started over", header)
 	}
 
@@ -491,4 +493,211 @@ func drain(t *testing.T, m model, cmd tea.Cmd) model {
 		m, _ = send(t, m, msg)
 	}
 	return m
+}
+
+func click(t *testing.T, m model, x, y int) (model, tea.Cmd) {
+	t.Helper()
+	return send(t, m, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+}
+
+// notRun fails the test when a command asked for runs a script.
+func notRun(t *testing.T, cmd tea.Cmd, what string) {
+	t.Helper()
+	if cmd == nil {
+		return
+	}
+	if _, ok := cmd().(ranMsg); ok {
+		t.Fatalf("%s ran the script", what)
+	}
+}
+
+// openDropdown types a branch into the deploy script m has selected and opens
+// its environment dropdown, the first option, Staging, highlighted.
+func openDropdown(t *testing.T, m model) model {
+	t.Helper()
+	return pressAll(t, typeQuery(t, pressAll(t, m, tabKey), "main"), tabKey)
+}
+
+// darkBackground is what a dark terminal reports. The answer sets lipgloss's
+// shared idea of the background, which the test puts back.
+func darkBackground(t *testing.T, m model) model {
+	t.Helper()
+	previous := lipgloss.HasDarkBackground()
+	t.Cleanup(func() { lipgloss.SetHasDarkBackground(previous) })
+	m, _ = send(t, m, tea.BackgroundColorMsg{Color: color.RGBA{R: 0x1a, G: 0x1b, B: 0x26, A: 0xff}})
+	return m
+}
+
+// surfaces names every surface colour the theme can be given.
+var surfaces = map[string]string{
+	"hover_background": "#222222", "menu_background": "#333333", "menu_hover_background": "#444444",
+}
+
+// The options are drawn over the list, so a click on one picks it rather than
+// running the row under it.
+func TestAClickOnAnOptionPicksIt(t *testing.T) {
+	var ran [][]string
+	m := openDropdown(t, fieldModel(t, 72, &ran))
+	drop := m.line().drop
+
+	m, cmd := click(t, m, drop.start+2, headerRows+1)
+	notRun(t, cmd, "a click on an option")
+	if f := m.form(); f == nil || f.focus != 1 || f.value(m.ranked[m.cursor].Entry, 1) != "production" {
+		t.Fatalf("form = %+v, want Production picked with the dropdown still open", f)
+	}
+	if _, ok := runEnter(t, m); !ok || !slices.Equal(ran[0], []string{"main", "production", ""}) {
+		t.Errorf("ran with %q, want the clicked option", ran)
+	}
+}
+
+func TestAClickOnAFieldFocusesIt(t *testing.T) {
+	var ran [][]string
+	m := fieldModel(t, 72, &ran)
+	fields := m.line().fields
+
+	m, _ = click(t, m, fields[1].start+1, queryRow)
+	if f := m.form(); f == nil || f.focus != 1 {
+		t.Fatalf("form = %+v, want the dropdown focused", f)
+	}
+	if m.line().drop.width == 0 {
+		t.Error("the clicked dropdown did not open")
+	}
+
+	// A second click on the open dropdown closes it.
+	m, _ = click(t, m, fields[1].start+1, queryRow)
+	if m.inField() {
+		t.Error("a click on the open dropdown did not close it")
+	}
+
+	m, _ = click(t, m, fields[0].start+1, queryRow)
+	if f := m.form(); f == nil || f.focus != 0 {
+		t.Fatalf("form = %+v, want the text field focused", f)
+	}
+	// A click on the query line away from the fields gives the keys back to
+	// the query.
+	m, _ = click(t, m, 2, queryRow)
+	if m.inField() {
+		t.Error("a click on the query did not give it the keys")
+	}
+}
+
+func TestAClickAwayFromAnOpenDropdownOnlyClosesIt(t *testing.T) {
+	var ran [][]string
+	m := openDropdown(t, fieldModel(t, 72, &ran))
+
+	m, cmd := click(t, m, 2, headerRows)
+	notRun(t, cmd, "a click away from the dropdown")
+	if m.inField() {
+		t.Error("the dropdown stayed open")
+	}
+	if f := m.form(); f == nil || f.fields[0].Value() != "main" {
+		t.Errorf("form = %+v, want what was entered kept", f)
+	}
+}
+
+// A click off the rows while a text field has the keys gives them back to the
+// query, the way a click on the list does.
+func TestAClickOffTheRowsLeavesATextField(t *testing.T) {
+	var ran [][]string
+	m := typeQuery(t, pressAll(t, fieldModel(t, 72, &ran), tabKey), "main")
+
+	m, cmd := click(t, m, 2, headerRows+5)
+	notRun(t, cmd, "a click off the rows")
+	if m.inField() {
+		t.Error("the text field kept the keys")
+	}
+}
+
+func TestTheWheelGoesThroughTheOptionsAndLeavesTheList(t *testing.T) {
+	var ran [][]string
+	m := pressAll(t, fieldModel(t, 72, &ran), clearKey)
+	if len(m.ranked) < 2 || m.ranked[m.cursor].Entry.ID != "script:deploy" {
+		t.Fatalf("want deploy selected among several rows, got %d rows", len(m.ranked))
+	}
+	m = openDropdown(t, m)
+	drop := m.line().drop
+	entry := m.ranked[m.cursor].Entry
+
+	m, _ = send(t, m, tea.MouseWheelMsg{X: drop.start + 2, Y: headerRows, Button: tea.MouseWheelDown})
+	if got := m.form().value(entry, 1); got != "production" {
+		t.Errorf("after the wheel down the dropdown has %q, want production", got)
+	}
+
+	// Off the menu the wheel would move the selection and leave the form
+	// behind, so it does nothing while a field has the keys.
+	m, _ = send(t, m, tea.MouseWheelMsg{X: drop.start + drop.width + 2, Y: headerRows + 2, Button: tea.MouseWheelDown})
+	if m.ranked[m.cursor].Entry.ID != "script:deploy" || m.form() == nil {
+		t.Errorf("the wheel off the menu moved the selection to %s", m.ranked[m.cursor].Entry.ID)
+	}
+}
+
+// The pointer marks what it is over and moves nothing: the next enter still
+// runs what the keys selected.
+func TestThePointerMarksWhatItIsOverAndMovesNothing(t *testing.T) {
+	var ran [][]string
+	m := darkBackground(t, pressAll(t, fieldModel(t, 72, &ran), clearKey))
+	selected := m.cursor
+	c := m.columns(m.listWidth())
+	plain := m.row(1, c, false)
+
+	m, _ = send(t, m, tea.MouseMotionMsg{X: 4, Y: headerRows + 1})
+	if at := m.layout().hover; at != (target{targetRow, 1}) || m.cursor != selected {
+		t.Fatalf("hovering %+v with the cursor at %d, want row 1 hovered and the cursor left at %d", at, m.cursor, selected)
+	}
+	if hovered := ansi.Strip(m.row(1, c, true)); hovered != ansi.Strip(plain) {
+		t.Errorf("hovered row = %q, want the plain row's text without the selected row's bar", hovered)
+	}
+	band := fmt.Sprint(m.styles.hovered.text.GetBackground())
+	if band == fmt.Sprint(m.colours.Selected) || band == fmt.Sprint(m.styles.plain.text.GetBackground()) {
+		t.Errorf("hovered band = %s, want a shade of its own between the background and the selected row's", band)
+	}
+	menu := fmt.Sprint(m.styles.option.GetBackground())
+	if menu == fmt.Sprint(m.colours.Rule) || fmt.Sprint(m.styles.optionHovered.GetBackground()) == menu {
+		t.Errorf("menu = %s, want a shade of the band's in place of the rule's, and the hovered option apart from it", menu)
+	}
+
+	m = openDropdown(t, m)
+	drop := m.line().drop
+	entry := m.ranked[m.cursor].Entry
+	m, _ = send(t, m, tea.MouseMotionMsg{X: drop.start + 2, Y: headerRows + 1})
+	if at := m.layout().hover; at != (target{targetOption, 1}) || m.form().value(entry, 1) != "staging" {
+		t.Errorf("hovering %+v with %q picked, want Production hovered and Staging kept", at, m.form().value(entry, 1))
+	}
+
+	fields := m.line().fields
+	m, _ = send(t, m, tea.MouseMotionMsg{X: fields[2].start + 1, Y: queryRow})
+	if at := m.layout().hover; at != (target{targetField, 2}) || m.form().focus != 1 {
+		t.Errorf("hovering %+v with focus on %d, want the token field hovered and the dropdown kept", at, m.form().focus)
+	}
+	rule := []rune(ansi.Strip(m.topRule(m.layout())))
+	if rule[fields[2].start] != '━' {
+		t.Errorf("rule under the hovered field = %q, want it marked", string(rule))
+	}
+}
+
+// Surfaces the theme names are drawn in from the start, before the terminal
+// has reported the background the derived ones are shades of.
+func TestConfiguredSurfacesNeedNoBackground(t *testing.T) {
+	colours := theme.Load(nil, theme.Custom{Colours: surfaces})
+	m := newModel(context.Background(), testEnv(t), &herdr.PluginInvocationContext{}, palette.List{}, nil, colours, Toggle{})
+
+	check := func(when string) {
+		t.Helper()
+		for _, c := range []struct {
+			name string
+			got  lipgloss.TerminalColor
+			want string
+		}{
+			{"hovered row", m.styles.hovered.text.GetBackground(), surfaces["hover_background"]},
+			{"menu", m.styles.option.GetBackground(), surfaces["menu_background"]},
+			{"hovered option", m.styles.optionHovered.GetBackground(), surfaces["menu_hover_background"]},
+		} {
+			if fmt.Sprint(c.got) != c.want {
+				t.Errorf("%s %s = %v, want the configured colour", c.name, when, c.got)
+			}
+		}
+	}
+	check("before the background")
+	m = darkBackground(t, m)
+	check("after the background")
 }

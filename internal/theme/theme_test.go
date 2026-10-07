@@ -155,3 +155,41 @@ func brightness(c color.Color) uint32 {
 	r, g, b, _ := c.RGBA()
 	return r + g + b
 }
+
+// A scheme leaves the surfaces unset so the popup derives them from its
+// background; the plugin's configuration can still name them.
+func TestTheSurfacesAreDerivedUnlessConfigured(t *testing.T) {
+	derived := Load(tokens, Custom{})
+	if derived.Hovered != nil || derived.Menu != nil || derived.MenuHovered != nil {
+		t.Errorf("surfaces = %v, %v, %v, want them left to be derived", derived.Hovered, derived.Menu, derived.MenuHovered)
+	}
+
+	own := Custom{Colours: map[string]string{
+		"hover_background": "#222222", "menu_background": "#333333", "menu_hover_background": "#444444",
+	}}
+	colours := Load(tokens, own)
+	if colours.Hovered != lipgloss.Color("#222222") || colours.Menu != lipgloss.Color("#333333") || colours.MenuHovered != lipgloss.Color("#444444") {
+		t.Errorf("surfaces = %v, %v, %v, want the configured ones", colours.Hovered, colours.Menu, colours.MenuHovered)
+	}
+}
+
+func TestTheSurfacesAreShadesOfTheBackground(t *testing.T) {
+	colours := Load(map[string]string{"surface0": "#303030"}, Custom{})
+
+	if hovered, menu, menuHovered := colours.Surfaces(nil); hovered != nil || menu != nil || menuHovered != nil {
+		t.Errorf("surfaces = %v, %v, %v without a background, want none", hovered, menu, menuHovered)
+	}
+	hovered, menu, menuHovered := colours.Surfaces(color.RGBA{R: 0x10, G: 0x10, B: 0x10, A: 0xff})
+	for name, c := range map[string]struct {
+		got  lipgloss.TerminalColor
+		want lipgloss.Color
+	}{
+		"hovered":      {hovered, "#202020"},
+		"menu":         {menu, "#505050"},
+		"menu hovered": {menuHovered, "#606060"},
+	} {
+		if c.got != c.want {
+			t.Errorf("%s = %v, want %v", name, c.got, c.want)
+		}
+	}
+}

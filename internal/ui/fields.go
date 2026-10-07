@@ -445,6 +445,8 @@ type queryLine struct {
 	// being typed into, and drop the dropdown being chosen from.
 	mark extent
 	drop extent
+	// fields are where each field is drawn, caps included.
+	fields []extent
 }
 
 // box is one field as it is laid out: the text it shows and how wide that
@@ -585,6 +587,7 @@ func (m model) line() queryLine {
 		text, cursor := m.boxText(bx, f, i, focused)
 		b.WriteString(text)
 		width := bx.width + boxChrome
+		out.fields = append(out.fields, extent{col, width})
 		if focused {
 			out.mark = extent{col, width}
 			dropdown := bx.argument.Type == palette.ArgumentDropdown
@@ -640,54 +643,108 @@ func (m model) boxText(bx box, f *argForm, i int, focused bool) (line string, cu
 	return m.styles.fieldCap.Render(capLeft) + style.Render(text) + m.styles.fieldCap.Render(capRight), cursor
 }
 
-// dropdown draws the options of the dropdown being chosen from over the lines
-// under its field, the way a menu opens under the control it belongs to.
-func (m model) dropdown(lines []string) []string {
-	l := m.line()
-	if l.drop.width == 0 || len(lines) == 0 {
-		return lines
+// menu is how the options of the dropdown being chosen from are laid out over
+// the list: the columns they take, and either a status in place of the
+// options or the run of the options its filter keeps that is on show.
+type menu struct {
+	start, width int
+	status       string
+	// shown are the options the filter keeps, indexes into options, first the
+	// one drawn on the top line, rows how many are drawn, and highlighted the
+	// one the dropdown has, an index into shown.
+	options     []palette.Choice
+	shown       []int
+	first, rows int
+	highlighted int
+}
+
+// menu lays out the dropdown open on the query line l over the list, a
+// menu of no width when none is open.
+func (m model) menu(l queryLine) menu {
+	lines := m.rows()
+	if l.drop.width == 0 || lines == 0 {
+		return menu{}
 	}
 	entry, _ := m.fielded()
 	f := m.form()
-	options := f.options(entry, f.focus)
-	shown := f.shown(entry, f.focus)
+	u := menu{options: f.options(entry, f.focus), shown: f.shown(entry, f.focus)}
 
-	status := ""
 	switch {
 	case f.loading[f.focus]:
-		status = "loading…"
-	case len(options) == 0:
-		status = "no options"
-	case len(shown) == 0:
-		status = "no match"
+		u.status = "loading…"
+	case len(u.options) == 0:
+		u.status = "no options"
+	case len(u.shown) == 0:
+		u.status = "no match"
 	}
 
 	cols := m.cols()
 	// A status is read whole even where the field is narrower than it.
-	width := min(max(l.drop.width, lipgloss.Width(status)+3), cols)
-	start := max(min(l.drop.start, cols-width), 0)
-	row := func(at int, marker, text string, style lipgloss.Style) {
-		text = truncate(text, max(width-3, 1))
-		text += strings.Repeat(" ", max(width-3-lipgloss.Width(text), 0))
-		drawn := m.styles.optionMarker.Render(marker) + style.Render(" "+text+" ")
-		lines[at] = splice(lines[at], start, width, drawn)
+	u.width = min(max(l.drop.width, lipgloss.Width(u.status)+3), cols)
+	u.start = max(min(l.drop.start, cols-u.width), 0)
+	if u.status != "" {
+		u.rows = 1
+		return u
 	}
-	if status != "" {
-		row(0, " ", status, m.styles.option)
+	u.highlighted = max(slices.Index(u.shown, f.option[f.focus]), 0)
+	u.rows = min(len(u.shown), lines)
+	u.first = max(u.highlighted-u.rows+1, 0)
+	return u
+}
+
+// dropdown draws the options of the dropdown being chosen from over the lines
+// under its field, the way a menu opens under the control it belongs to.
+func (m model) dropdown(lines []string, l layout) []string {
+	u := l.menu
+	if u.width == 0 {
 		return lines
 	}
-	highlighted := max(slices.Index(shown, f.option[f.focus]), 0)
-	rows := min(len(shown), len(lines))
-	first := max(highlighted-rows+1, 0)
-	for r := range rows {
-		at := first + r
-		marker, style := " ", m.styles.option
-		if at == highlighted {
-			marker, style = selectionMarker, m.styles.optionPicked
+	row := func(at int, marker string, markerStyle, style lipgloss.Style, text string) {
+		text = truncate(text, max(u.width-3, 1))
+		text += strings.Repeat(" ", max(u.width-3-lipgloss.Width(text), 0))
+		drawn := markerStyle.Render(marker) + style.Render(" "+text+" ")
+		lines[at] = splice(lines[at], u.start, u.width, drawn)
+	}
+	if u.status != "" {
+		row(0, " ", m.styles.option, m.styles.option, u.status)
+		return lines
+	}
+	hovered := l.hover.of(targetOption)
+	for r := range u.rows {
+		at := u.first + r
+		switch {
+		case at == u.highlighted:
+			row(r, selectionMarker, m.styles.optionMarker, m.styles.optionPicked, u.options[u.shown[at]].Title)
+		case u.shown[at] == hovered:
+			row(r, " ", m.styles.optionHovered, m.styles.optionHovered, u.options[u.shown[at]].Title)
+		default:
+			row(r, " ", m.styles.option, m.styles.option, u.options[u.shown[at]].Title)
 		}
-		row(r, marker, options[shown[at]].Title, style)
 	}
 	return lines
+}
+
+// at is the option the pointer at x, y is over, an index into options, or -1
+// over a status. over reports whether the pointer is on the menu at all.
+func (u menu) at(x, y int) (option int, over bool) {
+	r := y - headerRows
+	if u.width == 0 || r < 0 || r >= u.rows || x < u.start || x >= u.start+u.width {
+		return -1, false
+	}
+	if u.status != "" {
+		return -1, true
+	}
+	return u.shown[u.first+r], true
+}
+
+// fieldAt is the field drawn at column x, or -1.
+func (l queryLine) fieldAt(x int) int {
+	for i, field := range l.fields {
+		if x >= field.start && x < field.start+field.width {
+			return i
+		}
+	}
+	return -1
 }
 
 // splice puts drawn over the columns from start, width wide, of a drawn line.

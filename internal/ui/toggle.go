@@ -1,75 +1,82 @@
 package ui
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
 )
 
-// Toggle is the key bound to the toggle action, as config.toml spells it, and
-// the prefix key a chord starts with. herdr hands every key to a popup while
-// one is up, before it looks at its own bindings, so a second press of the
-// key never reaches the action: it arrives inside the popup, which closes
-// itself when it recognises the key.
+// Toggle is every key bound to the toggle action, as config.toml spells them,
+// and the prefix keys a chord starts with, the primary one first. herdr hands
+// every key to a popup while one is up, before it looks at its own bindings,
+// so a second press of a toggle key never reaches the action: it arrives
+// inside the popup, which closes itself when it recognises the key.
 type Toggle struct {
-	Binding string
-	Prefix  string
+	Bindings []string
+	Prefixes []string
 }
 
-// closer is the toggle binding as the popup's terminal reports it, with how
-// far into a chord the keys so far have come.
+// closer is the toggle bindings as the popup's terminal reports them, with
+// how far into a chord the keys so far have come. A binding no terminal can
+// deliver to the popup is left out.
 type closer struct {
-	// prefix starts a chord, and is empty for a direct binding.
-	prefix string
-	// key closes the popup, on its own or after the prefix. It is empty when
-	// nothing is bound to toggle, or the binding is one no terminal can
-	// deliver to the popup.
-	key string
-	// armed is set from the prefix until the key that follows it.
+	// direct close the popup on their own.
+	direct []string
+	// prefixes start a chord, and chord close the popup after one of them.
+	// Both are empty when no chord binding can be delivered.
+	prefixes []string
+	chord    []string
+	// armed is set from a prefix until the key that follows it.
 	armed bool
 }
 
 func newCloser(toggle Toggle) closer {
-	binding := strings.TrimSpace(toggle.Binding)
-	if binding == "" {
-		return closer{}
-	}
 	var c closer
-	if rest, found := strings.CutPrefix(binding, "prefix+"); found {
-		prefix, ok := keyName(toggle.Prefix)
-		if !ok {
-			return closer{}
+	for _, binding := range toggle.Bindings {
+		binding = strings.TrimSpace(binding)
+		if rest, found := strings.CutPrefix(binding, "prefix+"); found {
+			if key, ok := keyName(rest); ok {
+				c.chord = append(c.chord, key)
+			}
+			continue
 		}
-		c.prefix = prefix
-		binding = rest
+		if key, ok := keyName(binding); ok {
+			c.direct = append(c.direct, key)
+		}
 	}
-	key, ok := keyName(binding)
-	if !ok {
-		return closer{}
+	if len(c.chord) > 0 {
+		for _, prefix := range toggle.Prefixes {
+			if key, ok := keyName(prefix); ok {
+				c.prefixes = append(c.prefixes, key)
+			}
+		}
 	}
-	c.key = key
+	if len(c.prefixes) == 0 {
+		c.chord = nil
+	}
 	return c
 }
 
 // press takes a keystroke. closes says the popup should go, and taken that the
-// key belonged to the chord rather than to the list: the prefix itself, or
+// key belonged to the chord rather than to the list: a prefix itself, or
 // whatever followed it, the way herdr's own prefix mode takes the key after
 // the prefix.
 func (c *closer) press(msg tea.KeyPressMsg) (closes, taken bool) {
-	if c.key == "" {
-		return false, false
-	}
 	name := msg.String()
 	legacy, _ := keyName(msg.Keystroke())
-	if c.prefix == "" {
-		return name == c.key || legacy == c.key, false
+	matches := func(keys []string) bool {
+		return slices.Contains(keys, name) || legacy != "" && slices.Contains(keys, legacy)
 	}
 	if c.armed {
 		c.armed = false
-		return name == c.key || legacy == c.key, true
+		return matches(c.chord), true
 	}
-	if name == c.prefix || legacy == c.prefix {
+	if matches(c.direct) {
+		return true, false
+	}
+	if matches(c.prefixes) {
 		c.armed = true
 		return false, true
 	}

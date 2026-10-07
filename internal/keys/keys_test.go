@@ -3,25 +3,31 @@ package keys
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
 func loadTestdata(t *testing.T) Config {
 	t.Helper()
+	cfg := loadDefaults(t)
+	apply(&cfg, "testdata/config.toml")
+	return cfg
+}
+
+func loadDefaults(t *testing.T) Config {
+	t.Helper()
 	raw, err := os.ReadFile("testdata/default-config.toml")
 	if err != nil {
 		t.Fatalf("reading the default config: %v", err)
 	}
-	cfg := newConfig(parseDefaults(string(raw)))
-	apply(&cfg, "testdata/config.toml")
-	return cfg
+	return newConfig(parseDefaults(string(raw)))
 }
 
 func TestThePrefixIsReadWithTheBindings(t *testing.T) {
 	cfg := loadTestdata(t)
 
-	if cfg.Prefix != "ctrl+b" {
-		t.Errorf("prefix = %q, want ctrl+b", cfg.Prefix)
+	if !slices.Equal(cfg.Prefixes, []string{"ctrl+b"}) {
+		t.Errorf("prefixes = %q, want ctrl+b", cfg.Prefixes)
 	}
 	if got, ok := cfg.Action["prefix"]; ok {
 		t.Errorf("prefix = %q was listed as an action binding", got)
@@ -32,8 +38,8 @@ func TestThePrefixIsReadWithTheBindings(t *testing.T) {
 		t.Fatal(err)
 	}
 	apply(&cfg, path)
-	if cfg.Prefix != "ctrl+a" {
-		t.Errorf("prefix = %q, want the value from config.toml", cfg.Prefix)
+	if !slices.Equal(cfg.Prefixes, []string{"ctrl+a"}) {
+		t.Errorf("prefixes = %q, want the value from config.toml", cfg.Prefixes)
 	}
 }
 
@@ -90,13 +96,107 @@ func TestCustomCommandsAreCollected(t *testing.T) {
 func TestPluginActionBindingsAreKeptApart(t *testing.T) {
 	cfg := loadTestdata(t)
 
-	if got := cfg.Plugin["herdr.machine-manager.open"]; got != "prefix+shift+s" {
+	if got := cfg.Plugin["herdr.machine-manager.open"]; !slices.Equal(got, []string{"prefix+shift+s"}) {
 		t.Errorf("machine manager binding = %q, want prefix+shift+s", got)
 	}
 	for _, custom := range cfg.Custom {
 		if custom.Type == TypePluginAction {
 			t.Error("a plugin action was also listed as a custom command, which would show it twice")
 		}
+	}
+}
+
+// applyConfig lays a config.toml with the given contents over the defaults.
+func applyConfig(t *testing.T, contents string) Config {
+	t.Helper()
+	cfg := loadDefaults(t)
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	apply(&cfg, path)
+	return cfg
+}
+
+// herdr accepts an array wherever it accepts a key. An array in one command
+// must not cost the commands after it.
+func TestBindingsMayBeArrays(t *testing.T) {
+	cfg := applyConfig(t, `
+[keys]
+new_tab = ["prefix+t", "alt+t"]
+next_tab = []
+
+[[keys.command]]
+key = ["prefix+x", "alt+x"]
+type = "shell"
+command = "first"
+
+[[keys.command]]
+key = "alt+j"
+type = "plugin_action"
+command = "herdr.palette.toggle"
+
+[[keys.command]]
+key = ["alt+k"]
+type = "plugin_action"
+command = "herdr.palette.toggle"
+`)
+
+	if got := cfg.Action["new_tab"]; got != "prefix+t" {
+		t.Errorf("new_tab = %q, want the first key of the array", got)
+	}
+	if got, ok := cfg.Action["next_tab"]; ok {
+		t.Errorf("next_tab = %q, want an empty array to unbind it", got)
+	}
+	if got, ok := cfg.Action["close_pane"]; ok {
+		t.Errorf("close_pane = %q, want its default dropped for the second key of a command", got)
+	}
+	if len(cfg.Custom) != 1 || cfg.Custom[0].Key != "prefix+x" || cfg.Custom[0].Command != "first" {
+		t.Errorf("custom commands = %+v, want the one bound by an array", cfg.Custom)
+	}
+	if got := cfg.Plugin["herdr.palette.toggle"]; !slices.Equal(got, []string{"alt+j", "alt+k"}) {
+		t.Errorf("toggle bindings = %q, want the keys of both entries", got)
+	}
+}
+
+func TestACommandHerdrWouldRejectLeavesTheOthers(t *testing.T) {
+	cfg := applyConfig(t, `
+[[keys.command]]
+key = 5
+type = "shell"
+command = "broken"
+
+[[keys.command]]
+key = "alt+j"
+type = "shell"
+command = "kept"
+`)
+
+	if len(cfg.Custom) != 1 || cfg.Custom[0].Command != "kept" {
+		t.Errorf("custom commands = %+v, want only the well-formed one", cfg.Custom)
+	}
+}
+
+func TestPrefixesMergeAsHerdrMergesThem(t *testing.T) {
+	cfg := applyConfig(t, "[keys]\nprefix = [\"ctrl+space\", \"ctrl+s\"]\nextra_prefixes = \"f12\"\n")
+	if want := []string{"ctrl+space", "ctrl+s", "f12"}; !slices.Equal(cfg.Prefixes, want) {
+		t.Errorf("prefixes = %q, want %q", cfg.Prefixes, want)
+	}
+	if _, ok := cfg.Action["extra_prefixes"]; ok {
+		t.Error("extra_prefixes was listed as an action binding")
+	}
+
+	// herdr rejects a prefix with no key and keeps the one it had.
+	cfg = applyConfig(t, "[keys]\nprefix = []\n")
+	if !slices.Equal(cfg.Prefixes, []string{"ctrl+b"}) {
+		t.Errorf("prefixes = %q, want the default kept", cfg.Prefixes)
+	}
+}
+
+func TestFullscreenBindsZoom(t *testing.T) {
+	cfg := applyConfig(t, "[keys]\nfullscreen = \"prefix+f\"\n")
+	if got := cfg.Action["zoom"]; got != "prefix+f" {
+		t.Errorf("zoom = %q, want the binding given under its older name", got)
 	}
 }
 

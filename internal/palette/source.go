@@ -65,7 +65,9 @@ func Load(
 				continue
 			}
 			entry := pluginEntry(action, plugin.Name)
-			entry.Key = cfg.Plugin[keys.PluginBinding(action.PluginID, action.ActionID)]
+			if bound := cfg.Plugin[keys.PluginBinding(action.PluginID, action.ActionID)]; len(bound) > 0 {
+				entry.Key = bound[0]
+			}
 			commands = append(commands, entry)
 		}
 	}

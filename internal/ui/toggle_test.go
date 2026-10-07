@@ -56,7 +56,7 @@ func TestABindingNoTerminalCanDeliverIsLeftOut(t *testing.T) {
 }
 
 func TestAChordArmsOnThePrefixAndClosesOnTheKey(t *testing.T) {
-	c := newCloser(Toggle{Binding: "prefix+space", Prefix: "ctrl+b"})
+	c := newCloser(Toggle{Bindings: []string{"prefix+space"}, Prefixes: []string{"ctrl+b"}})
 	space := tea.KeyPressMsg{Code: tea.KeySpace, Text: " "}
 	prefix := tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl}
 
@@ -80,6 +80,28 @@ func TestAChordArmsOnThePrefixAndClosesOnTheKey(t *testing.T) {
 	}
 }
 
+func TestEveryToggleBindingCloses(t *testing.T) {
+	space := tea.KeyPressMsg{Code: tea.KeySpace, Text: " "}
+	altJ := tea.KeyPressMsg{Code: 'j', Mod: tea.ModAlt}
+	ctrlB := tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl}
+	ctrlS := tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl}
+	toggle := Toggle{Bindings: []string{"prefix+space", "alt+j"}, Prefixes: []string{"ctrl+b", "ctrl+s"}}
+
+	c := newCloser(toggle)
+	if closes, taken := c.press(altJ); !closes || taken {
+		t.Error("the direct binding did not close the popup")
+	}
+	for _, prefix := range []tea.KeyPressMsg{ctrlB, ctrlS} {
+		c := newCloser(toggle)
+		if closes, taken := c.press(prefix); closes || !taken {
+			t.Errorf("prefix %q was not taken, or closed the popup by itself", prefix.String())
+		}
+		if closes, _ := c.press(space); !closes {
+			t.Errorf("the key after prefix %q did not close the popup", prefix.String())
+		}
+	}
+}
+
 func TestEnhancedKeyStillMatchesTheHerdrBinding(t *testing.T) {
 	for _, tc := range []struct {
 		binding string
@@ -88,7 +110,7 @@ func TestEnhancedKeyStillMatchesTheHerdrBinding(t *testing.T) {
 		{"ctrl+shift+p", tea.KeyPressMsg{Code: 'p', Mod: tea.ModCtrl | tea.ModShift}},
 		{"ctrl+enter", tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl}},
 	} {
-		c := newCloser(Toggle{Binding: tc.binding})
+		c := newCloser(Toggle{Bindings: []string{tc.binding}})
 		if closes, _ := c.press(tc.key); !closes {
 			t.Errorf("%q did not close for enhanced key %q", tc.binding, tc.key.String())
 		}
@@ -96,7 +118,7 @@ func TestEnhancedKeyStillMatchesTheHerdrBinding(t *testing.T) {
 }
 
 func TestNothingBoundClosesNothing(t *testing.T) {
-	for _, toggle := range []Toggle{{}, {Binding: "prefix+space"}, {Binding: "cmd+p"}} {
+	for _, toggle := range []Toggle{{}, {Bindings: []string{"prefix+space"}}, {Bindings: []string{"cmd+p"}}} {
 		c := newCloser(toggle)
 		for _, msg := range []tea.KeyPressMsg{{Code: tea.KeySpace, Text: " "}, {Code: 'b', Mod: tea.ModCtrl}, {Code: 'p', Text: "p"}} {
 			if closes, taken := c.press(msg); closes || taken {

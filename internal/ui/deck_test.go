@@ -39,7 +39,7 @@ func sessionList() palette.List {
 
 func sessionModel(t *testing.T, env *plugin.Env, recent []string, cols, rows int) model {
 	t.Helper()
-	m := newModel(context.Background(), env, &herdr.PluginInvocationContext{}, sessionList(), recent, theme.Defaults(), Toggle{Prefix: "ctrl+b"})
+	m := newModel(context.Background(), env, &herdr.PluginInvocationContext{}, sessionList(), recent, theme.Defaults(), Toggle{Prefixes: []string{"ctrl+b"}})
 	m.setSize(cols, rows)
 	return m
 }

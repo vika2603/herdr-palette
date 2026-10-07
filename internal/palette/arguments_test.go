@@ -272,6 +272,9 @@ func TestACommandWithoutArgumentsClearsThem(t *testing.T) {
 }
 
 func TestAScriptCanAskForSixValues(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix script fixture")
+	}
 	var header strings.Builder
 	for i := 1; i <= 6; i++ {
 		fmt.Fprintf(&header, "# @palette.argument%d { \"name\": \"v%d\", \"type\": \"text\" }\n", i, i)

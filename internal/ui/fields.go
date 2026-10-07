@@ -2,6 +2,7 @@ package ui
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 
 	"charm.land/bubbles/v2/textinput"
@@ -21,10 +22,12 @@ const (
 	// column the caret takes at the end of the query.
 	fieldGap = 2
 	// maxField and minField bound the text a field shows; a longer value
-	// scrolls inside it. minQuery is what the query keeps beside the fields
-	// before they are narrowed to leave it room.
+	// scrolls inside it. Fields narrowed to minField that still do not fit
+	// scroll along the line instead, since a field narrower than that no
+	// longer says what it holds. minQuery is what the query keeps beside the
+	// fields before they are narrowed to leave it room.
 	maxField = 24
-	minField = 6
+	minField = 12
 	minQuery = 10
 	// dropMarker follows a dropdown's text.
 	dropMarker = " ▾"
@@ -54,6 +57,8 @@ type argForm struct {
 	failed    []bool
 	// focus is the argument being typed into, -1 while the query has the keys.
 	focus int
+	// first is the first field on show when they do not all fit the line.
+	first int
 }
 
 func newArgForm(entry palette.Entry) *argForm {
@@ -438,8 +443,12 @@ type queryLine struct {
 	// being typed into, and drop the dropdown being chosen from.
 	mark extent
 	drop extent
-	// fields are where each field is drawn, caps included.
-	fields []extent
+	// fields are where each field is drawn, caps included, and of no width
+	// for one scrolled out of sight. first and end bound the run on show, and
+	// before and after are where the counts of those out of sight are drawn.
+	fields        []extent
+	first, end    int
+	before, after extent
 }
 
 // box is one field as it is laid out: the text it shows and how wide that
@@ -484,10 +493,10 @@ func (m model) boxes(entry palette.Entry, f *argForm, room int) []box {
 			if argument.Type == palette.ArgumentPassword {
 				b.text = strings.Repeat("•", len([]rune(b.text)))
 			}
-			b.width = max(lipgloss.Width(b.text), lipgloss.Width(argument.Placeholder))
-			if f.focus == i {
-				b.width++
-			}
+			// The column the caret takes after the text is kept whether the
+			// field has the keys or not, so taking and leaving the focus
+			// does not move the fields after it.
+			b.width = max(lipgloss.Width(b.text)+1, lipgloss.Width(argument.Placeholder))
 		default:
 			b.text, b.empty = argument.Placeholder, true
 			b.width = lipgloss.Width(b.text)
@@ -496,14 +505,22 @@ func (m model) boxes(entry palette.Entry, f *argForm, room int) []box {
 		boxes[i] = b
 		total += b.width + m.styles.fieldChrome + 1
 	}
+	// The text is what is narrowed, so a dropdown keeps its marker beside
+	// minField of it.
+	text := func(b box) int {
+		if b.argument.Type == palette.ArgumentDropdown {
+			return b.width - lipgloss.Width(dropMarker)
+		}
+		return b.width
+	}
 	for total > room-minQuery {
 		widest := 0
 		for i := range boxes {
-			if boxes[i].width > boxes[widest].width {
+			if text(boxes[i]) > text(boxes[widest]) {
 				widest = i
 			}
 		}
-		if boxes[widest].width <= minField {
+		if text(boxes[widest]) <= minField {
 			break
 		}
 		boxes[widest].width--
@@ -523,11 +540,13 @@ func (m model) line() queryLine {
 	entry, fielded := m.fielded()
 	f := m.form()
 	var boxes []box
+	from, to := 0, 0
 	queryRoom := room
 	if fielded {
 		boxes = m.boxes(entry, f, room)
-		used := fieldGap
-		for _, b := range boxes {
+		from, to = m.shownFields(boxes, f, room-minQuery)
+		used := fieldGap + m.scrollWidth(from, to, len(boxes))
+		for _, b := range boxes[from:to] {
 			used += b.width + m.styles.fieldChrome + 1
 		}
 		queryRoom = max(room-used, 1)
@@ -571,8 +590,26 @@ func (m model) line() queryLine {
 	gap := 1 + fieldGap
 	b.WriteString(strings.Repeat(" ", gap))
 	col := lead + shown + gap
+	out.first, out.end = from, to
+	out.fields = make([]extent, len(boxes))
+	// A count is a way to the fields it counts, brighter under the pointer.
+	count := func(text string, at extent) string {
+		if m.pointer.Y == queryRow && at.contains(m.pointer.X) {
+			return m.styles.plain.meta.Render(text)
+		}
+		return m.styles.plain.faint.Render(text)
+	}
+	if from > 0 {
+		text := scrollBefore(from)
+		out.before = extent{col, lipgloss.Width(text)}
+		b.WriteString(count(text, out.before) + " ")
+		col += out.before.width + 1
+	}
 	for i, bx := range boxes {
-		if i > 0 {
+		if i < from || i >= to {
+			continue
+		}
+		if i > from {
 			b.WriteString(" ")
 			col++
 		}
@@ -588,7 +625,7 @@ func (m model) line() queryLine {
 		}
 		text, cursor := m.boxText(bx, f, i, focused, look)
 		b.WriteString(text)
-		out.fields = append(out.fields, at)
+		out.fields[i] = at
 		if focused {
 			out.mark = extent{col, width}
 			dropdown := bx.argument.Type == palette.ArgumentDropdown
@@ -602,8 +639,63 @@ func (m model) line() queryLine {
 		}
 		col += width
 	}
+	if to < len(boxes) {
+		text := scrollAfter(len(boxes) - to)
+		out.after = extent{col + 1, lipgloss.Width(text)}
+		b.WriteString(" " + count(text, out.after))
+	}
 	out.text = b.String()
 	return out
+}
+
+// scrollBefore and scrollAfter count the fields scrolled out of sight on
+// either side.
+func scrollBefore(n int) string { return "‹" + strconv.Itoa(n) }
+func scrollAfter(n int) string  { return strconv.Itoa(n) + "›" }
+
+// scrollWidth is what the counts of the fields out of sight take beside the
+// run from, to of all of them, a blank between each and the fields included.
+func (m model) scrollWidth(from, to, all int) int {
+	width := 0
+	if from > 0 {
+		width += lipgloss.Width(scrollBefore(from)) + 1
+	}
+	if to < all {
+		width += lipgloss.Width(scrollAfter(all-to)) + 1
+	}
+	return width
+}
+
+// shownFields is the run of fields on show, from the form's first, moved only
+// as far as it takes to keep the field being typed into in sight: a field
+// tabbed to past the end brings one more in at that end rather than the run
+// starting over around it.
+func (m model) shownFields(boxes []box, f *argForm, room int) (from, to int) {
+	first, focus := 0, -1
+	if f != nil {
+		first, focus = min(f.first, len(boxes)-1), f.focus
+	}
+	if focus >= 0 && focus < first {
+		first = focus
+	}
+	fits := func(from, to int) bool {
+		width := fieldGap + m.scrollWidth(from, to, len(boxes))
+		for _, b := range boxes[from:to] {
+			width += b.width + m.styles.fieldChrome + 1
+		}
+		return width <= room
+	}
+	if fits(0, len(boxes)) {
+		return 0, len(boxes)
+	}
+	for focus >= 0 && first < focus && !fits(first, focus+1) {
+		first++
+	}
+	to = first + 1
+	for to < len(boxes) && fits(first, to+1) {
+		to++
+	}
+	return first, to
 }
 
 // boxText draws a field in look between its ends, and the column of the caret

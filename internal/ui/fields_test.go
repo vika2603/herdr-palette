@@ -756,3 +756,105 @@ func TestFieldsFollowTheWidthOfTheirEnds(t *testing.T) {
 		})
 	}
 }
+
+// sixFields is a palette holding a script that asks for six values, cols
+// wide.
+func sixFields(t *testing.T, cols int) model {
+	t.Helper()
+	text := func(name string) palette.Argument {
+		return palette.Argument{Name: name, Env: "HP_" + strings.ToUpper(name), Placeholder: name, Type: palette.ArgumentText}
+	}
+	region := palette.Argument{Name: "region", Env: "HP_REGION", Placeholder: "region", Type: palette.ArgumentDropdown,
+		Options: []palette.Choice{{Title: "us-east", Value: "us-east"}, {Title: "eu-west", Value: "eu-west"}}}
+	entries := []palette.Entry{{
+		ID: "script:deploy", Title: "Deploy", Type: palette.TypeCustom, Kind: palette.KindCustom,
+		Arguments: []palette.Argument{text("branch"), text("environment"), region, text("replicas"), text("note"), text("owner")},
+		Run:       func(context.Context, palette.Exec) error { return nil },
+	}}
+	m := newModel(context.Background(), testEnv(t), &herdr.PluginInvocationContext{}, palette.List{Commands: entries}, nil, theme.Defaults(), Toggle{})
+	m.setSize(cols, 8)
+	return m
+}
+
+// Fields that do not fit scroll along the line, the run on show keeping the
+// field being typed into in sight and moving only the way the focus went.
+func TestFieldsScrollToKeepTheFocusInSight(t *testing.T) {
+	m := sixFields(t, 72)
+	l := m.line()
+	if l.end == 6 || !strings.Contains(ansi.Strip(l.text), scrollAfter(6-l.end)) {
+		t.Fatalf("all six fields on show at 72 columns, or no count of the rest: %q", ansi.Strip(l.text))
+	}
+
+	check := func(step string) {
+		t.Helper()
+		l := m.line()
+		focus := m.form().focus
+		if at := l.fields[focus]; at.width == 0 || at.start+at.width > m.cols() {
+			t.Errorf("%s: the focused field %d is out of sight at %+v", step, focus, at)
+		}
+		for i, at := range l.fields {
+			if (i < l.first || i >= l.end) != (at.width == 0) {
+				t.Errorf("%s: field %d at %+v, on show %d to %d", step, i, at, l.first, l.end)
+			}
+		}
+	}
+	first := 0
+	for i := range 6 {
+		m = pressAll(t, m, tabKey)
+		check(fmt.Sprintf("tab %d", i+1))
+		if l := m.line(); l.first < first {
+			t.Errorf("tab %d: run moved back from %d to %d", i+1, first, l.first)
+		}
+		first = m.line().first
+	}
+	end := m.line().end
+	for i := range 5 {
+		m = pressAll(t, m, shiftTabKey)
+		check(fmt.Sprintf("shift-tab %d", i+1))
+		if l := m.line(); l.end > end {
+			t.Errorf("shift-tab %d: run moved on from %d to %d", i+1, end, l.end)
+		}
+		end = m.line().end
+	}
+}
+
+func TestACountLeadsToTheFieldsItCounts(t *testing.T) {
+	m := sixFields(t, 72)
+	l := m.line()
+	m, _ = click(t, m, l.after.start, queryRow)
+	if f := m.form(); f == nil || f.focus != l.end {
+		t.Fatalf("form = %+v, want the click on %q to focus field %d", f, scrollAfter(6-l.end), l.end)
+	}
+	l = m.line()
+	if l.first == 0 {
+		t.Fatal("the run did not scroll to the field the count led to")
+	}
+	m, _ = send(t, m, tea.MouseMotionMsg{X: l.before.start, Y: queryRow})
+	if at := m.layout().hover; at != (target{targetScroll, l.first - 1}) {
+		t.Errorf("hovering %+v over %q", at, scrollBefore(l.first))
+	}
+	m, _ = click(t, m, l.before.start, queryRow)
+	if f := m.form(); f.focus != l.first-1 {
+		t.Errorf("focus = %d, want the click on %q to focus field %d", f.focus, scrollBefore(l.first), l.first-1)
+	}
+}
+
+func TestFieldsThatFitDoNotScroll(t *testing.T) {
+	m := sixFields(t, 130)
+	l := m.line()
+	if l.first != 0 || l.end != 6 || l.before.width != 0 || l.after.width != 0 {
+		t.Errorf("run %d to %d with counts %+v %+v, want all six on show", l.first, l.end, l.before, l.after)
+	}
+}
+
+// A text field keeps the column its caret takes after the text, so taking and
+// leaving the focus does not move the fields after it.
+func TestTakingTheFocusDoesNotMoveTheFields(t *testing.T) {
+	var ran [][]string
+	m := typeQuery(t, pressAll(t, fieldModel(t, 72, &ran), tabKey), "main")
+	focused := m.line().fields
+	m = pressAll(t, m, escKey)
+	if left := m.line().fields; !slices.Equal(left[1:], focused[1:]) || left[0].width != focused[0].width {
+		t.Errorf("fields %+v with the focus, %+v without", focused, left)
+	}
+}

@@ -468,6 +468,19 @@ another row is selected. The values are passed as positional arguments and as
 `HP_` variables, on Windows as variables only, and reach the `run` pane in
 `HERDR_PALETTE_ARGS`.
 
+A script can ask for six values. Six fit on the query line of a popup of the
+usual width; past that most would be out of sight, and a script is better
+served asking in a form of its own. Where they do not fit, the fields are
+first narrowed, widest first, down to twelve columns of text, which still
+says what a field holds, and then scroll along the line. The run on show
+keeps the field being typed into in sight and moves only as far as that
+takes, so tabbing past its end brings the next field in rather than starting
+the run over around it, and the run stays put while the query has the keys.
+A count of the fields out of sight stands at either end, and a click on one
+moves the focus to the field next to those on show, which brings it in. A
+text field keeps the column its caret takes after the text whether it has
+the focus or not, so taking the focus does not move the fields after it.
+
 A field's ends are part of the theme. The default is Powerline's half circles
 from the private use area, which Ghostty, WezTerm and Windows Terminal draw
 themselves and kitty finds in the Nerd Font it ships; a terminal that does

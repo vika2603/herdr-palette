@@ -23,9 +23,11 @@ const (
 	ArgumentDropdown = "dropdown"
 )
 
-// maxArguments is how many arguments a script can declare, as many as a
-// Raycast script command can.
-const maxArguments = 3
+// maxArguments is how many arguments a script can declare. Six fit on the
+// query line of a popup of the usual width; past that the fields would
+// mostly be scrolled out of sight, and a script is better served asking in a
+// form of its own.
+const maxArguments = 6
 
 // ArgEnvPrefix is in front of the name of the environment variable each
 // argument's value is passed in, beside its position.

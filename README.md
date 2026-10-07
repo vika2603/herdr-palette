@@ -189,7 +189,7 @@ Scripts run in the directory of the pane you opened the palette from, with
 
 ### Arguments
 
-A script can ask for up to three values, each declared on one line:
+A script can ask for up to six values, each declared on one line:
 
 ```sh
 # @palette.argument1 { "name": "branch", "type": "text" }
@@ -203,9 +203,11 @@ script commands. When the script is selected its fields follow the query:
 `tab` moves through them and `enter` runs it. In a dropdown, `up` and `down`
 choose an option and typing filters the options by title. A click on a field
 moves to it, a click on an option picks it, and the wheel over the options goes
-through them. The script gets the
-values as `$1` to `$3` and as `HP_` plus the name in capitals (`HP_BRANCH`); on
-Windows only as the latter. A password is passed in clear text. The fields'
+through them. Fields that do not fit the line scroll along it to keep the one
+being filled in on show, with a count of those out of sight at either end; a
+click on a count moves to the next of them. The script gets the values as
+`$1` to `$6` and as `HP_` plus the name in capitals (`HP_BRANCH`); on Windows
+only as the latter. A password is passed in clear text. The fields'
 ends are set by `field_ends`; see Configuration.
 
 A dropdown can list its options with a command in place of `data`:

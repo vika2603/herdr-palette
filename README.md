@@ -49,6 +49,7 @@ Inside the popup a key reads as a terminal passes it on, so `ctrl+shift+p` is
 
 - **`herdr:`** herdr's own commands, including a few herdr has no key for:
   splitting left and up, moving or swapping the pane, evening out pane sizes,
+  moving the workspace toward the front or back,
   `Switch Workspace` and `Switch Tab`, and searching what the panes printed.
 - **`command:`** your `[[keys.command]]` entries and scripts, with no key
   binding needed for a script.

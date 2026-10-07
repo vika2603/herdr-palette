@@ -108,6 +108,18 @@ func herdrEntries() []palette.Entry {
 			Scope:   palette.ScopeWorkspaces,
 		},
 		{
+			ID:    "herdr:workspace.move.previous",
+			Title: "Move Workspace Toward the Front",
+			Type:  groupHerdr,
+			Run:   moveWorkspace(-1),
+		},
+		{
+			ID:    "herdr:workspace.move.next",
+			Title: "Move Workspace Toward the Back",
+			Type:  groupHerdr,
+			Run:   moveWorkspace(1),
+		},
+		{
 			ID:      "herdr:worktree.new",
 			Binding: "new_worktree",
 			Title:   "New Worktree Workspace",
@@ -483,13 +495,51 @@ func split(direction herdr.SplitDirection, swapWith herdr.PaneDirection) func(co
 	}
 }
 
+// insertIndex is where herdr is told to put a tab or workspace at index at, of
+// count, to move it one place by. herdr reads an insert index as a position in
+// the list as it stands and puts the item in front of whatever is there, so a
+// place back is one index less and a place on is two more — the item itself
+// still occupies the index between. The index may be the length, which is the
+// end; past it herdr refuses, so an item already at the end it is moved toward
+// stays where it is, which ok reports.
+func insertIndex(at, count, by int) (uint64, bool) {
+	insert := at + by
+	if by > 0 {
+		insert++
+	}
+	if insert < 0 || insert > count {
+		return 0, false
+	}
+	return uint64(insert), true
+}
+
+// moveWorkspace moves the focused workspace one place among the workspaces.
+// herdr has no key for it, only the API.
+func moveWorkspace(by int) func(context.Context, palette.Exec) error {
+	return func(ctx context.Context, e palette.Exec) error {
+		id, err := need(e.Ctx.WorkspaceID, errNoWorkspace)
+		if err != nil {
+			return err
+		}
+		snapshot, err := e.Client.SessionSnapshot(ctx)
+		if err != nil {
+			return err
+		}
+		workspaces := snapshot.Snapshot.Workspaces
+		at := slices.IndexFunc(workspaces, func(w herdr.WorkspaceInfo) bool { return w.WorkspaceID == id })
+		if at < 0 {
+			return errNoWorkspace
+		}
+		insert, ok := insertIndex(at, len(workspaces), by)
+		if !ok {
+			return nil
+		}
+		_, err = e.Client.WorkspaceMove(ctx, herdr.WorkspaceMoveParams{WorkspaceID: id, InsertIndex: insert})
+		return err
+	}
+}
+
 // moveTab moves the focused tab one place among the tabs of its workspace.
-//
-// herdr reads an insert index as a position in the list as it stands and puts
-// the tab in front of whatever is there, so a place back is one index less and
-// a place on is two more — the tab itself still occupies the index between.
-// The index may be the length, which is the end; past it herdr refuses, so a
-// tab already at the end it is moved toward stays where it is.
 func moveTab(by int) func(context.Context, palette.Exec) error {
 	return func(ctx context.Context, e palette.Exec) error {
 		id, err := need(e.Ctx.TabID, errNoTab)
@@ -505,14 +555,11 @@ func moveTab(by int) func(context.Context, palette.Exec) error {
 		if at < 0 {
 			return errNoTab
 		}
-		insert := at + by
-		if by > 0 {
-			insert++
-		}
-		if insert < 0 || insert > count {
+		insert, ok := insertIndex(at, count, by)
+		if !ok {
 			return nil
 		}
-		_, err = e.Client.TabMove(ctx, herdr.TabMoveParams{TabID: id, InsertIndex: uint64(insert)})
+		_, err = e.Client.TabMove(ctx, herdr.TabMoveParams{TabID: id, InsertIndex: insert})
 		return err
 	}
 }

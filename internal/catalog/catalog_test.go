@@ -77,6 +77,7 @@ func server(t *testing.T) *plugintest.Server {
 		Reply(herdr.MethodWorktreeList, worktreeList()).
 		Reply(herdr.MethodWorktreeRemove, herdr.WorktreeRemovedResponse{}).
 		Reply(herdr.MethodTabMove, herdr.TabListResponse{}).
+		Reply(herdr.MethodWorkspaceMove, herdr.WorkspaceListResponse{}).
 		Reply(herdr.MethodPaneMove, herdr.PaneMoveResponse{}).
 		Reply(herdr.MethodWorkspaceFocus, herdr.WorkspaceInfoResponse{}).
 		Reply(herdr.MethodTabFocus, herdr.TabInfoResponse{}).
@@ -683,6 +684,50 @@ func TestMovingATabPastTheEndDoesNothing(t *testing.T) {
 			for _, call := range runIn(t, c.id, step{}, ctx) {
 				if call.Method == herdr.MethodTabMove {
 					t.Errorf("tab %s was moved although it is at the end it moved toward", c.tab)
+				}
+			}
+		})
+	}
+}
+
+// Workspaces are counted the way tabs are: from w1, the first of two, a place
+// on is insert index 2; from w2 a place back is 0.
+func TestMovingAWorkspaceCountsItsPlace(t *testing.T) {
+	for _, c := range []struct {
+		id, workspace string
+		insert        uint64
+	}{
+		{id: "herdr:workspace.move.next", workspace: "w1", insert: 2},
+		{id: "herdr:workspace.move.previous", workspace: "w2", insert: 0},
+	} {
+		t.Run(c.id, func(t *testing.T) {
+			ctx := fullContext()
+			ctx.WorkspaceID = new(c.workspace)
+			calls := runIn(t, c.id, step{}, ctx)
+			if len(calls) != 2 || calls[1].Method != herdr.MethodWorkspaceMove {
+				t.Fatalf("made %v, want the snapshot and a move", calls)
+			}
+
+			var params herdr.WorkspaceMoveParams
+			decode(t, calls[1].Params, &params)
+			if params.WorkspaceID != c.workspace || params.InsertIndex != c.insert {
+				t.Errorf("moved %+v, want workspace %s to insert index %d", params, c.workspace, c.insert)
+			}
+		})
+	}
+}
+
+func TestMovingAWorkspacePastTheEndDoesNothing(t *testing.T) {
+	for _, c := range []struct{ id, workspace string }{
+		{id: "herdr:workspace.move.next", workspace: "w2"},
+		{id: "herdr:workspace.move.previous", workspace: "w1"},
+	} {
+		t.Run(c.id, func(t *testing.T) {
+			ctx := fullContext()
+			ctx.WorkspaceID = new(c.workspace)
+			for _, call := range runIn(t, c.id, step{}, ctx) {
+				if call.Method == herdr.MethodWorkspaceMove {
+					t.Errorf("workspace %s was moved although it is at the end it moved toward", c.workspace)
 				}
 			}
 		})

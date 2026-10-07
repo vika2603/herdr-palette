@@ -32,6 +32,7 @@ type scriptMetadata struct {
 	width     manifest.PopupSize
 	height    manifest.PopupSize
 	arguments []Argument
+	confirm   bool
 }
 
 // ScriptEntries reads the configured directories of user scripts. Discovery
@@ -157,6 +158,7 @@ func scriptDirectory(own, dir string, seen map[string]bool) ([]Entry, error) {
 		entry.Description = path
 		entry.Search = path
 		entry.Detail = meta.mode
+		entry.Confirm = meta.confirm
 		// A shell script can itself ask herdr to open a pane. It must run
 		// after the palette closes, just like a plugin action, rather than
 		// fail with ui_busy outside the palette's control.
@@ -275,6 +277,14 @@ func parseScriptHeader(data []byte, batch, truncated bool) (scriptMetadata, erro
 				meta.mode = value
 			default:
 				return meta, fmt.Errorf("unknown script mode %q (use shell, pane or popup)", value)
+			}
+		case "confirm":
+			switch value {
+			case "true":
+				meta.confirm = true
+			case "false":
+			default:
+				return meta, fmt.Errorf("@palette.confirm %q must be true or false", value)
 			}
 		case "width", "height":
 			size, err := popupSize(value)

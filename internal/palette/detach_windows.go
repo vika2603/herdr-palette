@@ -4,6 +4,7 @@ package palette
 
 import (
 	"os/exec"
+	"strconv"
 	"syscall"
 
 	"golang.org/x/sys/windows"
@@ -38,4 +39,14 @@ func processExists(pid int) bool {
 	defer func() { _ = windows.CloseHandle(handle) }()
 	var code uint32
 	return windows.GetExitCodeProcess(handle, &code) == nil && code == stillActive
+}
+
+// killTree makes cancelling the command end everything it started, not only
+// cmd.exe: taskkill /T ends the process tree.
+func killTree(cmd *exec.Cmd) {
+	cmd.Cancel = func() error {
+		kill := exec.Command("taskkill", "/T", "/F", "/PID", strconv.Itoa(cmd.Process.Pid))
+		kill.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NO_WINDOW}
+		return kill.Run()
+	}
 }

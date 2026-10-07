@@ -2,6 +2,8 @@ package ui
 
 import (
 	"context"
+	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -179,13 +181,219 @@ func TestADropdownIsChosenWithTheArrowsUnderItsField(t *testing.T) {
 		t.Errorf("header = %q, want the highlighted option in the field", header)
 	}
 	if cursor := m.View().Cursor; cursor != nil {
-		t.Errorf("cursor = %+v, want none in a field that takes no text", cursor)
+		t.Errorf("cursor = %+v, want none until a filter is typed", cursor)
 	}
-	m = typeQuery(t, m, "zz")
 	if _, ok := runEnter(t, m); !ok {
 		t.Fatal("enter in the dropdown did not run the script")
 	}
 	if want := []string{"main", "production", ""}; len(ran) != 1 || !slices.Equal(ran[0], want) {
+		t.Errorf("ran with %q, want %q", ran, want)
+	}
+}
+
+func TestTypingInADropdownFiltersItsOptions(t *testing.T) {
+	var ran [][]string
+	m := typeQuery(t, pressAll(t, fieldModel(t, 72, &ran), tabKey), "main")
+	m = typeQuery(t, pressAll(t, m, tabKey), "prd")
+
+	view := ansi.Strip(m.View().Content)
+	if !strings.Contains(view, "Production") || strings.Contains(view, "Staging") {
+		t.Errorf("view does not show only the matching option:\n%s", view)
+	}
+	if header := ansi.Strip(m.header()); !strings.Contains(header, capLeft+"prd") {
+		t.Errorf("header = %q, want the filter in the field", header)
+	}
+	if cursor := m.View().Cursor; cursor == nil {
+		t.Error("no cursor while a filter is typed")
+	}
+
+	// Nothing matching leaves the dropdown without a value.
+	none := typeQuery(t, m, "zz")
+	if !strings.Contains(ansi.Strip(none.View().Content), "no match") {
+		t.Errorf("view does not say nothing matches:\n%s", ansi.Strip(none.View().Content))
+	}
+	if _, ok := runEnter(t, none); ok {
+		t.Fatal("the script ran with a dropdown that matched nothing")
+	}
+
+	// Leaving the field drops the filter and keeps the option it matched.
+	m = pressAll(t, m, escKey)
+	if header := ansi.Strip(m.header()); !strings.Contains(header, capLeft+"Production") {
+		t.Errorf("header = %q, want the matched option kept", header)
+	}
+	if _, ok := runEnter(t, m); !ok {
+		t.Fatal("the script did not run")
+	}
+	if want := []string{"main", "production", ""}; len(ran) != 1 || !slices.Equal(ran[0], want) {
+		t.Errorf("ran with %q, want %q", ran, want)
+	}
+}
+
+func TestADropdownCommandListsItsOptionsOnceEntered(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX shell command")
+	}
+	var ran [][]string
+	m := fieldModel(t, 72, &ran)
+	entry := m.source.Commands[0]
+	entry.Arguments = []palette.Argument{{
+		Name: "branch", Env: "HP_BRANCH", Placeholder: "branch", Type: palette.ArgumentDropdown,
+		Command: `printf 'main\nRelease 1\trelease/1\n'`,
+	}}
+	m.source.Commands[0] = entry
+	m.rank()
+
+	m, cmd := send(t, m, tabKey)
+	if cmd == nil || !strings.Contains(ansi.Strip(m.View().Content), "loading") {
+		t.Fatalf("entering the dropdown did not start its command:\n%s", ansi.Strip(m.View().Content))
+	}
+	m = drain(t, m, cmd)
+	m = typeQuery(t, m, "rel")
+	if header := ansi.Strip(m.header()); !strings.Contains(header, capLeft+"rel") {
+		t.Errorf("header = %q, want the filter in the field", header)
+	}
+	if _, ok := runEnter(t, m); !ok {
+		t.Fatal("the script did not run")
+	}
+	if want := []string{"release/1"}; len(ran) != 1 || !slices.Equal(ran[0], want) {
+		t.Errorf("ran with %q, want %q", ran, want)
+	}
+}
+
+// commandModel is fieldModel's script asking for a repository and then a
+// branch its command lists.
+func commandModel(t *testing.T, command string, ran *[][]string) model {
+	t.Helper()
+	m := fieldModel(t, 72, ran)
+	entry := m.source.Commands[0]
+	entry.Arguments = []palette.Argument{
+		{Name: "repo", Env: "HP_REPO", Placeholder: "repo", Type: palette.ArgumentText},
+		{Name: "branch", Env: "HP_BRANCH", Placeholder: "branch", Type: palette.ArgumentDropdown, Command: command},
+	}
+	m.source.Commands[0] = entry
+	m.rank()
+	return m
+}
+
+func TestADropdownCommandIsListedAgainForNewValuesBeforeIt(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX shell command")
+	}
+	var ran [][]string
+	m := commandModel(t, `printf '%s-main\n%s-dev\n' "$HP_REPO" "$HP_REPO"`, &ran)
+	m = typeQuery(t, pressAll(t, m, tabKey), "api")
+	m, cmd := send(t, m, tabKey)
+	m = pressAll(t, drain(t, m, cmd), downKey)
+	if header := ansi.Strip(m.header()); !strings.Contains(header, capLeft+"api-dev") {
+		t.Fatalf("header = %q, want the options listed for api", header)
+	}
+
+	// The repository changes after the branch was picked: enter goes back to
+	// the branch and lists it again rather than running with api-dev.
+	m = pressAll(t, m, shiftTabKey, clearKey)
+	m = typeQuery(t, m, "web")
+	m, cmd = send(t, m, enterKey)
+	if len(ran) != 0 || m.args.focus != 1 || !strings.Contains(m.footer(), "listed again") {
+		t.Fatalf("ran = %q, focus = %d, footer = %q, want the branch listed again first", ran, m.args.focus, m.footer())
+	}
+	// Until the new options arrive, the old one is not run with either.
+	m, ok := runEnter(t, m)
+	if ok || len(ran) != 0 || !strings.Contains(m.footer(), "still loading") {
+		t.Fatalf("ran = %q, footer = %q, want the script held while the branch loads", ran, m.footer())
+	}
+	m = drain(t, m, cmd)
+	if _, ok := runEnter(t, m); !ok {
+		t.Fatal("the script did not run")
+	}
+	if want := []string{"web", "web-main"}; len(ran) != 1 || !slices.Equal(ran[0], want) {
+		t.Errorf("ran with %q, want %q", ran, want)
+	}
+}
+
+// A question over the row hides the form without leaving it, so options
+// arriving then still end the loading.
+func TestOptionsArrivingUnderAQuestionEndTheLoading(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX shell command")
+	}
+	var ran [][]string
+	m := commandModel(t, "echo main", &ran)
+	m = typeQuery(t, pressAll(t, m, tabKey), "api")
+	m, cmd := send(t, m, tabKey)
+	entry := m.ranked[m.cursor].Entry
+	m.confirming = &entry
+	m = drain(t, m, cmd)
+	m.confirming = nil
+	if m.args == nil || m.args.loading[1] {
+		t.Fatal("the dropdown is still loading after its options arrived")
+	}
+	if header := ansi.Strip(m.header()); !strings.Contains(header, capLeft+"main") {
+		t.Errorf("header = %q, want the option that arrived", header)
+	}
+}
+
+func TestAFailedDropdownCommandRunsAgainWhenEnteredAgain(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX shell command")
+	}
+	marker := filepath.Join(t.TempDir(), "tried")
+	var ran [][]string
+	m := commandModel(t, "test -f '"+marker+"' || { touch '"+marker+"'; echo offline >&2; exit 1; }; echo main", &ran)
+	m = typeQuery(t, pressAll(t, m, tabKey), "api")
+	m, cmd := send(t, m, tabKey)
+	m = drain(t, m, cmd)
+	if !strings.Contains(m.footer(), "offline") {
+		t.Fatalf("footer = %q, want the command's error", m.footer())
+	}
+	if _, cmd = send(t, m, downKey); cmd != nil {
+		t.Fatal("the failed command ran again without the dropdown being entered again")
+	}
+
+	m = pressAll(t, m, shiftTabKey)
+	m, cmd = send(t, m, tabKey)
+	if cmd == nil {
+		t.Fatal("entering the dropdown again did not run its command")
+	}
+	m = drain(t, m, cmd)
+	if header := ansi.Strip(m.header()); !strings.Contains(header, capLeft+"main") {
+		t.Errorf("header = %q, want the options from the second run", header)
+	}
+}
+
+func TestAConfirmedScriptAsksWithItsValuesAndKeepsThemOnCancel(t *testing.T) {
+	var ran [][]string
+	m := fieldModel(t, 120, &ran)
+	entry := m.source.Commands[0]
+	entry.Confirm = true
+	m.source.Commands[0] = entry
+	m.rank()
+
+	m = typeQuery(t, pressAll(t, m, tabKey), "main")
+	m = pressAll(t, m, tabKey, tabKey)
+	m, _ = send(t, m, tea.PasteMsg{Content: "s3cret"})
+	m, ok := runEnter(t, m)
+	if ok || len(ran) != 0 || m.confirming == nil {
+		t.Fatalf("ran = %q, confirming = %v, want the question first", ran, m.confirming != nil)
+	}
+	footer := ansi.Strip(m.footer())
+	if !strings.Contains(footer, "main · staging · ••••••") || strings.Contains(footer, "s3cret") {
+		t.Errorf("footer = %q, want the values with the password hidden", footer)
+	}
+
+	// Any other key cancels, and the fields keep what was entered.
+	m = pressAll(t, m, escKey)
+	if m.confirming != nil || m.args == nil {
+		t.Fatalf("confirming = %v, args = %v, want the question gone and the values kept", m.confirming != nil, m.args)
+	}
+	if header := ansi.Strip(m.header()); !strings.Contains(header, capLeft+"main") {
+		t.Errorf("header = %q, want the branch kept", header)
+	}
+
+	m, _ = runEnter(t, m)
+	if _, ok = runEnter(t, m); !ok {
+		t.Fatal("enter on the question did not run the script")
+	}
+	if want := []string{"main", "staging", "s3cret"}; len(ran) != 1 || !slices.Equal(ran[0], want) {
 		t.Errorf("ran with %q, want %q", ran, want)
 	}
 }
@@ -266,4 +474,21 @@ func TestFieldsNeverOutgrowThePopup(t *testing.T) {
 			t.Errorf("at %d columns the cursor is at %d, off the popup", cols, cursor.X)
 		}
 	}
+}
+
+// drain runs what a key asked for and hands back the options a dropdown's
+// command listed.
+func drain(t *testing.T, m model, cmd tea.Cmd) model {
+	t.Helper()
+	switch msg := cmd().(type) {
+	case tea.BatchMsg:
+		for _, c := range msg {
+			if c != nil {
+				m = drain(t, m, c)
+			}
+		}
+	case optionsMsg:
+		m, _ = send(t, m, msg)
+	}
+	return m
 }

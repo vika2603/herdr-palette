@@ -49,6 +49,7 @@ Inside the popup a key reads as a terminal passes it on, so `ctrl+shift+p` is
 
 - **`herdr:`** herdr's own commands, including a few herdr has no key for:
   splitting left and up, moving or swapping the pane, evening out pane sizes,
+  moving the workspace toward the front or back,
   `Switch Workspace` and `Switch Tab`, and searching what the panes printed.
 - **`command:`** your `[[keys.command]]` entries and scripts, with no key
   binding needed for a script.
@@ -162,6 +163,10 @@ editor, a script containing a shebang followed by `zed .` needs no metadata.
 A `popup` script can set `@palette.width` and `@palette.height`, as a cell
 count (`30`) or a percentage (`80%`).
 
+`@palette.confirm true` makes the palette ask before running the script, with
+the values of its arguments in the question: `enter` runs it, any other key
+cancels and keeps what was entered.
+
 Scripts run in the directory of the pane you opened the palette from, with
 `HERDR_ACTIVE_WORKSPACE_ID`, `HERDR_ACTIVE_TAB_ID`, `HERDR_ACTIVE_PANE_ID` and
 `HERDR_ACTIVE_PANE_CWD` available when herdr supplies them.
@@ -179,10 +184,34 @@ A script can ask for up to three values, each declared on one line:
 `name` and `type` (`text`, `password` or `dropdown`) are required;
 `placeholder`, `optional`, `percentEncoded` and `data` work as in Raycast
 script commands. When the script is selected its fields follow the query:
-`tab` moves through them and `enter` runs it. The script gets the values as
-`$1` to `$3` and as `HP_` plus the name in capitals (`HP_BRANCH`); on Windows
-only as the latter. A password is passed in clear text. The fields' rounded
-ends are Nerd Font glyphs.
+`tab` moves through them and `enter` runs it. In a dropdown, `up` and `down`
+choose an option and typing filters the options by title. The script gets the
+values as `$1` to `$3` and as `HP_` plus the name in capitals (`HP_BRANCH`); on
+Windows only as the latter. A password is passed in clear text. The fields'
+rounded ends are Nerd Font glyphs.
+
+A dropdown can list its options with a command in place of `data`:
+
+```sh
+# @palette.argument1 { "name": "branch", "type": "dropdown", "command": "git branch --format='%(refname:short)'" }
+```
+
+The command runs through the shell when the dropdown first gets the focus, in
+the directory a script runs in and with the same `HERDR_ACTIVE_` variables.
+The arguments before the dropdown are passed as their `HP_` variables, so its
+options can depend on them:
+
+```sh
+# @palette.argument1 { "name": "repo", "type": "text" }
+# @palette.argument2 { "name": "branch", "type": "dropdown", "command": "git -C \"$HP_REPO\" branch --format='%(refname:short)'" }
+```
+
+When one of those values changes, the dropdown lists its options again the
+next time it gets the focus, and `enter` takes the focus there first. Each line
+the command prints is an option; a line holding a tab is the title before the
+tab and the value after it. A command that fails, or takes more than five
+seconds, reports why in the footer and runs again when the dropdown next gets
+the focus.
 
 On Windows, use `.ps1`, `.cmd` or `.bat`. PowerShell scripts use the same `#`
 comments; batch scripts use `REM @palette.title ...` and `REM @palette.mode ...`

@@ -468,6 +468,20 @@ another row is selected. The values are passed as positional arguments and as
 `HP_` variables, on Windows as variables only, and reach the `run` pane in
 `HERDR_PALETTE_ARGS`.
 
+A dropdown's `command` runs when the dropdown first gets the focus rather than
+when the row is selected, so moving through the list never runs one. It runs
+off the update loop and is given the values of the arguments before it. It
+runs again only when those values have changed or the last run failed, and a
+result is dropped if the row has been left, or the values have changed, by the
+time it arrives. `enter` sends the focus to a dropdown listed for values that
+have changed, so a script never runs with an option picked from a list that no
+longer applies; the option is kept when the new list still holds its value. A
+command past its five seconds is ended along with what it started — its
+process group on Unix, its process tree through `taskkill /T` on Windows — so
+a hung child does not outlive the wait. Typing into a dropdown filters
+its options with the same matcher as the list, and the best match becomes its
+value; leaving the field drops the filter and keeps that value.
+
 ## Picking a target from a list
 
 A command whose target is one of several things herdr knows about — the

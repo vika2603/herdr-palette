@@ -11,3 +11,6 @@ func detach(*exec.Cmd) {}
 // processExists cannot be answered without a signal, so the wait for the popup
 // falls back to its timeout.
 func processExists(int) bool { return true }
+
+// killTree leaves cancelling to os/exec, which kills the command itself.
+func killTree(*exec.Cmd) {}

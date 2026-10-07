@@ -1,12 +1,18 @@
 package palette
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"os/exec"
 	"regexp"
 	"strings"
+	"time"
+
+	"github.com/vika2603/herdr-client/herdr"
 )
 
 // Argument types a script header can declare, the ones Raycast script
@@ -45,6 +51,9 @@ type Argument struct {
 	// Options are what a dropdown picks from: the title is shown, the value
 	// passed.
 	Options []Choice
+	// Command is a shell command line whose output lists a dropdown's options
+	// in place of Options, run when the dropdown first gets the focus.
+	Command string
 }
 
 // Pass is what the script receives for the value entered.
@@ -93,6 +102,7 @@ type argumentHeader struct {
 	Placeholder    string `json:"placeholder"`
 	Optional       bool   `json:"optional"`
 	PercentEncoded bool   `json:"percentEncoded"`
+	Command        string `json:"command"`
 	Data           []struct {
 		Title *string `json:"title"`
 		Value *string `json:"value"`
@@ -122,6 +132,7 @@ func parseArgument(text string) (Argument, error) {
 		Type:           header.Type,
 		Optional:       header.Optional,
 		PercentEncoded: header.PercentEncoded,
+		Command:        header.Command,
 	}
 	if argument.Placeholder == "" {
 		argument.Placeholder = argument.Name
@@ -131,9 +142,18 @@ func parseArgument(text string) (Argument, error) {
 		if header.Data != nil {
 			return Argument{}, errors.New("data is only for a dropdown")
 		}
+		if header.Command != "" {
+			return Argument{}, errors.New("command is only for a dropdown")
+		}
 	case ArgumentDropdown:
+		if header.Command != "" {
+			if header.Data != nil {
+				return Argument{}, errors.New("dropdown takes data or command, not both")
+			}
+			break
+		}
 		if len(header.Data) == 0 {
-			return Argument{}, errors.New("dropdown needs data")
+			return Argument{}, errors.New("dropdown needs data or command")
 		}
 		for i, option := range header.Data {
 			if option.Title == nil || *option.Title == "" || option.Value == nil {
@@ -145,6 +165,63 @@ func parseArgument(text string) (Argument, error) {
 		return Argument{}, fmt.Errorf("type %q is not text, password or dropdown", header.Type)
 	}
 	return argument, nil
+}
+
+// optionsTimeout bounds how long a dropdown's command may take to list its
+// options; the popup is waiting on it. A variable so a test need not wait it
+// out.
+var optionsTimeout = 5 * time.Second
+
+// LoadOptions runs the dropdown's command where a script would run, with the
+// same HERDR_ACTIVE_ variables and env added, and reads one option per line
+// of its output: the line is both title and value, or title and value
+// separated by a tab.
+func (a Argument) LoadOptions(ctx context.Context, c *herdr.PluginInvocationContext, env map[string]string) ([]Choice, error) {
+	ctx, cancel := context.WithTimeout(ctx, optionsTimeout)
+	defer cancel()
+	cmd := ShellCommand(ctx, a.Command)
+	killTree(cmd)
+	// A child that left the process group and kept stdout would otherwise
+	// hold the read open after the group is killed.
+	cmd.WaitDelay = time.Second
+	cmd.Dir = herdr.Value(c.FocusedPaneCwd)
+	cmd.Env = cmd.Environ()
+	for name, value := range activeEnv(c) {
+		cmd.Env = append(cmd.Env, name+"="+value)
+	}
+	for name, value := range env {
+		cmd.Env = append(cmd.Env, name+"="+value)
+	}
+	out, err := cmd.Output()
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("%s: options took longer than %s", a.Name, optionsTimeout)
+		}
+		var exit *exec.ExitError
+		if errors.As(err, &exit) {
+			if line, _, _ := strings.Cut(strings.TrimSpace(string(exit.Stderr)), "\n"); line != "" {
+				return nil, fmt.Errorf("%s: %s", a.Name, line)
+			}
+		}
+		return nil, fmt.Errorf("%s: %w", a.Name, err)
+	}
+	return parseOptions(out), nil
+}
+
+func parseOptions(out []byte) []Choice {
+	var options []Choice
+	for line := range bytes.Lines(out) {
+		text := strings.TrimRight(string(line), "\r\n")
+		if strings.TrimSpace(text) == "" {
+			continue
+		}
+		title, value, ok := strings.Cut(text, "\t")
+		if !ok {
+			value = title
+		}
+		options = append(options, Choice{Title: title, Value: value})
+	}
+	return options
 }
 
 // declaredArguments checks the arguments a header declared, by number, and

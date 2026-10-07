@@ -322,7 +322,7 @@ func TestEscClosesThePopup(t *testing.T) {
 func TestTheToggleKeyClosesThePopup(t *testing.T) {
 	var ran []string
 	m := testModel(t, nil, &ran)
-	m.closer = newCloser(Toggle{Binding: "alt+space"})
+	m.closer = newCloser(Toggle{Bindings: []string{"alt+space"}})
 
 	if _, cmd := send(t, m, tea.KeyPressMsg{Code: ' ', Mod: tea.ModAlt}); cmd == nil {
 		t.Error("the toggle key did not close the popup")
@@ -332,7 +332,7 @@ func TestTheToggleKeyClosesThePopup(t *testing.T) {
 func TestAToggleChordClosesThePopup(t *testing.T) {
 	var ran []string
 	m := testModel(t, nil, &ran)
-	m.closer = newCloser(Toggle{Binding: "prefix+space", Prefix: "ctrl+b"})
+	m.closer = newCloser(Toggle{Bindings: []string{"prefix+space"}, Prefixes: []string{"ctrl+b"}})
 
 	m, cmd := send(t, m, tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
 	if cmd != nil {
@@ -346,7 +346,7 @@ func TestAToggleChordClosesThePopup(t *testing.T) {
 func TestAPasteConsumesAnArmedTogglePrefix(t *testing.T) {
 	var ran []string
 	m := testModel(t, nil, &ran)
-	m.closer = newCloser(Toggle{Binding: "prefix+space", Prefix: "ctrl+b"})
+	m.closer = newCloser(Toggle{Bindings: []string{"prefix+space"}, Prefixes: []string{"ctrl+b"}})
 	m, _ = send(t, m, tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
 	m, _ = send(t, m, tea.PasteMsg{Content: "query"})
 	if m.closer.armed || m.query.Value() != "" {
@@ -513,7 +513,7 @@ func TestTheKeyColumnShowsWhatEachCommandIsBoundTo(t *testing.T) {
 		{ID: "c", Title: "Manage machines", Type: "Machine Manager"},
 	}
 	withSpelling(t, "darwin")
-	m := newModel(context.Background(), testEnv(t), &herdr.PluginInvocationContext{}, palette.List{Commands: entries}, nil, theme.Defaults(), Toggle{Prefix: "ctrl+b"})
+	m := newModel(context.Background(), testEnv(t), &herdr.PluginInvocationContext{}, palette.List{Commands: entries}, nil, theme.Defaults(), Toggle{Prefixes: []string{"ctrl+b"}})
 	m.setSize(80, 12)
 
 	view := m.View().Content

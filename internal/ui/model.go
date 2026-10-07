@@ -103,8 +103,8 @@ type model struct {
 	offset int
 	// widths are what the columns of a row are drawn to.
 	widths widths
-	// prefix is the key a prefix chord starts with, which the key column
-	// spells out.
+	// prefix is the primary key a prefix chord starts with, which the key
+	// column spells out.
 	prefix string
 
 	// epoch counts the screens the popup has walked out of. A request to the
@@ -160,7 +160,7 @@ func newModel(
 		source:         list,
 		scope:          palette.ScopePalette,
 		home:           palette.ScopePalette,
-		prefix:         toggle.Prefix,
+		prefix:         primary(toggle.Prefixes),
 		recent:         recent,
 		query:          query,
 		styles:         styles,
@@ -876,4 +876,12 @@ func scroll(offset, top, bottom, rows int) int {
 		return bottom - rows + 1
 	}
 	return offset
+}
+
+// primary is the prefix herdr shows, the first one configured.
+func primary(prefixes []string) string {
+	if len(prefixes) == 0 {
+		return ""
+	}
+	return prefixes[0]
 }

@@ -72,7 +72,7 @@ func snapshot() herdr.SessionSnapshotResponse {
 func config() keys.Config {
 	return keys.Config{
 		Action: map[string]string{"new_tab": "prefix+c"},
-		Plugin: map[string]string{"herdr.machine-manager.open": "prefix+shift+s"},
+		Plugin: map[string][]string{"herdr.machine-manager.open": {"prefix+shift+s"}},
 		Custom: []keys.Custom{
 			{Key: "prefix+f", Description: "Open git jump", Type: keys.TypePopup, Command: "jump.sh", Width: manifest.PopupSize{Percent: 70}, Height: manifest.PopupSize{Percent: 60}},
 			{Key: "prefix+alt+g", Description: "Open Lazygit", Type: keys.TypePane, Command: "lazygit"},

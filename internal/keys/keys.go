@@ -7,6 +7,7 @@
 package keys
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,12 +22,15 @@ import (
 // Config is what herdr's configuration says about commands, their keys, and
 // the theme tokens the user overrode.
 type Config struct {
-	// Prefix is the key that starts a prefix chord, as [keys] spells it.
-	Prefix string
-	// Action maps a built-in action name, such as new_workspace, to its key.
+	// Prefixes are the keys that start a prefix chord, as [keys] spells them.
+	// The first is the primary one, which herdr shows in its status bar.
+	Prefixes []string
+	// Action maps a built-in action name, such as new_workspace, to its first
+	// key, the one the key column shows.
 	Action map[string]string
-	// Plugin maps a plugin action, as PluginBinding spells it, to its key.
-	Plugin map[string]string
+	// Plugin maps a plugin action, as PluginBinding spells it, to every key
+	// bound to it.
+	Plugin map[string][]string
 	// Custom are the shell, pane and popup commands from [[keys.command]].
 	Custom []Custom
 	// Theme is the [theme.custom] table, token name to colour.
@@ -37,12 +41,38 @@ type Config struct {
 // are decoded by the manifest package, which accepts both spellings herdr
 // does: a cell count and a percentage string.
 type Custom struct {
-	Key         string             `toml:"key"`
+	// Key is the first of Keys, the one the key column shows.
+	Key         string             `toml:"-"`
+	Keys        Bindings           `toml:"key"`
 	Description string             `toml:"description"`
 	Type        string             `toml:"type"`
 	Command     string             `toml:"command"`
 	Width       manifest.PopupSize `toml:"width"`
 	Height      manifest.PopupSize `toml:"height"`
+}
+
+// Bindings are the keys one binding assigns. herdr accepts a single key as a
+// string and several as an array of strings; blank entries assign nothing, so
+// a binding with none left unbinds the action.
+type Bindings []string
+
+// UnmarshalTOML decodes either spelling herdr accepts.
+func (b *Bindings) UnmarshalTOML(data any) error {
+	values := []any{data}
+	if list, ok := data.([]any); ok {
+		values = list
+	}
+	*b = nil
+	for _, value := range values {
+		key, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("a binding is a string or an array of strings, not %T", value)
+		}
+		if strings.TrimSpace(key) != "" {
+			*b = append(*b, key)
+		}
+	}
+	return nil
 }
 
 // PluginBinding is how a plugin action is named in [[keys.command]], and the
@@ -80,10 +110,12 @@ func newConfig(actions map[string]string) Config {
 	if actions == nil {
 		actions = map[string]string{}
 	}
-	cfg := Config{Action: actions, Plugin: map[string]string{}, Theme: map[string]string{}}
+	cfg := Config{Action: actions, Plugin: map[string][]string{}, Theme: map[string]string{}}
 	// The prefix shares the [keys] table with the action bindings, so the
 	// defaults carry it as one; it is a key of its own rather than an action's.
-	cfg.Prefix = actions[prefixKey]
+	if prefix := actions[prefixKey]; prefix != "" {
+		cfg.Prefixes = []string{prefix}
+	}
 	delete(actions, prefixKey)
 	return cfg
 }
@@ -169,8 +201,8 @@ func parseDefaults(config string) map[string]string {
 }
 
 // userConfig is the part of config.toml this package reads. Under [keys],
-// action bindings are plain strings and commands are one array of tables, so
-// the values stay undecoded until their shape is known.
+// action bindings are keys and commands are one array of tables, so the values
+// stay undecoded until their shape is known.
 type userConfig struct {
 	Keys  map[string]toml.Primitive `toml:"keys"`
 	Theme struct {
@@ -195,46 +227,67 @@ func apply(cfg *Config, path string) {
 	taken := map[string]bool{}
 	configured := map[string]bool{}
 
+	var prefix, extraPrefixes Bindings
 	for name, value := range parsed.Keys {
 		if name == commandsKey {
 			continue
 		}
-		var text string
+		var bound Bindings
 		// A value that is not a key assignment, such as [keys.indexed], is not
 		// an action binding.
-		if err := meta.PrimitiveDecode(value, &text); err != nil {
+		if err := meta.PrimitiveDecode(value, &bound); err != nil {
 			continue
 		}
-		if name == prefixKey {
-			if text != "" {
-				cfg.Prefix = text
-			}
+		switch name {
+		case prefixKey:
+			prefix = bound
 			continue
+		case extraPrefixesKey:
+			extraPrefixes = bound
+			continue
+		case legacyZoomKey:
+			name = zoomKey
 		}
-		if text == "" {
+		if len(bound) == 0 {
 			// An explicit empty value unbinds the action.
 			delete(cfg.Action, name)
 			configured[name] = true
 			continue
 		}
-		cfg.Action[name] = text
+		cfg.Action[name] = bound[0]
 		configured[name] = true
-		taken[text] = true
+		for _, key := range bound {
+			taken[key] = true
+		}
+	}
+	// herdr merges extra_prefixes after prefix, and rejects an empty result,
+	// keeping the prefix it had.
+	if prefixes := append(prefix, extraPrefixes...); len(prefixes) > 0 {
+		cfg.Prefixes = prefixes
 	}
 
-	var commands []Custom
+	// Each command is decoded on its own, so one herdr would reject does not
+	// take the others with it.
+	var entries []toml.Primitive
 	if primitive, ok := parsed.Keys[commandsKey]; ok {
-		_ = meta.PrimitiveDecode(primitive, &commands)
+		_ = meta.PrimitiveDecode(primitive, &entries)
 	}
-	for _, custom := range commands {
-		if custom.Key != "" {
-			taken[custom.Key] = true
+	for _, entry := range entries {
+		var custom Custom
+		if err := meta.PrimitiveDecode(entry, &custom); err != nil {
+			continue
+		}
+		for _, key := range custom.Keys {
+			taken[key] = true
 		}
 		if custom.Type == TypePluginAction {
 			// The action itself already reaches the palette through
-			// plugin.action.list; only its key is news.
-			cfg.Plugin[custom.Command] = custom.Key
+			// plugin.action.list; only its keys are news.
+			cfg.Plugin[custom.Command] = append(cfg.Plugin[custom.Command], custom.Keys...)
 			continue
+		}
+		if len(custom.Keys) > 0 {
+			custom.Key = custom.Keys[0]
 		}
 		if custom.Command != "" {
 			cfg.Custom = append(cfg.Custom, custom)
@@ -248,9 +301,14 @@ func apply(cfg *Config, path string) {
 	}
 }
 
-// commandsKey is the [[keys.command]] array of tables and prefixKey the prefix
-// assignment, both of which share the [keys] table with the action bindings.
+// commandsKey is the [[keys.command]] array of tables, and prefixKey and
+// extraPrefixesKey the prefix assignments, all of which share the [keys] table
+// with the action bindings. legacyZoomKey is the older name herdr still accepts
+// for zoom.
 const (
-	commandsKey = "command"
-	prefixKey   = "prefix"
+	commandsKey      = "command"
+	prefixKey        = "prefix"
+	extraPrefixesKey = "extra_prefixes"
+	legacyZoomKey    = "fullscreen"
+	zoomKey          = "zoom"
 )

@@ -201,8 +201,8 @@ func onPalette(ctx context.Context, env *plugin.Env) error {
 	own := settings.Load(env)
 	list, loadErr := entries(ctx, env, cfg, own)
 	toggle := ui.Toggle{
-		Binding: cfg.Plugin[keys.PluginBinding(env.PluginID, actionToggle)],
-		Prefix:  cfg.Prefix,
+		Bindings: cfg.Plugin[keys.PluginBinding(env.PluginID, actionToggle)],
+		Prefixes: cfg.Prefixes,
 	}
 	return ui.Run(ctx, env, list, loadErr, theme.Load(cfg.Theme, own.Theme), toggle)
 }

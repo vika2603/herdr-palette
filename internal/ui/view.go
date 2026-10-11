@@ -38,11 +38,15 @@ type styles struct {
 	rule  lipgloss.Style
 	thumb lipgloss.Style
 	fail  lipgloss.Style
-	// chip is the label naming the screen, and heavy the stretch of rule
-	// under it; the danger pair is the same on a screen asking about
-	// something that cannot be undone.
-	chip, chipDanger   lipgloss.Style
-	heavy, heavyDanger lipgloss.Style
+	// chip is the label naming the screen, and chipDanger the same on a
+	// screen asking about something that cannot be undone.
+	chip, chipDanger lipgloss.Style
+	// barTop and barUnder draw the blocks that close the query bar above and
+	// under it, and barOpen sets its background. barOpen is empty where the
+	// bar is not drawn: before the terminal has reported its background, or
+	// on a terminal with no colours.
+	barTop, barUnder lipgloss.Style
+	barOpen          string
 	// field is how a script's argument is drawn on the query line, and
 	// fieldHovered one the pointer is over. Their ends take fieldLead columns
 	// before the text and fieldChrome in all.
@@ -71,15 +75,16 @@ func newFieldLook(band lipgloss.Style, colours theme.Theme) fieldLook {
 	}
 }
 
-// newStyles draws in colours on the popup's background, nil until the
-// terminal has reported the one it is derived from. Its surfaces then fall
-// back: nothing is drawn for the pointer, and the menu takes the rule's
-// colour, which sets it apart from the selected row under it.
-func newStyles(colours theme.Theme, backdrop color.Color) styles {
+// newStyles draws in colours on the popup's background inside herdr's border,
+// both nil until the terminal has reported the background they follow. Its
+// surfaces then fall back: nothing is drawn for the pointer, the menu takes
+// the rule's colour, which sets it apart from the selected row under it, and
+// the query bar is not drawn.
+func newStyles(colours theme.Theme, backdrop color.Color, border lipgloss.TerminalColor) styles {
 	band := lipgloss.NewStyle().Background(colours.Selected)
 	fg := func(colour lipgloss.TerminalColor) lipgloss.Style { return lipgloss.NewStyle().Foreground(colour) }
 	// Reversed rather than given a background of the accent: the label's text
-	// is then the terminal's own background, whatever that is.
+	// is then the background it is drawn on, whatever that is.
 	chip := func(colour lipgloss.TerminalColor) lipgloss.Style { return fg(colour).Reverse(true).Bold(true) }
 
 	surfaces := colours.Surfaces(backdrop)
@@ -98,10 +103,28 @@ func newStyles(colours theme.Theme, backdrop color.Color) styles {
 	if surfaces.MenuHovered != nil {
 		optionHovered = on(surfaces.MenuHovered)
 	}
-	field := newFieldLook(band, colours)
-	fieldHovered := field
+	// The query bar is in the band's shade, a step brighter than herdr's
+	// border, and the quarter line above it is in the border's colour so the
+	// two meet without a seam. The bar opens as the band renders, so it is
+	// drawn as the selected row is whatever the terminal's profile makes of
+	// the colour; a terminal with no colours renders no opening, and no bar.
+	var barTop, barUnder lipgloss.Style
+	barOpen := ""
+	if border != nil && backdrop != nil {
+		barOpen, _, _ = strings.Cut(band.Render("x"), "x")
+		bar := fg(colours.Selected)
+		barTop, barUnder = bar.Background(border), bar.Reverse(true)
+	}
+
+	// A field takes the band's shade, which sets it apart from the query. In
+	// the query bar, which is in that shade, it is inset in a darker one
+	// instead.
+	fieldShade, fieldHoveredShade := band, band
+	if barOpen != "" {
+		fieldShade = on(surfaces.Field)
+	}
 	if surfaces.FieldHovered != nil {
-		fieldHovered = newFieldLook(on(surfaces.FieldHovered), colours)
+		fieldHoveredShade = on(surfaces.FieldHovered)
 	}
 
 	return styles{
@@ -120,17 +143,17 @@ func newStyles(colours theme.Theme, backdrop color.Color) styles {
 			status: statusStyles(colours, band),
 		},
 
-		rule:        fg(colours.Rule),
-		thumb:       fg(colours.Scrollbar),
-		fail:        fg(colours.Failure),
-		chip:        chip(colours.Accent),
-		chipDanger:  chip(colours.Failure),
-		heavy:       fg(colours.Accent),
-		heavyDanger: fg(colours.Failure),
+		rule:       fg(colours.Rule),
+		thumb:      fg(colours.Scrollbar),
+		fail:       fg(colours.Failure),
+		chip:       chip(colours.Accent),
+		chipDanger: chip(colours.Failure),
+		barTop:     barTop,
+		barUnder:   barUnder,
+		barOpen:    barOpen,
 
-		// A field takes the band's shade, which sets it apart from the query.
-		field:         field,
-		fieldHovered:  fieldHovered,
+		field:         newFieldLook(fieldShade, colours),
+		fieldHovered:  newFieldLook(fieldHoveredShade, colours),
 		fieldLead:     lipgloss.Width(colours.FieldEnds[0]),
 		fieldChrome:   lipgloss.Width(colours.FieldEnds[0]) + lipgloss.Width(colours.FieldEnds[1]),
 		option:        option,
@@ -216,15 +239,18 @@ func placeholder(scope palette.Scope) string {
 }
 
 const (
-	// chrome is the row budget the list does not get: the query line and the
-	// line above it, the two rules, and the help line.
-	chrome = 5
+	// chrome is the row budget the list does not get: the query bar, the rule
+	// over the help line, and the help line.
+	chrome = headerRows + 2
 	// headerRows is how many lines precede the first line of the list: the
-	// line above the query line, the query line, and the rule under it. A
-	// click's row is counted from there.
+	// query bar, which is the query line between the lines that close the
+	// bar above and under it. A click's row is counted from there.
 	headerRows = 3
-	// queryRow is the line the query is typed on, under the blank line.
+	// queryRow is the line the query is typed on.
 	queryRow = 1
+	// barPadding is the bar left on either side of what it holds, which
+	// starts the label where the list's titles start.
+	barPadding = 2
 	// margins includes the selection and its blank, the blank and origin
 	// marker at the right edge, and the scrollbar.
 	margins = 5
@@ -261,14 +287,14 @@ const selectionMarker = "▌"
 // originMarker stays on the invoking place while selection moves elsewhere.
 const originMarker = "•"
 
-// queryLead is what precedes the query on its line: a blank, the label naming
-// the screen with its padding, and the blank after it. It follows the label
-// rather than reserving room for the longest one, so the query moves when the
-// label changes; a scope starts on an empty query, and a question's label is up
-// only while nothing is typed into the query.
+// queryLead is what precedes the query on its line: the bar's padding, the
+// label naming the screen with its padding, and the blank after it. It
+// follows the label rather than reserving room for the longest one, so
+// the query moves when the label changes; a scope starts on an empty query,
+// and a question's label is up only while nothing is typed into the query.
 func (m model) queryLead() int {
 	label, _ := m.mode()
-	return 1 + len(label) + 2 + 1
+	return barPadding + len(label) + 2 + 1
 }
 
 // Labels naming the screen.
@@ -277,13 +303,9 @@ const (
 	modeConfirm = "CONFIRM"
 )
 
-// summaryOrder is the states the rule under the query counts, in the order
+// summaryOrder is the states the query bar counts at its end, in the order
 // they are named: the ones waiting on you first.
 var summaryOrder = []string{"blocked", "done", "working"}
-
-// minRuleRun is the least of the rule left between the label's stretch of it
-// and the count at its end, so the two do not read as one.
-const minRuleRun = 6
 
 func (m model) cols() int {
 	if m.width <= 0 {
@@ -305,8 +327,7 @@ func (m model) rows() int {
 
 func (m model) View() tea.View {
 	l := m.layout()
-	lines := append(m.headerLines(l), m.topRule(l))
-	lines = append(lines, m.body(l)...)
+	lines := append(m.queryBar(l), m.body(l)...)
 	lines = append(lines, m.rule(), m.footer())
 	column := l.line.cursor
 	visible := m.replying == nil && m.confirming == nil && column >= 0 && m.width > column && m.height >= len(lines)
@@ -339,22 +360,52 @@ func (m model) header(l layout) string {
 	if danger {
 		chip = m.styles.chipDanger
 	}
-	lead := " " + chip.Render(" "+label+" ") + " "
+	// The text is drawn continuously; View.Cursor supplies the native cursor
+	// to the framework so input methods can locate the insertion point.
+	text := l.line.text
 	if m.replying != nil {
 		// What is typed goes to the agent, so the line names it rather than
 		// showing a query nothing is typed into.
 		name := strings.TrimPrefix(m.replying.Entry.Title, palette.GoTo)
-		return truncate(lead+m.styles.plain.text.Bold(true).Render(name), m.cols())
+		text = m.styles.plain.text.Bold(true).Render(name)
 	}
-	// The text is drawn continuously; View.Cursor supplies the native cursor
-	// to the framework so input methods can locate the insertion point.
-	return truncate(lead+l.line.text, m.cols())
+
+	room := m.barRoom()
+	line := truncate(strings.Repeat(" ", barPadding)+chip.Render(" "+label+" ")+" "+text, room)
+	if summary := m.summary(room - lipgloss.Width(line) - sectionGap); summary != "" {
+		line = pad(line, room-lipgloss.Width(summary)) + summary
+	}
+	return pad(line, m.cols())
 }
 
-// headerLines are a blank line, which gives the query line room above it,
-// and the query line.
-func (m model) headerLines(l layout) []string {
-	return []string{strings.Repeat(" ", m.cols()), m.header(l)}
+// barRoom is the columns the query bar holds, up to its padding on the right.
+func (m model) barRoom() int {
+	return max(m.cols()-barPadding, 1)
+}
+
+// queryBar is the query line on a bar across the top of the popup, which
+// takes three quarters of the lines above and under it, so the query line has
+// as much room on either side. Above, the bar is the lower three quarter
+// block. Under it, it is the lower quarter block reversed, which leaves the
+// bar's colour above the glyph and the popup's background in it. Where the
+// bar is not drawn those lines are blank.
+func (m model) queryBar(l layout) []string {
+	if m.styles.barOpen == "" {
+		blank := strings.Repeat(" ", m.cols())
+		return []string{blank, m.header(l), blank}
+	}
+	return []string{
+		m.styles.barTop.Render(strings.Repeat("▆", m.cols())),
+		m.styles.onBar(m.header(l)),
+		m.styles.barUnder.Render(strings.Repeat("▂", m.cols())),
+	}
+}
+
+// onBar draws a line on the query bar. Every reset inside the line gives the
+// bar's background back, so the blanks between its styled runs are on the
+// bar too.
+func (s styles) onBar(line string) string {
+	return s.barOpen + strings.ReplaceAll(line, "\x1b[0m", "\x1b[0m"+s.barOpen) + "\x1b[0m"
 }
 
 // window is the part of the query on show, which is all of it until it
@@ -372,36 +423,9 @@ func window(runes []rune, at, room int) (from, to int) {
 	return from, to
 }
 
-// topRule is the rule under the query line: heavier under what has the keys,
-// the label or the field being typed into, in the label's colour, with how
-// many agents are in each state at its end.
-func (m model) topRule(l layout) string {
-	_, danger := m.mode()
-	heavy := m.styles.heavy
-	if danger {
-		heavy = m.styles.heavyDanger
-	}
-	cols, mark := m.cols(), l.line.mark
-	if cols < mark.start+mark.width {
-		return m.styles.rule.Render(strings.Repeat("─", cols))
-	}
-
-	end := mark.start + mark.width
-	tail := ""
-	if summary := m.summary(cols - end - minRuleRun); summary != "" {
-		tail = " " + summary + " " + m.styles.rule.Render("─")
-	}
-	run := max(cols-end-lipgloss.Width(tail), 0)
-	rule := m.styles.rule.Render(strings.Repeat("─", mark.start)) + heavy.Render(strings.Repeat("━", mark.width)) +
-		m.styles.rule.Render(strings.Repeat("─", run)) + tail
-
-	return rule
-}
-
 // summary counts the agents of the session by state, in no more than room
-// columns once the blanks and the rule's last dash around it are taken. It
-// drops the names of the states before it drops the counts, since the colour
-// of each count says the same.
+// columns. It drops the names of the states before it drops the counts, since
+// the colour of each count says the same.
 func (m model) summary(room int) string {
 	counts := map[string]int{}
 	for _, status := range m.source.Session.Statuses {
@@ -420,7 +444,7 @@ func (m model) summary(room int) string {
 		bare = append(bare, count)
 	}
 	for _, parts := range [][]string{named, bare} {
-		if text := strings.Join(parts, "  "); text != "" && lipgloss.Width(text)+3 <= room {
+		if text := strings.Join(parts, "  "); text != "" && lipgloss.Width(text) <= room {
 			return text
 		}
 	}

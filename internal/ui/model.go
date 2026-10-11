@@ -108,7 +108,7 @@ type model struct {
 	prefix string
 	// pointer is where the mouse last was. What it is over is drawn as
 	// hovered; it moves nothing. Before the mouse has been anywhere it is at
-	// the top left, on the blank line over the query, which is over nothing.
+	// the top left, on the line above the query line, which is over nothing.
 	pointer tea.Mouse
 
 	// epoch counts the screens the popup has walked out of. A request to the
@@ -148,7 +148,7 @@ func newModel(
 	colours theme.Theme,
 	toggle Toggle,
 ) model {
-	styles := newStyles(colours, nil)
+	styles := newStyles(colours, nil, nil)
 
 	// The label naming the screen stands where a prompt would.
 	query := textinput.New()
@@ -268,7 +268,7 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			dark = tea.BackgroundColorMsg{Color: m.backdrop}.IsDark()
 		}
 		lipgloss.SetHasDarkBackground(dark)
-		m.styles = newStyles(m.colours, m.backdrop)
+		m.styles = newStyles(m.colours, m.backdrop, m.colours.Border(msg.Color))
 		return m, nil
 
 	case tea.WindowSizeMsg:

@@ -13,6 +13,7 @@ var tokens = map[string]string{
 	"overlay0": "#414868",
 	"overlay1": "#7aa2f7",
 	"surface0": "#24283b",
+	"panel_bg": "#1e1e2e",
 }
 
 func TestEverySchemeIsComplete(t *testing.T) {
@@ -50,6 +51,9 @@ func TestHerdrThemeTokensAreUsed(t *testing.T) {
 	}
 	if colours.Match != lipgloss.Color("#7aa2f7") {
 		t.Errorf("match = %v, want herdr's overlay1", colours.Match)
+	}
+	if colours.Panel != lipgloss.Color("#1e1e2e") {
+		t.Errorf("panel = %v, want herdr's panel_bg", colours.Panel)
 	}
 	if colours.Meta != Defaults().Meta {
 		t.Error("a colour herdr's theme says nothing about lost its default")
@@ -187,6 +191,7 @@ func TestTheSurfacesAreShadesOfTheBackground(t *testing.T) {
 		want lipgloss.Color
 	}{
 		"hovered":       {got.Hovered, "#202020"},
+		"field":         {got.Field, "#202020"},
 		"field hovered": {got.FieldHovered, "#404040"},
 		"menu":          {got.Menu, "#505050"},
 		"menu hovered":  {got.MenuHovered, "#606060"},
@@ -194,6 +199,19 @@ func TestTheSurfacesAreShadesOfTheBackground(t *testing.T) {
 		if c.got != c.want {
 			t.Errorf("%s = %v, want %v", name, c.got, c.want)
 		}
+	}
+}
+
+func TestTheBorderIsHerdrsPanelOrTheTerminalsBackground(t *testing.T) {
+	terminal := color.RGBA{R: 0x1e, G: 0x1e, B: 0x2e, A: 0xff}
+	if got := Load(nil, Custom{}).Border(nil); got != nil {
+		t.Errorf("border = %v with neither known, want none", got)
+	}
+	if got := Load(nil, Custom{}).Border(terminal); got != lipgloss.Color("#1e1e2e") {
+		t.Errorf("border = %v, want the terminal's background", got)
+	}
+	if got := Load(map[string]string{"panel_bg": "#112233"}, Custom{}).Border(terminal); got != lipgloss.Color("#112233") {
+		t.Errorf("border = %v, want herdr's panel_bg", got)
 	}
 }
 

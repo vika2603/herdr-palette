@@ -38,14 +38,15 @@ type Custom struct {
 // Theme is how the popup is drawn: one colour per role, and the ends of a
 // script's field.
 type Theme struct {
-	// Accent marks what has focus and nothing else: the mode label, the
-	// stretch of rule under it and the selected row's bar.
+	// Accent marks what has focus and nothing else: the mode label and the
+	// selected row's bar.
 	Accent lipgloss.TerminalColor
-	// Rule is the lines above and below the list and the scrollbar's track,
-	// Selected the band behind the selected row, Match the query's letters
-	// inside a row, Meta the text a row carries beside its title, Faint the
-	// weakest text there is — group headings, the prefix of a key — Scrollbar
-	// the thumb, and Failure what cannot be undone or did not work.
+	// Rule is the lines that divide the popup and the scrollbar's track,
+	// Selected the band behind the selected row and the bar the query is
+	// typed on, Match the query's letters inside a row, Meta the text a row
+	// carries beside its title, Faint the weakest text there is — group
+	// headings, the prefix of a key — Scrollbar the thumb, and Failure what
+	// cannot be undone or did not work.
 	Rule      lipgloss.TerminalColor
 	Selected  lipgloss.TerminalColor
 	Match     lipgloss.TerminalColor
@@ -70,6 +71,9 @@ type Theme struct {
 	// Background is what the popup is laid on when the configuration names
 	// it; otherwise Backdrop derives it from the terminal's background.
 	Background color.Color
+	// Panel is what herdr fills the popup's border with, where herdr's
+	// [theme.custom] names it. herdr does not report its theme's own.
+	Panel lipgloss.TerminalColor
 	// FieldEnds are what close a script's field on the left and the right,
 	// drawn in the field's shade: a shape is its foreground, and a blank is
 	// filled with it.
@@ -130,15 +134,16 @@ func (t Theme) Backdrop(terminal color.Color, dark bool) color.Color {
 }
 
 // Shades of the popup's surfaces, as shares of the way from its background to
-// the selected row's band, which a field is drawn on too. A row the pointer is
-// over sits halfway, so it reads as a row that could be selected without
-// reading as the one that is. A field the pointer is over sits a half step
-// past the band, the step the row took. The menu of a dropdown sits as far
-// past the band as the band is from the background, a surface raised over the
-// list in the band's own hue, and an option the pointer is over a half step
-// further.
+// the selected row's band, which the query bar is drawn in. A row the pointer
+// is over sits halfway, so it reads as a row that could be selected without
+// reading as the one that is. A field is inset in the bar halfway, and under
+// the pointer sits a half step past the band, the step the row took. The menu
+// of a dropdown sits as far past the band as the band is from the background,
+// a surface raised over the list in the band's own hue, and an option the
+// pointer is over a half step further.
 const (
 	hoveredShare      = 0.5
+	fieldShare        = 0.5
 	fieldHoveredShare = 1.5
 	menuShare         = 2
 	menuHoveredShare  = 2.5
@@ -146,13 +151,13 @@ const (
 
 // Surfaces are the colours of the popup's surfaces on its background.
 type Surfaces struct {
-	Hovered, Menu, MenuHovered, FieldHovered lipgloss.TerminalColor
+	Hovered, Menu, MenuHovered, Field, FieldHovered lipgloss.TerminalColor
 }
 
-// Surfaces are Hovered, Menu, MenuHovered and FieldHovered on the popup's
-// background: each as configured, or else the shade of backdrop it derives.
-// Without a background there is no such shade, and an unconfigured surface
-// is nil.
+// Surfaces are Hovered, Menu, MenuHovered, Field and FieldHovered on the
+// popup's background: each as configured, or else the shade of backdrop it
+// derives. Field is always derived. Without a background there is no such
+// shade, and an unconfigured surface is nil.
 func (t Theme) Surfaces(backdrop color.Color) Surfaces {
 	surface := func(configured lipgloss.TerminalColor, share float64) lipgloss.TerminalColor {
 		if configured != nil || backdrop == nil {
@@ -164,8 +169,22 @@ func (t Theme) Surfaces(backdrop color.Color) Surfaces {
 		Hovered:      surface(t.Hovered, hoveredShare),
 		Menu:         surface(t.Menu, menuShare),
 		MenuHovered:  surface(t.MenuHovered, menuHoveredShare),
+		Field:        surface(nil, fieldShare),
 		FieldHovered: surface(t.FieldHovered, fieldHoveredShare),
 	}
+}
+
+// Border is what herdr fills the popup's border with: panel_bg where herdr's
+// [theme.custom] names it, and otherwise the terminal's background, the
+// closest the popup can know. It is nil while neither is known.
+func (t Theme) Border(terminal color.Color) lipgloss.TerminalColor {
+	if t.Panel != nil {
+		return t.Panel
+	}
+	if terminal == nil {
+		return nil
+	}
+	return hex(terminal)
 }
 
 // shade is the colour share of the way from one colour to another, past the
@@ -177,7 +196,13 @@ func shade(from color.Color, to lipgloss.TerminalColor, share float64) lipgloss.
 	}
 	r1, g1, b1, _ := from.RGBA()
 	r2, g2, b2, _ := resolve(to).RGBA()
-	return lipgloss.Color(fmt.Sprintf("#%02x%02x%02x", channel(r1, r2), channel(g1, g2), channel(b1, b2)))
+	return hex(color.RGBA{R: uint8(channel(r1, r2)), G: uint8(channel(g1, g2)), B: uint8(channel(b1, b2)), A: 0xff})
+}
+
+// hex is a colour as the hex value lipgloss takes.
+func hex(c color.Color) lipgloss.Color {
+	r, g, b, _ := c.RGBA()
+	return lipgloss.Color(fmt.Sprintf("#%02x%02x%02x", r>>8, g>>8, b>>8))
 }
 
 // resolve is a theme colour as the values it was given name it. The colour
@@ -279,11 +304,13 @@ func Load(tokens map[string]string, own Custom) Theme {
 // them, and reports whether one of them named the match colour. The names are
 // herdr's own: accent is the colour its interface marks focus with, overlay0
 // its faintest line colour, surface0 the shade it lays behind a selected row,
-// and overlay1 a colour that still reads against both.
+// overlay1 a colour that still reads against both, and panel_bg what it fills
+// a popup's border with.
 func applyHerdr(theme *Theme, tokens map[string]string) bool {
 	set(&theme.Accent, tokens["accent"])
 	set(&theme.Rule, tokens["overlay0"])
 	set(&theme.Selected, tokens["surface0"])
+	set(&theme.Panel, tokens["panel_bg"])
 	return set(&theme.Match, tokens["overlay1"])
 }
 

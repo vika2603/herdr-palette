@@ -144,8 +144,8 @@ func TestTheLabelNamesTheScreen(t *testing.T) {
 	}
 	scoped := m
 	scoped.enter(palette.ScopeWorkspaces)
-	if got := scoped.header(scoped.layout()); !strings.Contains(got, "WORKSPACES") {
-		t.Errorf("header = %q in a scope, want WORKSPACES", got)
+	if got := scoped.header(scoped.layout()); !strings.Contains(got, "WORKSPACE") {
+		t.Errorf("header = %q in a scope, want WORKSPACE", got)
 	}
 	picking := choose(t, m, "worktree")
 	if got := picking.header(picking.layout()); !strings.Contains(got, modePick) {

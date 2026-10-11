@@ -227,15 +227,18 @@ const (
 const minCols = 6
 
 // searchPlaceholder stands in the empty query line of the command list. A
-// scope names what it lists there instead, and a list of targets what it is
-// collecting.
-const searchPlaceholder = "Search commands"
+// scope's line says only scopePlaceholder, since the label in front of it
+// names what the scope lists; a list of targets says what it is collecting.
+const (
+	searchPlaceholder = "Search commands"
+	scopePlaceholder  = "Search"
+)
 
 func placeholder(scope palette.Scope) string {
 	if scope == palette.ScopePalette {
 		return searchPlaceholder
 	}
-	return "Search " + scope.Name
+	return scopePlaceholder
 }
 
 const (

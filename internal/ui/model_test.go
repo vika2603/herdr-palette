@@ -1156,7 +1156,7 @@ func TestTabCompletesTheStartOfAScope(t *testing.T) {
 	if got, want := ids(m.ranked), []string{"pane:p1", "pane:p2"}; !slices.Equal(got, want) {
 		t.Errorf("rows = %v, want %v: an agent's pane is a pane too", got, want)
 	}
-	if !strings.Contains(m.header(m.layout()), "PANES") {
+	if !strings.Contains(m.header(m.layout()), "PANE") {
 		t.Errorf("header = %q, want the scope named", m.header(m.layout()))
 	}
 
@@ -1183,11 +1183,11 @@ func TestAScopeIsNotGrouped(t *testing.T) {
 func TestEachScopeListsItsKind(t *testing.T) {
 	for query, want := range map[string][]string{
 		"agent":     {"pane:p1"},
-		"tabs":      {"tab:t2"},
+		"tab":       {"tab:t2"},
 		"workspace": {"workspace:w2"},
 		"plug":      {"plugin:notes/open"},
-		"herdr":     {"c", "a", "switch"},
-		"commands":  {"b"},
+		"built":     {"c", "a", "switch"},
+		"command":   {"b"},
 	} {
 		m := tab(t, typeQuery(t, mixedModel(t), query))
 		if got := ids(m.ranked); !slices.Equal(got, want) {
@@ -1212,7 +1212,7 @@ func TestTabLeavesAQueryThatNamesNoScope(t *testing.T) {
 func TestTheFooterNamesTheScopeTabCompletesTo(t *testing.T) {
 	withSpelling(t, "darwin")
 	m := typeQuery(t, mixedModel(t), "work")
-	if !strings.Contains(m.footer(), "⇥ workspaces") {
+	if !strings.Contains(m.footer(), "⇥ workspace") {
 		t.Errorf("footer = %q, want the scope tab goes to", m.footer())
 	}
 }

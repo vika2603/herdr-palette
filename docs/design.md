@@ -58,7 +58,7 @@ pane is opened directly (`herdr plugin pane open`).
 
 A row's name is `namespace: title`, the way an editor's command list reads,
 and that is what a query matches. The namespace is where the row comes from —
-`herdr` for the built-in commands, `command` for user scripts and the ones
+`built-in` for the palette's own commands, `command` for user scripts and the ones
 configured under `[[keys.command]]`, the plugin's own name for a plugin action,
 and the kind of thing for the rows that go somewhere. The row draws the title
 first and the namespace in a column of its own at the right, next to the detail and the key:
@@ -97,25 +97,24 @@ front of it costs more than the length of the list does.
 
 ## Scopes
 
-Every row has a `Kind`: a herdr command, a configured command, a plugin action,
+Every row has a `Kind`: a built-in command, a configured command, a plugin action,
 a pane, an agent, a tab or a workspace. A scope is a name and a set of kinds,
 and what the popup lists is the rows of the scope that is on, whatever their
 source. The command list is a scope too, `palette`, holding every kind but tabs
-and workspaces. The others are `agents`, `panes` (agents included, since an
-agent runs in a pane), `tabs`, `workspaces`, `plugins`, the actions every
-installed plugin registered, `herdr`, herdr's own commands, and `commands`,
-user scripts and the ones configured under `[[keys.command]]`, which their rows
-already name `command:`. Searching
-`herdr` in the command list is no substitute for the last: a plugin's id and a
-pane's directory are searched too, and both often carry the word. A new scope
-is a line naming its kinds; the label, the placeholder, the empty line and completion
-follow from its name.
+and workspaces. The others are `agent`, `pane` (agents included, since an
+agent runs in a pane), `tab`, `workspace`, `plugin`, the actions every
+installed plugin registered, `built-in`, the palette's own commands, and
+`command`, user scripts and the ones configured under `[[keys.command]]`. Each
+name is the namespace its rows show, so the word that narrows the list is the
+one already on the rows; a plugin action shows its plugin's name instead. A
+new scope is a line naming its kinds; the label and completion follow from its
+name. The empty query line says only `Search`, since the label names the scope.
 
 From the command list, `tab` on a query of one word, two letters or more, that
 starts the name of a scope switches to it and empties the query; shorter, a
 letter is too often the start of the name being searched for. Failing a start,
 a word whose letters appear in a scope's name in order, from its first letter,
-completes too, the way the list matches a query: `cmd` reaches `commands`. The
+completes too, the way the list matches a query: `cmd` reaches `command`. The
 first letter has to match, or the letters of most names searched for would
 spell out some scope. Each scope carries the line it shows when it holds
 nothing, since why it would depends on the scope: nothing is open, no plugin is
@@ -130,7 +129,7 @@ A scope is not grouped under headings: they tell commands from places, and a
 scope holds rows of a kind. Its rows keep the order the groups give them, what
 needs you first and where the palette went recently next. A scope of places
 also leaves out the source column, since the label says what every row is and
-the detail says which pane runs an agent; `plugins` keeps it for the plugin's
+the detail says which pane runs an agent; `plugin` keeps it for the plugin's
 name.
 
 The query starts a blank after the label, however long the label is, rather
@@ -205,7 +204,7 @@ attached client.
 
 `internal/catalog` therefore maps each command to the socket API method with
 the same effect, and `internal/palette` merges that list with the plugin
-actions. The cost is that a new built-in action does not appear on its own. The
+actions. The cost is that a new herdr action does not appear on its own. The
 API method behind each entry is stable, so the list only needs revisiting when
 herdr adds commands worth offering.
 
@@ -225,7 +224,7 @@ of panes side by side in its direction on the first side over the count in
 all; a subtree split the other way counts as its wider half, so its panes line
 up with the ones beside it. herdr clamps a ratio to between 0.1 and 0.9.
 
-One of the built-in actions is reproduced from the session rather than by one
+One of herdr's actions is reproduced from the session rather than by one
 call. `tab.move` takes an insert index counted in the list as it stands, and
 puts the tab in front of whatever is at it, so a place on is two indexes ahead
 and a place back one behind; a tab's number stays with it when it moves and is
@@ -699,7 +698,7 @@ row can be typed in any order; the scores are added and the matched positions
 merged for highlighting.
 
 The row it matches is the row as it is drawn, namespace included, so `spr`
-reaches "herdr: Split Pane Right" and the highlighted letters are the ones that
+reaches "built-in: Split Pane Right" and the highlighted letters are the ones that
 were searched. fzf's scoring is what separates a run at the start of a word
 from letters scattered through a row, which is the difference the palette
 depends on at the size it has. Those bonuses live in tables `algo.Init` fills,

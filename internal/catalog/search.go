@@ -28,7 +28,7 @@ func searchEntries() []palette.Entry {
 	return []palette.Entry{{
 		ID:    "herdr:pane.search",
 		Title: "Search What the Panes Have Printed",
-		Type:  groupHerdr,
+		Type:  groupBuiltIn,
 		Choices: &palette.Choices{
 			Label: "Line to find",
 			Empty: "no pane has printed anything",

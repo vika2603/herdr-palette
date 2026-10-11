@@ -7,16 +7,17 @@ import (
 
 func TestCompletingAScope(t *testing.T) {
 	for query, want := range map[string]Scope{
-		"ag":         ScopeAgents,
-		"Pane":       ScopePanes,
-		" tabs ":     ScopeTabs,
-		"workspaces": ScopeWorkspaces,
-		"pl":         ScopePlugins,
-		"HE":         ScopeHerdr,
-		"comm":       ScopeCommands,
-		"cmd":        ScopeCommands,
-		"wsp":        ScopeWorkspaces,
-		"tb":         ScopeTabs,
+		"ag":        ScopeAgents,
+		"Pane":      ScopePanes,
+		" tab ":     ScopeTabs,
+		"workspace": ScopeWorkspaces,
+		"pl":        ScopePlugins,
+		"BU":        ScopeBuiltIn,
+		"builtin":   ScopeBuiltIn,
+		"comm":      ScopeCommands,
+		"cmd":       ScopeCommands,
+		"wsp":       ScopeWorkspaces,
+		"tb":        ScopeTabs,
 	} {
 		if got, ok := Complete(query); !ok || got != want {
 			t.Errorf("Complete(%q) = %q, %v, want %q", query, got.Name, ok, want.Name)
@@ -33,7 +34,7 @@ func TestCompletingAScope(t *testing.T) {
 
 func TestAScopeListsItsKinds(t *testing.T) {
 	list := List{
-		Commands: []Entry{{ID: "herdr"}, {ID: "custom", Kind: KindCustom}, {ID: "plugin", Kind: KindPlugin}},
+		Commands: []Entry{{ID: "built-in"}, {ID: "custom", Kind: KindCustom}, {ID: "plugin", Kind: KindPlugin}},
 		Session: Session{Entries: []Entry{
 			{ID: "agent", Kind: KindAgent},
 			{ID: "pane", Kind: KindPane},
@@ -45,13 +46,13 @@ func TestAScopeListsItsKinds(t *testing.T) {
 		scope Scope
 		want  []string
 	}{
-		{ScopePalette, []string{"herdr", "custom", "plugin", "agent", "pane"}},
+		{ScopePalette, []string{"built-in", "custom", "plugin", "agent", "pane"}},
 		{ScopeAgents, []string{"agent"}},
 		{ScopePanes, []string{"agent", "pane"}},
 		{ScopeTabs, []string{"tab"}},
 		{ScopeWorkspaces, []string{"workspace"}},
 		{ScopePlugins, []string{"plugin"}},
-		{ScopeHerdr, []string{"herdr"}},
+		{ScopeBuiltIn, []string{"built-in"}},
 		{ScopeCommands, []string{"custom"}},
 	} {
 		var got []string

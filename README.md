@@ -47,7 +47,7 @@ Inside the popup a key reads as a terminal passes it on, so `ctrl+shift+p` is
 
 ## What is in the list
 
-- **`herdr:`** herdr's own commands, including a few herdr has no key for:
+- **`built-in:`** the palette's commands for herdr, including a few herdr has no key for:
   splitting left and up, moving or swapping the pane, evening out pane sizes,
   moving the workspace toward the front or back,
   `Switch Workspace` and `Switch Tab`, and searching what the panes printed.
@@ -57,12 +57,12 @@ Inside the popup a key reads as a terminal passes it on, so `ctrl+shift+p` is
 - **`pane:` / `agent:`** the open panes, with what each agent is doing. A
   pane is also found by its tab's, workspace's or directory's name.
 
-Type the start of `agents`, `panes`, `tabs`, `workspaces`, `plugins`, `herdr`
-or `commands` (your configured commands and scripts), two letters or more, or its
+Type the start of `agent`, `pane`, `tab`, `workspace`, `plugin`, `built-in`
+or `command` (your configured commands and scripts), two letters or more, or its
 letters in order such as `cmd` or `wsp`, and press `tab` to list only those; the label in front of the query
 names the scope. Tabs and workspaces are listed only in their scope, which
 `Switch Tab` and `Switch Workspace` open too. `herdr.palette.goto` opens the
-popup in `panes`.
+popup in `pane`.
 
 Before you type, the list is grouped into what needs you, what you ran
 recently, what you can run and what is open. The pane you opened the palette from

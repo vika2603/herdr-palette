@@ -7,8 +7,9 @@ import "strings"
 type Kind uint8
 
 const (
-	// KindCommand is herdr's own commands, and the zero value: a target picked
-	// from a list is one too, since it runs the command it belongs to.
+	// KindCommand is the palette's built-in commands, and the zero value: a
+	// target picked from a list is one too, since it runs the command it
+	// belongs to.
 	KindCommand Kind = iota
 	KindCustom
 	KindPlugin
@@ -51,20 +52,19 @@ var (
 	// for each would put the same place on the list two or three times, and a
 	// pane is found by the names of the tab and workspace it sits in.
 	ScopePalette    = Scope{Name: "palette", Kinds: KindsOf(KindCommand, KindCustom, KindPlugin, KindPane, KindAgent), Empty: "no command is listed"}
-	ScopeAgents     = Scope{Name: "agents", Kinds: KindsOf(KindAgent), Empty: "no agent is open"}
-	ScopePanes      = Scope{Name: "panes", Kinds: KindsOf(KindPane, KindAgent), Empty: "no pane is open"}
-	ScopeTabs       = Scope{Name: "tabs", Kinds: KindsOf(KindTab), Empty: "no tab is open"}
-	ScopeWorkspaces = Scope{Name: "workspaces", Kinds: KindsOf(KindWorkspace), Empty: "no workspace is open"}
-	ScopePlugins    = Scope{Name: "plugins", Kinds: KindsOf(KindPlugin), Empty: "no plugin is installed"}
-	ScopeHerdr      = Scope{Name: "herdr", Kinds: KindsOf(KindCommand), Empty: "no herdr command is listed"}
-	// ScopeCommands holds configured commands and user scripts, which the
-	// rows name with the "command" namespace.
-	ScopeCommands = Scope{Name: "commands", Kinds: KindsOf(KindCustom), Empty: "no command is configured"}
+	ScopeAgents     = Scope{Name: "agent", Kinds: KindsOf(KindAgent), Empty: "no agent is open"}
+	ScopePanes      = Scope{Name: "pane", Kinds: KindsOf(KindPane, KindAgent), Empty: "no pane is open"}
+	ScopeTabs       = Scope{Name: "tab", Kinds: KindsOf(KindTab), Empty: "no tab is open"}
+	ScopeWorkspaces = Scope{Name: "workspace", Kinds: KindsOf(KindWorkspace), Empty: "no workspace is open"}
+	ScopePlugins    = Scope{Name: "plugin", Kinds: KindsOf(KindPlugin), Empty: "no plugin is installed"}
+	ScopeBuiltIn    = Scope{Name: "built-in", Kinds: KindsOf(KindCommand), Empty: "no built-in command is listed"}
+	// ScopeCommands holds configured commands and user scripts.
+	ScopeCommands = Scope{Name: "command", Kinds: KindsOf(KindCustom), Empty: "no command is configured"}
 )
 
 // scopes is every scope the command list narrows to, in the order a typed
 // word is completed against.
-var scopes = []Scope{ScopeAgents, ScopePanes, ScopeTabs, ScopeWorkspaces, ScopePlugins, ScopeHerdr, ScopeCommands}
+var scopes = []Scope{ScopeAgents, ScopePanes, ScopeTabs, ScopeWorkspaces, ScopePlugins, ScopeBuiltIn, ScopeCommands}
 
 // ScopeEnv names the scope the popup opens in. The action that goes straight
 // to what is open sets it, so a key bound to that action reaches a pane by
@@ -79,7 +79,7 @@ const minCompletion = 2
 // Complete is the scope a query of a single word, two letters or more, names:
 // the one whose name it starts, or failing that the one whose name holds its
 // letters in order from the same first letter, the way the list matches a
-// query, so "cmd" reaches commands. The first letter has to be the name's, or
+// query, so "cmd" reaches command. The first letter has to be the name's, or
 // the letters of most names searched for would spell out some scope.
 func Complete(query string) (Scope, bool) {
 	word := strings.ToLower(strings.TrimSpace(query))

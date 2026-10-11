@@ -41,8 +41,8 @@ type Entry struct {
 	// ID is stable across runs: it keys the recent-command order.
 	ID    string
 	Title string
-	// Type is the last column: the group a herdr command belongs to, or what
-	// an entry is when it does not come from herdr.
+	// Type is the last column: where the entry comes from, such as Built-in
+	// or a plugin's name, or what a row that goes somewhere goes to.
 	Type string
 	// Binding is the herdr action this entry mirrors, such as new_workspace,
 	// used to look up the key that does the same thing. Empty when herdr has
@@ -123,8 +123,8 @@ func (e Entry) Namespace() string {
 func (e Entry) Goes() bool { return places.Has(e.Kind) }
 
 // Name is how a row reads: the namespace in front of the title, as in
-// "herdr: Split Pane Right". It is both what the row renders and what a query
-// matches, so the letters highlighted in a row are the ones that were
+// "built-in: Split Pane Right". It is both what the row renders and what a
+// query matches, so the letters highlighted in a row are the ones that were
 // searched.
 //
 // Titles keep their authored casing, including names supplied by commands,

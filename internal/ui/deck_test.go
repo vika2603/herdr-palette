@@ -119,19 +119,20 @@ func TestMovingOntoAGroupBringsItsHeading(t *testing.T) {
 	}
 }
 
-func TestTheRuleCountsTheAgentsByState(t *testing.T) {
+func TestTheQueryBarCountsTheAgentsByState(t *testing.T) {
 	m := sessionModel(t, testEnv(t), nil, 72, 12)
-	if got := m.topRule(m.layout()); !strings.Contains(got, "● 1 blocked") || !strings.Contains(got, "● 2 working") {
-		t.Errorf("rule = %q, want the agents counted by state", got)
+	header := ansi.Strip(m.header(m.layout()))
+	if !strings.Contains(header, "● 1 blocked") || !strings.HasSuffix(strings.TrimRight(header, " "), "● 2 working") {
+		t.Errorf("query line = %q, want the agents counted by state at the end of the bar", header)
 	}
-	if lipgloss.Width(m.topRule(m.layout())) != 72 {
-		t.Errorf("rule is %d wide, want the popup's width", lipgloss.Width(m.topRule(m.layout())))
+	if lipgloss.Width(header) != 72 {
+		t.Errorf("query line is %d wide, want the popup's width", lipgloss.Width(header))
 	}
 
 	// A narrow popup keeps the counts and drops the names of the states.
-	narrow := sessionModel(t, testEnv(t), nil, 32, 12)
-	if got := narrow.topRule(narrow.layout()); strings.Contains(got, "blocked") || !strings.Contains(got, "● 1") {
-		t.Errorf("rule = %q, want the bare counts", got)
+	narrow := sessionModel(t, testEnv(t), nil, 50, 12)
+	if got := ansi.Strip(narrow.header(narrow.layout())); strings.Contains(got, "blocked") || !strings.Contains(got, "● 1") {
+		t.Errorf("query line = %q, want the bare counts", got)
 	}
 }
 
@@ -167,7 +168,7 @@ func TestTheQueryStartsRightAfterTheLabel(t *testing.T) {
 		typed := typeQuery(t, m, "x")
 		header := ansi.Strip(typed.header(typed.layout()))
 		got := lipgloss.Width(header[:strings.Index(header, "x")])
-		if want := len(" "+scope.Label()+" ") + 2; got != want {
+		if want := barPadding + len(" "+scope.Label()+" ") + 1; got != want {
 			t.Errorf("under %s the query starts at %d, want %d", scope.Label(), got, want)
 		}
 	}
@@ -422,8 +423,8 @@ func TestTheNativeCursorTracksTheInsertionPoint(t *testing.T) {
 	if got := ansi.Strip(m.header(m.layout())); !strings.Contains(got, searchPlaceholder) || strings.Contains(got, "\u258f") {
 		t.Errorf("header = %q, want placeholder text without a painted cursor", got)
 	}
-	if cursor := m.View().Cursor; cursor == nil || cursor.X != 11 || cursor.Y != queryRow || cursor.Shape != tea.CursorBlock || !cursor.Blink {
-		t.Errorf("empty query cursor = %+v, want a blinking block at (11, queryRow)", cursor)
+	if cursor := m.View().Cursor; cursor == nil || cursor.X != 12 || cursor.Y != queryRow || cursor.Shape != tea.CursorBlock || !cursor.Blink {
+		t.Errorf("empty query cursor = %+v, want a blinking block at (12, queryRow)", cursor)
 	}
 
 	m = typeQuery(t, m, "split")
@@ -432,8 +433,8 @@ func TestTheNativeCursorTracksTheInsertionPoint(t *testing.T) {
 	if got := ansi.Strip(m.header(m.layout())); !strings.Contains(got, "split") {
 		t.Errorf("header = %q, want continuous text", got)
 	}
-	if cursor := m.View().Cursor; cursor == nil || cursor.X != 14 || cursor.Y != queryRow || cursor.Shape != tea.CursorBlock || !cursor.Blink {
-		t.Errorf("query cursor = %+v, want a blinking block after spl at (14, queryRow)", cursor)
+	if cursor := m.View().Cursor; cursor == nil || cursor.X != 15 || cursor.Y != queryRow || cursor.Shape != tea.CursorBlock || !cursor.Blink {
+		t.Errorf("query cursor = %+v, want a blinking block after spl at (15, queryRow)", cursor)
 	}
 	profile := lipgloss.ColorProfile()
 	lipgloss.SetColorProfile(termenv.TrueColor)
@@ -456,19 +457,19 @@ func TestALongQueryKeepsTheCaretOnShow(t *testing.T) {
 	for range 80 {
 		m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyHome})
 	}
-	if header := ansi.Strip(m.header(m.layout())); !strings.Contains(header, "abcdefgh") || m.View().Cursor == nil || m.View().Cursor.X != 11 {
+	if header := ansi.Strip(m.header(m.layout())); !strings.Contains(header, "abcdefgh") || m.View().Cursor == nil || m.View().Cursor.X != 12 {
 		t.Errorf("header = %q after home, want the caret at the start", header)
 	}
 }
 
 func TestTheNativeCursorUsesCellWidthForCJKInput(t *testing.T) {
 	m := typeQuery(t, sessionModel(t, testEnv(t), nil, 72, 12), "宽a")
-	if cursor := m.View().Cursor; cursor == nil || cursor.X != 14 || cursor.Y != queryRow {
-		t.Errorf("cursor after wide character and ASCII = %+v, want (14, queryRow)", cursor)
+	if cursor := m.View().Cursor; cursor == nil || cursor.X != 15 || cursor.Y != queryRow {
+		t.Errorf("cursor after wide character and ASCII = %+v, want (15, queryRow)", cursor)
 	}
 	m, _ = send(t, m, tea.KeyPressMsg{Code: tea.KeyLeft})
-	if cursor := m.View().Cursor; cursor == nil || cursor.X != 13 || cursor.Y != queryRow {
-		t.Errorf("cursor after wide character = %+v, want (13, queryRow)", cursor)
+	if cursor := m.View().Cursor; cursor == nil || cursor.X != 14 || cursor.Y != queryRow {
+		t.Errorf("cursor after wide character = %+v, want (14, queryRow)", cursor)
 	}
 }
 

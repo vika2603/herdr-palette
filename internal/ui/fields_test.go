@@ -139,11 +139,6 @@ func TestTabMovesIntoTheFieldsAndTypingFillsThem(t *testing.T) {
 	if cursor := m.View().Cursor; cursor == nil || cursor.X != start+1+len("main") || cursor.Y != queryRow {
 		t.Errorf("cursor = %+v, want it after main at column %d", cursor, start+1+len("main"))
 	}
-	// The rule's mark follows the keys from the label to the field.
-	rule := []rune(ansi.Strip(m.topRule(m.layout())))
-	if mark := slices.Index(rule, '━'); mark != start {
-		t.Errorf("the rule's mark starts at %d, want under the field at %d: %q", mark, start, string(rule))
-	}
 	if !strings.Contains(m.footer(), "next") || !strings.Contains(m.footer(), "previous") {
 		t.Errorf("footer = %q, want the keys that move between the fields", m.footer())
 	}
@@ -676,8 +671,9 @@ func TestThePointerMarksWhatItIsOverAndMovesNothing(t *testing.T) {
 	}
 }
 
-// A field the pointer is over is drawn on a shade of its own, its ends with
-// it; the one being typed into is not, since the rule marks it.
+// A field rests inset in the query bar, in a shade darker than it. One the
+// pointer is over is drawn on a shade of its own, its ends with it; the one
+// being typed into is not, since it has the keys.
 func TestAHoveredFieldIsDrawnOnItsOwnShade(t *testing.T) {
 	previous := lipgloss.ColorProfile()
 	lipgloss.SetColorProfile(termenv.TrueColor)
@@ -688,6 +684,10 @@ func TestAHoveredFieldIsDrawnOnItsOwnShade(t *testing.T) {
 	hovered := m.styles.fieldHovered.left + m.styles.fieldHovered.empty.Render("token")
 
 	away := m.line().text
+	r, g, b, _ := m.colours.Surfaces(m.backdrop).Field.RGBA()
+	if inset := fmt.Sprintf("48;2;%d;%d;%dm", r>>8, g>>8, b>>8); !strings.Contains(away, inset+"token") {
+		t.Errorf("query line = %q, want the token field in the field's shade", away)
+	}
 	if strings.Contains(away, hovered) {
 		t.Fatal("the token field is drawn hovered with the pointer away")
 	}
@@ -737,7 +737,7 @@ func TestFieldsFollowTheWidthOfTheirEnds(t *testing.T) {
 			var ran [][]string
 			m := fieldModel(t, 72, &ran)
 			m.colours = theme.Load(nil, theme.Custom{FieldEnds: configured})
-			m.styles = newStyles(m.colours, nil)
+			m.styles = newStyles(m.colours, nil, nil)
 			lead := len(m.colours.FieldEnds[0])
 
 			m = typeQuery(t, pressAll(t, m, tabKey), "main")

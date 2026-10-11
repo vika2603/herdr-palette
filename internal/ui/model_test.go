@@ -12,6 +12,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
 	"github.com/vika2603/herdr-client/herdr"
 	"github.com/vika2603/herdr-client/plugin"
 	"github.com/vika2603/herdr-client/plugin/plugintest"
@@ -151,6 +152,59 @@ func TestThePopupSetsItsBackgroundOnceTheTerminalHasAnswered(t *testing.T) {
 	m, _ = send(t, m, tea.BackgroundColorMsg{Color: terminal})
 	if got := m.View().BackgroundColor; got == nil || got == color.Color(terminal) {
 		t.Errorf("background = %v, want one set apart from the terminal's %v", got, terminal)
+	}
+}
+
+func TestTheQueryLineIsOnABarOnceTheTerminalHasAnswered(t *testing.T) {
+	previous := lipgloss.HasDarkBackground()
+	t.Cleanup(func() { lipgloss.SetHasDarkBackground(previous) })
+	profile := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(profile) })
+	answer := tea.BackgroundColorMsg{Color: color.RGBA{R: 0x1e, G: 0x1e, B: 0x2e, A: 0xff}}
+	const terminalBg = "48;2;30;30;46"
+
+	m := testModel(t, nil, nil)
+	lines := strings.Split(m.View().Content, "\n")
+	if strings.TrimSpace(ansi.Strip(lines[0])) != "" || strings.TrimSpace(ansi.Strip(lines[2])) != "" {
+		t.Errorf("lines around the query before the terminal answered = %q, %q, want them blank", lines[0], lines[2])
+	}
+	if strings.Contains(lines[queryRow], "48;2;") {
+		t.Errorf("query line before the terminal answered = %q, want no bar under it", lines[queryRow])
+	}
+
+	m, _ = send(t, m, answer)
+	lines = strings.Split(m.View().Content, "\n")
+	r, g, b, _ := m.colours.Selected.RGBA()
+	band := fmt.Sprintf("%d;%d;%d", r>>8, g>>8, b>>8)
+
+	// Above the query line the bar is the lower three quarters, and the
+	// quarter over it is the terminal's background, as herdr's border is.
+	top := lines[0]
+	if ansi.Strip(top) != strings.Repeat("▆", m.cols()) || !strings.Contains(top, "38;2;"+band) || !strings.Contains(top, terminalBg) {
+		t.Errorf("line above the query = %q, want lower three quarter blocks of the band on the terminal's background", top)
+	}
+	query := lines[queryRow]
+	if !strings.HasPrefix(query, "\x1b[48;2;"+band+"m") || !strings.Contains(query, "\x1b[0m\x1b[48;2;"+band+"m ") {
+		t.Errorf("query line = %q, want the bar's background under it and between its styled runs", query)
+	}
+	if lipgloss.Width(query) != m.cols() {
+		t.Errorf("query line is %d wide, want the popup's width", lipgloss.Width(query))
+	}
+	// Under the query line the bar is the upper three quarters: the lower
+	// quarter block reversed, which leaves the bar's colour above the glyph.
+	under := lines[2]
+	if ansi.Strip(under) != strings.Repeat("▂", m.cols()) || !strings.Contains(under, "38;2;"+band) || !strings.Contains(under, "\x1b[7;") {
+		t.Errorf("line under the query = %q, want reversed lower quarter blocks of the band", under)
+	}
+
+	// Where herdr's theme names the colour of its border, the quarter above
+	// the bar takes it rather than the terminal's background.
+	panel := testModel(t, nil, nil)
+	panel.colours = theme.Load(map[string]string{"panel_bg": "#112233"}, theme.Custom{})
+	panel, _ = send(t, panel, answer)
+	if top := strings.Split(panel.View().Content, "\n")[0]; !strings.Contains(top, "48;2;17;34;51") {
+		t.Errorf("line above the query = %q, want the quarter above the bar in herdr's panel_bg", top)
 	}
 }
 
@@ -439,8 +493,8 @@ func TestAClickRunsTheRowItLandsOn(t *testing.T) {
 	var ran []string
 	m := testModel(t, nil, &ran)
 
-	// The third row: the query line and the rule come first, and the rows
-	// before it belong to commands that ask for a value.
+	// The third row: the query bar comes first, and the rows before it
+	// belong to commands that ask for a value.
 	_, cmd := send(t, m, tea.MouseClickMsg{
 		Button: tea.MouseLeft,
 		Y:      headerRows + 2,

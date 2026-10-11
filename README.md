@@ -106,7 +106,7 @@ script_dirs = ["scripts"] # relative to this config file; absolute paths and ~/ 
 scheme = "herd"            # or "terminal", to follow the terminal's colours
 accent = "#A48BFF"         # any colour below takes a hex value or an ANSI index
 rule = "#414868"
-selected_background = "#24283b"
+selected_background = "#24283b" # the selected row and the query bar
 match = "#7aa2f7"
 meta = "8"
 faint = "8"
@@ -131,7 +131,8 @@ idle = "8"
 ```
 
 Colours herdr's `[theme.custom]` defines (`accent`, `overlay0`, `surface0`,
-`overlay1`) are used when the file sets none.
+`overlay1`) are used when the file sets none. Its `panel_bg` colours the strip
+above the query bar, which meets herdr's border around the popup.
 
 Without `hover_background`, `menu_background`, `menu_hover_background` or
 `field_hover_background`, each is a shade derived from the popup's background

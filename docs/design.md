@@ -138,6 +138,18 @@ than after room kept for the longest one. It moves when the label changes,
 which is when a scope starts on an empty query or a question is up and nothing
 is being typed.
 
+The query line sits on a bar across the popup in the selected row's shade, and
+the bar ends in how many agents are in each state, where the line has room
+left after the query and the fields. A terminal draws in whole lines, and a
+blank line above and under the query line is more room than it needs, so the
+bar takes three quarters of each: the lower three quarter block above it, and
+under it the lower quarter block reversed, which leaves the bar's colour above
+the glyph and the popup's background in it. The quarter left above the bar is
+in the colour of herdr's border around the popup, so the border runs into it
+rather than a strip of the popup's darker background parting the two. Until
+the popup's background is known, or on a terminal with no colours, the bar is
+not drawn and the two lines are blank.
+
 A pane running an agent shows under `agent:` instead of `pane:`, with the agent
 and its status next to the row, coloured by the status. A pane is addressed by
 its id rather than through `agent.focus`, which takes a name the snapshot does
@@ -635,24 +647,28 @@ arrived: set earlier, the answer could report the popup's own colour. The
 adaptive colours then follow the popup's background rather than the
 terminal's, since a configured one can be light on a dark terminal.
 
-The band behind the row the pointer is over, the shade of a field the
-pointer is over, the dropdown's menu and the band behind an option the
-pointer is over are surfaces of the popup rather than colours of their own,
-so a scheme leaves them unset and each is derived from the popup's background
-and the selected row's band, as a share of the way from one to the other:
-halfway for a hovered row, one and a half times for a hovered field, whose
-own shade is the band's, twice the way for the menu, and two and a half times
-for a hovered option. The menu thereby stands out of the
+The band behind the row the pointer is over, the shade of a field the pointer
+is over, the dropdown's menu and the band behind an option the pointer is over
+are surfaces of the popup rather than colours of their own, so a scheme leaves
+them unset and each is derived from the popup's background and the selected
+row's band, as a share of the way from one to the other: halfway for a hovered
+row, one and a half times for a hovered field, twice the way for the menu, and
+two and a half times for a hovered option. The menu thereby stands out of the
 list the way the band does, in the band's hue, rather than in the rule's
-colour, which herdr's themes choose for lines. The arithmetic runs on the
-values the theme names rather than on what the terminal's colour profile rounds
-them to. Until the background is known nothing is drawn for the pointer and
-the menu takes the rule's colour. The plugin's configuration can name any of
-the four, which then stands from the start.
+colour, which herdr's themes choose for lines. A field rests in the query bar,
+which is in the band's shade, so it is inset halfway to the popup's background
+rather than drawn on the band. The arithmetic runs on the values the theme
+names rather than on what the terminal's colour profile rounds them to. Until
+the background is known nothing is drawn for the pointer, the menu takes the
+rule's colour, and a field is drawn on the band. The plugin's configuration can
+name any of the four, which then stands from the start.
 
 herdr fills the popup's border, and the column it keeps to the right of the
-pane, with its own `panel_bg`, which the API does not report. The popup does
-not try to match it; a configured `background` can.
+pane, with its own `panel_bg`, which the API does not report. The popup's
+background does not try to match it; a configured `background` can. The
+quarter line above the query bar does, since it meets the border: it takes
+`panel_bg` where herdr's `[theme.custom]` names it, and the terminal's
+background otherwise, which is the closest the popup can know.
 
 ## Reading herdr's configuration
 
@@ -726,14 +742,15 @@ would leave it on whatever row the pointer came to rest on, and the next
 own row. herdr captures the mouse for its own UI but forwards events to a pane
 app that asks for them, so the popup receives them.
 
-A click's row is `offset + Y - headerRows`, where `headerRows` is the blank
-line, the query line and the rule under it. Two things have to hold for that
-to name the row under the pointer. No line the popup draws may wrap, or every row below the
-wrap moves out from under the arithmetic. And `Y` has to fall inside the rows
-that were drawn: the rule under the list and the line below it are inside the
-popup as well, and the arithmetic alone reads them as the rows that would have
-been there had the window been taller — a click on the line under the list
-would run a command that is not on screen.
+A click's row is `offset + Y - headerRows`, where `headerRows` is the query
+bar: the query line and the lines that close the bar above and under it. Two
+things have to hold for that to name the row under the pointer. No line the
+popup draws may wrap, or every row below the wrap moves out from under the
+arithmetic. And `Y` has to fall inside the rows that were drawn: the rule under
+the list and the line below it are inside the popup as well, and the arithmetic
+alone reads them as the rows that would have been there had the window been
+taller — a click on the line under the list would run a command that is not on
+screen.
 
 A click off the rows puts away a question waiting to be answered rather than
 doing nothing, the way a key other than `enter` does.

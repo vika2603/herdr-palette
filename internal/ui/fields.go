@@ -439,9 +439,7 @@ type queryLine struct {
 	// cursor is the column of the native cursor, -1 when there is none to
 	// show: a dropdown is not typed into.
 	cursor int
-	// mark is what the rule under the line marks out, the label or the field
-	// being typed into, and drop the dropdown being chosen from.
-	mark extent
+	// drop is the dropdown being chosen from.
 	drop extent
 	// fields are where each field is drawn, caps included, and of no width
 	// for one scrolled out of sight. first and end bound the run on show, and
@@ -530,12 +528,11 @@ func (m model) boxes(entry palette.Entry, f *argForm, room int) []box {
 }
 
 // line lays out what follows the label: the query, the selected script's
-// fields, and where the cursor and the rule's mark go.
+// fields, and where the cursor goes.
 func (m model) line() queryLine {
-	label, _ := m.mode()
 	lead := m.queryLead()
-	room := max(m.cols()-lead, 1)
-	out := queryLine{cursor: -1, mark: extent{1, len(label) + 2}}
+	room := max(m.barRoom()-lead, 1)
+	out := queryLine{cursor: -1}
 
 	entry, fielded := m.fielded()
 	f := m.form()
@@ -617,8 +614,8 @@ func (m model) line() queryLine {
 		width := bx.width + m.styles.fieldChrome
 		at := extent{col, width}
 		// Nothing is drawn over the query line, so the field under the
-		// pointer is the one it is over. The one being typed into is marked
-		// by the rule under it instead.
+		// pointer is the one it is over. The one being typed into is drawn
+		// as it is: it has the keys.
 		look := m.styles.field
 		if !focused && m.pointer.Y == queryRow && at.contains(m.pointer.X) {
 			look = m.styles.fieldHovered
@@ -627,7 +624,6 @@ func (m model) line() queryLine {
 		b.WriteString(text)
 		out.fields[i] = at
 		if focused {
-			out.mark = extent{col, width}
 			dropdown := bx.argument.Type == palette.ArgumentDropdown
 			if dropdown {
 				out.drop = extent{col, width}
